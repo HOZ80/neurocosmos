@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dikte Pratiği</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14171a;
+    --panel:#1d2125;
+    --panel-2:#242830;
+    --ink:#e9e6df;
+    --ink-dim:#9aa0a6;
+    --line:#31363d;
+    --accent:#5fa8a3;
+    --accent-dim:#3d6f6c;
+    --warn:#d4a24c;
+    --bad:#c9705f;
+    --good:#6fae6a;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    padding:32px 16px 64px;
+  }
+  .wrap{max-width:720px;margin:0 auto;}
+  h1{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:28px;
+    letter-spacing:-0.01em;
+    margin:0 0 4px;
+  }
+  .sub{color:var(--ink-dim);font-size:14px;margin-bottom:28px;}
+  .card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:20px;
+    margin-bottom:16px;
+  }
+  label{display:block;font-size:13px;color:var(--ink-dim);margin-bottom:6px;letter-spacing:.02em;}
+  textarea, input[type=text]{
+    width:100%;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--ink);
+    border-radius:6px;
+    padding:10px 12px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:14px;
+    resize:vertical;
+  }
+  textarea{min-height:120px;}
+  input[type=file]{color:var(--ink-dim);font-size:13px;}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;}
+  button{
+    background:var(--accent-dim);
+    color:#fff;
+    border:none;
+    border-radius:6px;
+    padding:9px 16px;
+    font-size:14px;
+    font-weight:500;
+    cursor:pointer;
+    font-family:'Inter',sans-serif;
+  }
+  button.primary{background:var(--accent);}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);}
+  button:disabled{opacity:.35;cursor:not-allowed;}
+  button:hover:not(:disabled){filter:brightness(1.12);}
+  .hidden{display:none !important;}
+  .eyebrow{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    color:var(--accent);
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    margin-bottom:8px;
+  }
+  .progress-bar{
+    height:4px;background:var(--panel-2);border-radius:2px;overflow:hidden;margin:14px 0 4px;
+  }
+  .progress-bar > div{height:100%;background:var(--accent);transition:width .2s;}
+  .progress-label{font-size:12px;color:var(--ink-dim);display:flex;justify-content:space-between;}
+  .sentence-box{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:15px;
+    line-height:1.7;
+    min-height:56px;
+    padding:14px 16px;
+    background:var(--panel-2);
+    border-radius:8px;
+    border:1px solid var(--line);
+    margin:14px 0;
+  }
+  .diff-ok{color:var(--good);}
+  .diff-bad{color:var(--bad);text-decoration:line-through;text-decoration-color:var(--bad);}
+  .diff-missing{color:var(--warn);}
+  .diff-correct-hint{color:var(--ink-dim);font-size:13px;margin-top:6px;}
+  .keys{font-size:12px;color:var(--ink-dim);margin-top:16px;line-height:1.8;}
+  kbd{
+    background:var(--panel-2);border:1px solid var(--line);border-radius:4px;
+    padding:1px 6px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink);
+  }
+  .mark-hint{font-size:13px;color:var(--ink-dim);margin-top:10px;}
+  .badge{
+    display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:11px;
+    background:var(--panel-2);border:1px solid var(--line);padding:2px 8px;border-radius:20px;color:var(--ink-dim);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Dikte Pratiği</h1>
+  <div class="sub">Kendi ses/video dosyanla cümle cümle dikte alıştırması</div>
+
+  <!-- STEP 1: SETUP -->
+  <div class="card" id="setupCard">
+    <div class="eyebrow">Adım 1 — Malzeme</div>
+    <label for="audioInput">Ses veya video dosyası</label>
+    <input type="file" id="audioInput" accept="audio/*,video/*">
+    <div style="height:14px"></div>
+    <label for="transcriptInput">Transkript — her satıra bir cümle</label>
+    <textarea id="transcriptInput" placeholder="This is the first sentence.&#10;This is the second one.&#10;..."></textarea>
+    <div class="row">
+      <button class="primary" id="startMarkingBtn">Cümleleri İşaretlemeye Başla</button>
+      <span class="badge">ya da</span>
+      <label class="ghost" style="display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:6px;padding:9px 16px;cursor:pointer;font-size:14px;">
+        Altyazı dosyası yükle (.srt/.vtt) — zaman kodlarını otomatik kullanır
+        <input type="file" id="importSub" accept=".srt,.vtt" style="display:none">
+      </label>
+      <span class="badge">ya da</span>
+      <label class="ghost" style="display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:6px;padding:9px 16px;cursor:pointer;font-size:14px;">
+        Kayıtlı segment dosyası yükle (.json)
+        <input type="file" id="importJson" accept="application/json" style="display:none">
+      </label>
+    </div>
+    <div class="mark-hint" id="subHint" style="display:none;"></div>
+  </div>
+
+  <!-- STEP 2: MARKING -->
+  <div class="card hidden" id="markCard">
+    <div class="eyebrow">Adım 2 — Cümle Sınırlarını İşaretle</div>
+    <div class="mark-hint">Sesi oynat, her cümle bittiğinde <kbd>Boşluk</kbd> tuşuna bas ya da butona tıkla. Bir kere yaparsın, sonra JSON olarak indirip tekrar tekrar kullanabilirsin.</div>
+    <div class="progress-bar"><div id="markProgressFill" style="width:0%"></div></div>
+    <div class="progress-label"><span id="markProgressText">0 / 0 cümle işaretlendi</span><span id="markCurrentSentence"></span></div>
+    <div class="sentence-box" id="markSentencePreview"></div>
+    <div class="row">
+      <button class="primary" id="markPlayBtn">Oynat</button>
+      <button id="markMarkBtn">Bu Cümle Bitti (Boşluk)</button>
+      <button class="ghost" id="markUndoBtn">Geri Al</button>
+    </div>
+  </div>
+
+  <!-- STEP 3: PRACTICE -->
+  <div class="card hidden" id="practiceCard">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div class="eyebrow">Dikte</div>
+      <label style="font-size:12px;color:var(--ink-dim);cursor:pointer;" id="settingsToggleLabel">⚙ Ayarlar</label>
+    </div>
+    <div class="card" id="settingsPanel" style="display:none;background:var(--panel-2);margin:8px 0 4px;padding:12px 16px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);margin-bottom:8px;">
+        <input type="checkbox" id="hintOnWrong" checked> Yanlışta ipucu göster (bir sonraki doğru kelime + kalanı maskeli)
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);">
+        <input type="checkbox" id="fullOnWrong"> Yanlışta tam cevabı göster
+      </label>
+    </div>
+    <div class="progress-bar"><div id="practiceProgressFill" style="width:0%"></div></div>
+    <div class="progress-label">
+      <span id="practiceProgressText">Cümle 1 / 1</span>
+      <span id="practiceScore">0 doğru</span>
+    </div>
+
+    <div class="sentence-box" id="revealBox" style="display:none;"></div>
+
+    <textarea id="typeInput" style="min-height:60px;margin-top:14px;" placeholder="Duyduğunu buraya yaz..."></textarea>
+    <div id="statusBanner" style="display:none;font-size:14px;font-weight:600;margin-top:10px;"></div>
+    <div id="diffResult" class="sentence-box" style="display:none;"></div>
+
+    <div class="row">
+      <button class="primary" id="checkBtn">Kontrol Et (Enter)</button>
+      <button id="replayBtn">Tekrar Dinle (R)</button>
+      <button class="ghost" id="prevBtn">← Geri</button>
+      <button class="ghost" id="nextBtn">İleri →</button>
+      <button class="ghost" id="revealBtn">Cevabı Göster</button>
+      <button class="ghost" id="exportBtn">Segmentleri İndir (.json)</button>
+    </div>
+    <div class="keys">
+      <div><kbd>Enter</kbd> kontrol et, doğruysa tekrar <kbd>Enter</kbd> ile ileri &nbsp; <kbd>Ctrl+R</kbd> tekrar dinle &nbsp; <kbd>←</kbd> önceki &nbsp; <kbd>→</kbd> sonraki</div>
+    </div>
+  </div>
+
+  <audio id="player"></audio>
+</div>
+
+<script>
+let audioEl = document.getElementById('player');
+let transcript = [];      // array of sentence strings
+let boundaries = [0];     // cumulative end-times; segment i = [boundaries[i], boundaries[i+1]]
+let markIndex = 0;
+let segments = [];        // [{start,end,text}]
+let curIndex = 0;
+let answered = [];        // bool per segment
+let correctCount = 0;
+
+const setupCard = document.getElementById('setupCard');
+const markCard = document.getElementById('markCard');
+const practiceCard = document.getElementById('practiceCard');
+
+document.getElementById('audioInput').addEventListener('change', e=>{
+  const f = e.target.files[0];
+  if(f){ audioEl.src = URL.createObjectURL(f); }
+});
+
+document.getElementById('startMarkingBtn').addEventListener('click', ()=>{
+  const raw = document.getElementById('transcriptInput').value.trim();
+  if(!raw || !audioEl.src){ alert('Ses dosyası ve transkript gerekli.'); return; }
+  transcript = raw.split('\n').map(s=>s.trim()).filter(Boolean);
+  boundaries = [0];
+  markIndex = 0;
+  setupCard.classList.add('hidden');
+  markCard.classList.remove('hidden');
+  updateMarkUI();
+});
+
+function updateMarkUI(){
+  document.getElementById('markProgressText').textContent = `${markIndex} / ${transcript.length} cümle işaretlendi`;
+  document.getElementById('markProgressFill').style.width = (markIndex/transcript.length*100)+'%';
+  document.getElementById('markSentencePreview').textContent = transcript[markIndex] || '— tamamlandı —';
+  if(markIndex >= transcript.length){
+    finishMarking();
+  }
+}
+
+document.getElementById('markPlayBtn').addEventListener('click', ()=>{
+  if(audioEl.paused){ audioEl.play(); document.getElementById('markPlayBtn').textContent='Duraklat'; }
+  else { audioEl.pause(); document.getElementById('markPlayBtn').textContent='Oynat'; }
+});
+
+function markBoundary(){
+  if(markIndex >= transcript.length) return;
+  boundaries.push(audioEl.currentTime);
+  markIndex++;
+  updateMarkUI();
+}
+document.getElementById('markMarkBtn').addEventListener('click', markBoundary);
+document.getElementById('markUndoBtn').addEventListener('click', ()=>{
+  if(boundaries.length>1){ boundaries.pop(); markIndex--; updateMarkUI(); }
+});
+
+function finishMarking(){
+  segments = transcript.map((t,i)=>({start:boundaries[i], end:boundaries[i+1], text:t}));
+  markCard.classList.add('hidden');
+  practiceCard.classList.remove('hidden');
+  answered = new Array(segments.length).fill(false);
+  correctCount = 0;
+  curIndex = 0;
+  loadSegment(0);
+}
+
+function timeToSeconds(t){
+  // handles "00:01:23,456" (srt) and "00:01:23.456" (vtt), also "01:23.456"
+  t = t.trim().replace(',', '.');
+  const parts = t.split(':').map(Number);
+  let h=0,m=0,s=0;
+  if(parts.length===3){ [h,m,s]=parts; }
+  else if(parts.length===2){ [m,s]=parts; }
+  return h*3600 + m*60 + s;
+}
+
+function parseSubtitles(text){
+  const isVTT = /WEBVTT/i.test(text) || !/^\d+\s*$/m.test(text.split('\n')[0]||'');
+  const blocks = text.replace(/\r/g,'').split(/\n\n+/).map(b=>b.trim()).filter(Boolean);
+  const cues = [];
+  for(const block of blocks){
+    const lines = block.split('\n');
+    let idx = 0;
+    if(/-->/.test(lines[0]) === false) idx = 1; // skip cue-number line if present
+    const timeLine = lines[idx];
+    const m = timeLine && timeLine.match(/([\d:.,]+)\s*-->\s*([\d:.,]+)/);
+    if(!m) continue;
+    const start = timeToSeconds(m[1]);
+    const end = timeToSeconds(m[2]);
+    const cueText = lines.slice(idx+1).join(' ')
+      .replace(/<[^>]+>/g,'')      // strip VTT style tags
+      .replace(/\{[^}]+\}/g,'')    // strip legacy tags
+      .replace(/\s+/g,' ').trim();
+    if(cueText) cues.push({start, end, text: cueText});
+  }
+  return cues;
+}
+
+document.getElementById('importSub').addEventListener('change', e=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    const cues = parseSubtitles(reader.result);
+    if(!cues.length){ alert('Altyazı dosyası okunamadı ya da boş görünüyor.'); return; }
+    segments = cues.map(c=>({start:c.start, end:c.end, text:c.text}));
+    transcript = segments.map(s=>s.text);
+    answered = new Array(segments.length).fill(false);
+    correctCount = 0;
+    curIndex = 0;
+    if(!audioEl.src){
+      document.getElementById('subHint').style.display='block';
+      document.getElementById('subHint').textContent = `${segments.length} satır okundu. Şimdi yukarıdan ses/video dosyasını seç, sonra pratiğe geçilecek.`;
+      // wait for audio to be attached before switching views
+      const waitForAudio = ()=>{
+        if(audioEl.src){
+          audioEl.removeEventListener('loadedmetadata', waitForAudio);
+          setupCard.classList.add('hidden');
+          practiceCard.classList.remove('hidden');
+          loadSegment(0);
+        }
+      };
+      document.getElementById('audioInput').addEventListener('change', ()=>{
+        setTimeout(()=>{ setupCard.classList.add('hidden'); practiceCard.classList.remove('hidden'); loadSegment(0); }, 50);
+      }, {once:true});
+    } else {
+      setupCard.classList.add('hidden');
+      practiceCard.classList.remove('hidden');
+      loadSegment(0);
+    }
+  };
+  reader.readAsText(f);
+});
+
+document.getElementById('importJson').addEventListener('change', e=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const data = JSON.parse(reader.result);
+      segments = data.segments;
+      transcript = segments.map(s=>s.text);
+      answered = new Array(segments.length).fill(false);
+      correctCount = 0;
+      curIndex = 0;
+      setupCard.classList.add('hidden');
+      practiceCard.classList.remove('hidden');
+      alert('Segmentler yüklendi. Ses dosyasını da seçmeyi unutma (yukarıdaki adım atlandıysa).');
+      loadSegment(0);
+    }catch(err){ alert('JSON okunamadı: '+err.message); }
+  };
+  reader.readAsText(f);
+});
+
+// --- PRACTICE ---
+let readyForNext = false;
+
+function loadSegment(i){
+  curIndex = i;
+  readyForNext = false;
+  document.getElementById('typeInput').value = '';
+  document.getElementById('diffResult').style.display='none';
+  document.getElementById('revealBox').style.display='none';
+  document.getElementById('statusBanner').style.display='none';
+  document.getElementById('practiceProgressText').textContent = `Cümle ${i+1} / ${segments.length}`;
+  document.getElementById('practiceProgressFill').style.width = ((i)/segments.length*100)+'%';
+  document.getElementById('practiceScore').textContent = `${correctCount} doğru`;
+  playSegment(i);
+  document.getElementById('typeInput').focus();
+}
+
+function goNext(){
+  if(curIndex<segments.length-1) loadSegment(curIndex+1);
+  else document.getElementById('practiceProgressFill').style.width='100%';
+}
+
+function playSegment(i){
+  const seg = segments[i];
+  audioEl.currentTime = seg.start;
+  audioEl.play();
+  const onTime = ()=>{
+    if(audioEl.currentTime >= seg.end){
+      audioEl.pause();
+      audioEl.removeEventListener('timeupdate', onTime);
+    }
+  };
+  audioEl.addEventListener('timeupdate', onTime);
+}
+
+function normalize(s){
+  return s.toLowerCase().replace(/[.,!?;:"']/g,'').trim();
+}
+
+document.getElementById('settingsToggleLabel').addEventListener('click', ()=>{
+  const p = document.getElementById('settingsPanel');
+  p.style.display = p.style.display==='none' ? 'block' : 'none';
+});
+
+function maskedHint(correctText, typedText){
+  const correct = correctText.split(/\s+/).filter(Boolean);
+  const typed = typedText.split(/\s+/).filter(Boolean);
+  let k = 0;
+  while(k < correct.length && k < typed.length && normalize(correct[k])===normalize(typed[k])) k++;
+  const allOk = (k === correct.length && typed.length === correct.length);
+  if(allOk) return {allOk:true, parts:[]};
+  const parts = [];
+  for(let i=0;i<k;i++) parts.push({w:correct[i], type:'ok'});
+  if(k < correct.length) parts.push({w:correct[k], type:'hint'});
+  for(let i=k+1;i<correct.length;i++) parts.push({w:'*'.repeat(correct[i].length), type:'mask'});
+  return {allOk:false, parts};
+}
+
+function checkAnswer(){
+  const seg = segments[curIndex];
+  const typed = document.getElementById('typeInput').value;
+  const banner = document.getElementById('statusBanner');
+  const box = document.getElementById('diffResult');
+  const showHint = document.getElementById('hintOnWrong').checked;
+  const showFull = document.getElementById('fullOnWrong').checked;
+
+  const {allOk, parts} = maskedHint(seg.text, typed);
+
+  banner.style.display = 'block';
+  if(allOk){
+    banner.textContent = '✓ Doğru!';
+    banner.style.color = 'var(--good)';
+    box.style.display = 'none';
+    readyForNext = true;
+  } else {
+    readyForNext = false;
+    banner.textContent = '⚠ Yanlış';
+    banner.style.color = 'var(--bad)';
+    if(showFull){
+      box.innerHTML = seg.text;
+      box.style.display = 'block';
+    } else if(showHint){
+      box.innerHTML = parts.map(p=>{
+        if(p.type==='ok') return p.w;
+        if(p.type==='hint') return `<span class="diff-ok" style="font-weight:600;">${p.w}</span>`;
+        return `<span style="color:var(--ink-dim);">${p.w}</span>`;
+      }).join(' ');
+      box.style.display = 'block';
+    } else {
+      box.style.display = 'none';
+    }
+  }
+
+  if(!answered[curIndex]){
+    answered[curIndex] = true;
+    if(allOk) correctCount++;
+    document.getElementById('practiceScore').textContent = `${correctCount} doğru`;
+  }
+}
+
+document.getElementById('checkBtn').addEventListener('click', checkAnswer);
+document.getElementById('replayBtn').addEventListener('click', ()=>playSegment(curIndex));
+document.getElementById('revealBtn').addEventListener('click', ()=>{
+  const rb = document.getElementById('revealBox');
+  rb.textContent = segments[curIndex].text;
+  rb.style.display='block';
+});
+document.getElementById('prevBtn').addEventListener('click', ()=>{ if(curIndex>0) loadSegment(curIndex-1); });
+document.getElementById('nextBtn').addEventListener('click', goNext);
+document.getElementById('typeInput').addEventListener('input', ()=>{ readyForNext = false; });
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  const blob = new Blob([JSON.stringify({segments}, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'dikte-segmentleri.json';
+  a.click();
+});
+
+document.addEventListener('keydown', (e)=>{
+  if(practiceCard.classList.contains('hidden')) {
+    if(!markCard.classList.contains('hidden') && e.code==='Space' && document.activeElement.tagName!=='TEXTAREA'){
+      e.preventDefault(); markBoundary();
+    }
+    return;
+  }
+  if(document.activeElement.id === 'typeInput'){
+    if(e.key==='Enter'){
+      e.preventDefault();
+      if(readyForNext){ goNext(); } else { checkAnswer(); }
+    }
+  }
+  if(e.ctrlKey && e.key.toLowerCase()==='r'){ e.preventDefault(); playSegment(curIndex); }
+  if(e.key==='ArrowLeft' && document.activeElement.id!=='typeInput'){ if(curIndex>0) loadSegment(curIndex-1); }
+  if(e.key==='ArrowRight' && document.activeElement.id!=='typeInput'){ if(curIndex<segments.length-1) loadSegment(curIndex+1); }
+});
+</script>
+</body>
+</html>

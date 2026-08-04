@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dikte Alıştırması</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14171a; --panel:#1d2125; --panel-2:#242830; --ink:#e9e6df; --ink-dim:#9aa0a6;
+    --line:#31363d; --accent:#5fa8a3; --accent-dim:#3d6f6c; --warn:#d4a24c; --bad:#c9705f; --good:#6fae6a;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'Inter',sans-serif;min-height:100vh;padding:32px 16px 64px;}
+  .wrap{max-width:640px;margin:0 auto;}
+  h1{font-family:'Fraunces',serif;font-weight:600;font-size:24px;letter-spacing:-0.01em;margin:0 0 4px;}
+  .sub{color:var(--ink-dim);font-size:14px;margin-bottom:24px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px;}
+  .progress-bar{height:4px;background:var(--panel-2);border-radius:2px;overflow:hidden;margin:6px 0 4px;}
+  .progress-bar > div{height:100%;background:var(--accent);transition:width .2s;}
+  .progress-label{font-size:12px;color:var(--ink-dim);display:flex;justify-content:space-between;}
+  .sentence-box{font-family:'IBM Plex Mono',monospace;font-size:15px;line-height:1.7;min-height:56px;padding:14px 16px;background:var(--panel-2);border-radius:8px;border:1px solid var(--line);margin:14px 0;}
+  textarea{width:100%;min-height:60px;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:10px 12px;font-family:'IBM Plex Mono',monospace;font-size:14px;resize:vertical;}
+  .diff-ok{color:var(--good);} .diff-bad{color:var(--bad);text-decoration:line-through;text-decoration-color:var(--bad);} .diff-missing{color:var(--warn);}
+  .diff-correct-hint{color:var(--ink-dim);font-size:13px;margin-top:6px;}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;}
+  button{background:var(--accent-dim);color:#fff;border:none;border-radius:6px;padding:9px 16px;font-size:14px;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif;}
+  button.primary{background:var(--accent);}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);}
+  button:disabled{opacity:.35;cursor:not-allowed;}
+  button:hover:not(:disabled){filter:brightness(1.12);}
+  .keys{font-size:12px;color:var(--ink-dim);margin-top:16px;line-height:1.8;}
+  kbd{background:var(--panel-2);border:1px solid var(--line);border-radius:4px;padding:1px 6px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink);}
+  .done-msg{text-align:center;padding:24px;font-family:'Fraunces',serif;font-size:18px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="lessonTitle">Dikte Alıştırması</h1>
+  <div class="sub">Sesi dinle, duyduğunu yaz, kontrol et.</div>
+
+  <div class="card hidden" id="pickAudioCard" style="margin-bottom:16px;">
+    <div class="sub" style="margin:0 0 10px;">Test için ses dosyasını seç (siteye koyunca AUDIO_URL otomatik kullanılacak, buna gerek kalmayacak):</div>
+    <input type="file" id="localAudioInput" accept="audio/*,video/*">
+  </div>
+
+  <div class="card" id="practiceCard">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div class="progress-label" style="margin:0;"><span id="practiceProgressText">Cümle 1 / 1</span></div>
+      <label style="font-size:12px;color:var(--ink-dim);cursor:pointer;" id="settingsToggleLabel">⚙ Ayarlar</label>
+    </div>
+    <div class="card" id="settingsPanel" style="display:none;background:var(--panel-2);margin:8px 0 4px;padding:12px 16px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);margin-bottom:8px;">
+        <input type="checkbox" id="hintOnWrong" checked> Yanlışta ipucu göster
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);">
+        <input type="checkbox" id="fullOnWrong"> Yanlışta tam cevabı göster
+      </label>
+    </div>
+    <div class="progress-bar"><div id="practiceProgressFill" style="width:0%"></div></div>
+    <div class="progress-label">
+      <span></span>
+      <span id="practiceScore">0 doğru</span>
+    </div>
+
+    <textarea id="typeInput" placeholder="Duyduğunu buraya yaz..."></textarea>
+    <div id="statusBanner" style="display:none;font-size:14px;font-weight:600;margin-top:10px;"></div>
+    <div id="diffResult" class="sentence-box" style="display:none;"></div>
+
+    <div class="row">
+      <button class="primary" id="checkBtn">Kontrol Et (Enter)</button>
+      <button id="replayBtn">Tekrar Dinle (R)</button>
+      <button class="ghost" id="prevBtn">← Geri</button>
+      <button class="ghost" id="nextBtn">İleri →</button>
+    </div>
+    <div class="keys">
+      <kbd>Enter</kbd> kontrol et, doğruysa tekrar <kbd>Enter</kbd> ile ileri &nbsp; <kbd>Ctrl+R</kbd> tekrar dinle &nbsp; <kbd>←</kbd> önceki &nbsp; <kbd>→</kbd> sonraki
+    </div>
+  </div>
+
+  <audio id="player"></audio>
+</div>
+
+<script>
+/* ============================================================
+   ÖĞRETMEN: Her ders için bu iki değeri kendi verinle değiştir.
+   1) AUDIO_URL: sitende barındırdığın ses/video dosyasının linki
+   2) SEGMENTS: dikte hazırlama aracından indirdiğin JSON'un
+      içindeki "segments" dizisinin aynısı (kopyala/yapıştır)
+   ============================================================ */
+const LESSON_TITLE = "Working in My Yard";
+const AUDIO_URL = ""; // siteye koyunca buraya barındırdığın linki yaz, örn: "https://ornek-site.com/dersler/working-in-my-yard.mp3"
+const SEGMENTS = [
+  {"start":0.0,"end":2.17,"text":"Working in my yard."},
+  {"start":2.17,"end":6.05,"text":"I live in a house that has a small yard."},
+  {"start":6.05,"end":9.08,"text":"In my yard, there is some lawn and a garden."},
+  {"start":9.08,"end":15.56,"text":"There is also a sidewalk that leads to the front walk, and a driveway that leads to my garage."},
+  {"start":15.56,"end":20.03,"text":"Throughout the year, I work to maintain my yard."},
+  {"start":20.03,"end":26.35,"text":"During the summer, I cut the grass that grows in my yard using a lawn mower."},
+  {"start":26.35,"end":37.87,"text":"I like the smell of the grass that has just been cut, but it's better not to cut the grass too short when the weather is dry."},
+  {"start":37.87,"end":46.52,"text":"I also put water on the lawn and garden so that the grass and flowers can grow."},
+  {"start":46.52,"end":53.25,"text":"During the fall, I rake the leaves off the trees in my yard. I use a rake to collect the leaves from the lawn."},
+  {"start":53.25,"end":61.14,"text":"Then I put the leaves into bags. I can use the leaves to make fertilizer."},
+  {"start":61.14,"end":67.2,"text":"When I was a kid, I didn't like the job of raking leaves, but now I don't mind it."},
+  {"start":67.2,"end":74.81,"text":"At the end of the fall, before cold weather arrives, I remove flowers from the garden."},
+  {"start":74.81,"end":82.46,"text":"During the winter, there is no work to do on the lawn or garden because they're covered in snow."},
+  {"start":82.46,"end":87.25,"text":"But I need to keep the snow off my sidewalk and driveway."},
+  {"start":87.25,"end":93.78,"text":"Whenever it snows, I use a shovel to clear the snow off the sidewalk and driveway."},
+  {"start":93.78,"end":100.8,"text":"Sometimes it snows a lot; if I didn't shovel the snow, it would soon be impossible to get into my house."},
+  {"start":100.8,"end":110.51,"text":"During the spring, snow melts. I clean out my yard by sweeping away leaves and removing weeds from the lawn."},
+  {"start":110.51,"end":114.39,"text":"I also put flowers back into the garden."},
+  {"start":114.39,"end":118.48,"text":"It's nice to see them again after the long, cold winter."},
+  {"start":118.48,"end":125.38,"text":"When spring comes, the grass grows very quickly, so I need to cut the grass quite often."},
+  {"start":125.38,"end":127.94,"text":"Working in the yard can be very satisfying work."},
+  {"start":127.94,"end":132.65,"text":"At night, the lawn and garden are looking green and healthy."}
+];
+/* ============================================================ */
+
+document.getElementById('lessonTitle').textContent = LESSON_TITLE;
+const audioEl = document.getElementById('player');
+if(AUDIO_URL){
+  audioEl.src = AUDIO_URL;
+} else {
+  document.getElementById('pickAudioCard').classList.remove('hidden');
+  document.getElementById('localAudioInput').addEventListener('change', e=>{
+    const f = e.target.files[0];
+    if(f){ audioEl.src = URL.createObjectURL(f); document.getElementById('pickAudioCard').classList.add('hidden'); }
+  });
+}
+
+let segments = SEGMENTS;
+let curIndex = 0;
+let answered = new Array(segments.length).fill(false);
+let correctCount = 0;
+
+function normalize(s){ return s.toLowerCase().replace(/[.,!?;:"']/g,'').trim(); }
+
+function maskedHint(correctText, typedText){
+  const correct = correctText.split(/\s+/).filter(Boolean);
+  const typed = typedText.split(/\s+/).filter(Boolean);
+  let k = 0;
+  while(k < correct.length && k < typed.length && normalize(correct[k])===normalize(typed[k])) k++;
+  const allOk = (k === correct.length && typed.length === correct.length);
+  if(allOk) return {allOk:true, parts:[]};
+  const parts = [];
+  for(let i=0;i<k;i++) parts.push({w:correct[i], type:'ok'});
+  if(k < correct.length) parts.push({w:correct[k], type:'hint'});
+  for(let i=k+1;i<correct.length;i++) parts.push({w:'*'.repeat(correct[i].length), type:'mask'});
+  return {allOk:false, parts};
+}
+
+document.getElementById('settingsToggleLabel').addEventListener('click', ()=>{
+  const p = document.getElementById('settingsPanel');
+  p.style.display = p.style.display==='none' ? 'block' : 'none';
+});
+
+let readyForNext = false;
+
+function loadSegment(i){
+  if(i>=segments.length){
+    document.getElementById('practiceCard').innerHTML = `<div class="done-msg">Tebrikler, dersi tamamladın! ${correctCount}/${segments.length} doğru.</div>`;
+    return;
+  }
+  curIndex = i;
+  readyForNext = false;
+  document.getElementById('typeInput').value = '';
+  document.getElementById('diffResult').style.display='none';
+  document.getElementById('statusBanner').style.display='none';
+  document.getElementById('practiceProgressText').textContent = `Cümle ${i+1} / ${segments.length}`;
+  document.getElementById('practiceProgressFill').style.width = ((i)/segments.length*100)+'%';
+  document.getElementById('practiceScore').textContent = `${correctCount} doğru`;
+  playSegment(i);
+  document.getElementById('typeInput').focus();
+}
+
+function goNext(){
+  if(curIndex<segments.length-1) loadSegment(curIndex+1); else loadSegment(segments.length);
+}
+
+function playSegment(i){
+  const seg = segments[i];
+  audioEl.currentTime = seg.start;
+  audioEl.play();
+  const onTime = ()=>{
+    if(audioEl.currentTime >= seg.end){ audioEl.pause(); audioEl.removeEventListener('timeupdate', onTime); }
+  };
+  audioEl.addEventListener('timeupdate', onTime);
+}
+
+function checkAnswer(){
+  const seg = segments[curIndex];
+  const typed = document.getElementById('typeInput').value;
+  const banner = document.getElementById('statusBanner');
+  const box = document.getElementById('diffResult');
+  const showHint = document.getElementById('hintOnWrong').checked;
+  const showFull = document.getElementById('fullOnWrong').checked;
+
+  const {allOk, parts} = maskedHint(seg.text, typed);
+
+  banner.style.display = 'block';
+  if(allOk){
+    banner.textContent = '✓ Doğru!';
+    banner.style.color = 'var(--good)';
+    box.style.display = 'none';
+    readyForNext = true;
+  } else {
+    readyForNext = false;
+    banner.textContent = '⚠ Yanlış';
+    banner.style.color = 'var(--bad)';
+    if(showFull){
+      box.innerHTML = seg.text;
+      box.style.display = 'block';
+    } else if(showHint){
+      box.innerHTML = parts.map(p=>{
+        if(p.type==='ok') return p.w;
+        if(p.type==='hint') return `<span class="diff-ok" style="font-weight:600;">${p.w}</span>`;
+        return `<span style="color:var(--ink-dim);">${p.w}</span>`;
+      }).join(' ');
+      box.style.display = 'block';
+    } else {
+      box.style.display = 'none';
+    }
+  }
+
+  if(!answered[curIndex]){ answered[curIndex]=true; if(allOk) correctCount++; document.getElementById('practiceScore').textContent = `${correctCount} doğru`; }
+}
+
+document.getElementById('checkBtn').addEventListener('click', checkAnswer);
+document.getElementById('replayBtn').addEventListener('click', ()=>playSegment(curIndex));
+document.getElementById('prevBtn').addEventListener('click', ()=>{ if(curIndex>0) loadSegment(curIndex-1); });
+document.getElementById('nextBtn').addEventListener('click', goNext);
+document.getElementById('typeInput').addEventListener('input', ()=>{ readyForNext = false; });
+
+document.addEventListener('keydown', (e)=>{
+  if(document.activeElement.id === 'typeInput' && e.key==='Enter'){
+    e.preventDefault();
+    if(readyForNext){ goNext(); } else { checkAnswer(); }
+  }
+  if(e.ctrlKey && e.key.toLowerCase()==='r'){ e.preventDefault(); playSegment(curIndex); }
+  if(e.key==='ArrowLeft' && document.activeElement.id!=='typeInput'){ if(curIndex>0) loadSegment(curIndex-1); }
+  if(e.key==='ArrowRight' && document.activeElement.id!=='typeInput'){ if(curIndex<segments.length-1) loadSegment(curIndex+1); }
+});
+
+function startLesson(){
+  if(segments.length){ answered = new Array(segments.length).fill(false); loadSegment(0); }
+  else { document.getElementById('practiceCard').innerHTML = '<div class="done-msg">Bu ders henüz hazırlanmadı.</div>'; }
+}
+
+if(AUDIO_URL){
+  startLesson();
+} else {
+  document.getElementById('localAudioInput').addEventListener('change', startLesson, {once:true});
+}
+</script>
+</body>
+</html>
