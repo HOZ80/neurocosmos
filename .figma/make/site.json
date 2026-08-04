@@ -1,0 +1,10 @@
+{
+     "description": "Offers an interactive teaching platform that enables educators to create, manage, and deliver engaging lessons to students efficiently.",
+     "robots": {
+       "index": false
+     },
+     "accessibility": {
+       "addBypassLinks": false,
+       "ignoreReducedMotion": false
+     }
+   }
