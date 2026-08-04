@@ -71,7 +71,30 @@ const GRAMMAR_RULES: Record<string, { rule: string; examples: { en: string; tr: 
 function buildUnits(level: Level): Unit[] {
   const sets: Record<Level, Omit<Unit, 'id' | 'completed' | 'locked' | 'progress'>[]> = {
     A1: [
-      { title: 'Hello & Introductions', topic: 'Greetings', grammar: 'Subject Pronouns', dictationSentence: 'My name is Sarah and I am from England.', translation: 'Benim adım Sarah ve ben İngiltere\'denim.', transcript: 'Hello! My name is Sarah. I am from England. Nice to meet you! I am twenty-two years old and I am a student.' },
+      { title: 'Hello & Introductions', topic: 'Greetings', grammar: 'Subject Pronouns', dictationSentence: 'My name is Sarah and I am from England.', translation: 'Benim adım Sarah ve ben İngiltere\'denim.', transcript: 'Hello! My name is Sarah. I am from England. Nice to meet you! I am twenty-two years old and I am a student.', audioUrl: '/working-in-my-yard.mp3', dictationSegments: [
+        {"start":0.0,"end":2.17,"text":"Working in my yard."},
+        {"start":2.17,"end":6.05,"text":"I live in a house that has a small yard."},
+        {"start":6.05,"end":9.08,"text":"In my yard, there is some lawn and a garden."},
+        {"start":9.08,"end":15.56,"text":"There is also a sidewalk that leads to the front walk, and a driveway that leads to my garage."},
+        {"start":15.56,"end":20.03,"text":"Throughout the year, I work to maintain my yard."},
+        {"start":20.03,"end":26.35,"text":"During the summer, I cut the grass that grows in my yard using a lawn mower."},
+        {"start":26.35,"end":37.87,"text":"I like the smell of the grass that has just been cut, but it's better not to cut the grass too short when the weather is dry."},
+        {"start":37.87,"end":46.52,"text":"I also put water on the lawn and garden so that the grass and flowers can grow."},
+        {"start":46.52,"end":53.25,"text":"During the fall, I rake the leaves off the trees in my yard. I use a rake to collect the leaves from the lawn."},
+        {"start":53.25,"end":61.14,"text":"Then I put the leaves into bags. I can use the leaves to make fertilizer."},
+        {"start":61.14,"end":67.2,"text":"When I was a kid, I didn't like the job of raking leaves, but now I don't mind it."},
+        {"start":67.2,"end":74.81,"text":"At the end of the fall, before cold weather arrives, I remove flowers from the garden."},
+        {"start":74.81,"end":82.46,"text":"During the winter, there is no work to do on the lawn or garden because they're covered in snow."},
+        {"start":82.46,"end":87.25,"text":"But I need to keep the snow off my sidewalk and driveway."},
+        {"start":87.25,"end":93.78,"text":"Whenever it snows, I use a shovel to clear the snow off the sidewalk and driveway."},
+        {"start":93.78,"end":100.8,"text":"Sometimes it snows a lot; if I didn't shovel the snow, it would soon be impossible to get into my house."},
+        {"start":100.8,"end":110.51,"text":"During the spring, snow melts. I clean out my yard by sweeping away leaves and removing weeds from the lawn."},
+        {"start":110.51,"end":114.39,"text":"I also put flowers back into the garden."},
+        {"start":114.39,"end":118.48,"text":"It's nice to see them again after the long, cold winter."},
+        {"start":118.48,"end":125.38,"text":"When spring comes, the grass grows very quickly, so I need to cut the grass quite often."},
+        {"start":125.38,"end":127.94,"text":"Working in the yard can be very satisfying work."},
+        {"start":127.94,"end":132.65,"text":"At night, the lawn and garden are looking green and healthy."}
+      ] },
       { title: 'Numbers & Counting', topic: 'Numbers 1–100', grammar: 'Simple Present', dictationSentence: 'There are twenty students in the classroom.', translation: 'Sınıfta yirmi öğrenci var.', transcript: 'How many students are there? There are twenty students in the classroom today. Please count them carefully.' },
       { title: 'Colors & Adjectives', topic: 'Describing things', grammar: 'Subject Pronouns', dictationSentence: 'The big red apple is on the table.', translation: 'Büyük kırmızı elma masanın üzerinde.', transcript: 'Look at the fruit bowl. The big red apple is on the table next to the yellow banana.' },
       { title: 'Family Members', topic: 'Family vocabulary', grammar: 'Simple Present', dictationSentence: 'She has two brothers and one sister.', translation: 'Onun iki erkek kardeşi ve bir kız kardeşi var.', transcript: 'Tell me about your family. She has two brothers and one sister. They all live together in a house.' },
