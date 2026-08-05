@@ -71,7 +71,7 @@ const GRAMMAR_RULES: Record<string, { rule: string; examples: { en: string; tr: 
 function buildUnits(level: Level): Unit[] {
   const sets: Record<Level, Omit<Unit, 'id' | 'completed' | 'locked' | 'progress'>[]> = {
     A1: [
-      { title: 'Hello & Introductions', topic: 'Greetings', grammar: 'Subject Pronouns', dictationSentence: 'My name is Sarah and I am from England.', translation: 'Benim adım Sarah ve ben İngiltere\'denim.', transcript: 'Hello! My name is Sarah. I am from England. Nice to meet you! I am twenty-two years old and I am a student.', audioUrl: '/working-in-my-yard.mp3', dictationSegments: [
+      { title: 'Hello & Introductions', topic: 'Basics', grammar: 'Subject Pronouns', dictationSentence: 'My name is Sarah and I am from England.', translation: 'Benim adım Sarah ve ben İngiltere\'denim.', transcript: 'Hello! My name is Sarah. I am from England. Nice to meet you! I am twenty-two years old and I am a student.', audioUrl: '/working-in-my-yard.mp3', dictationSegments: [
         {"start":0.0,"end":2.17,"text":"Working in my yard."},
         {"start":2.17,"end":6.05,"text":"I live in a house that has a small yard."},
         {"start":6.05,"end":9.08,"text":"In my yard, there is some lawn and a garden."},
@@ -186,9 +186,9 @@ function buildUnits(level: Level): Unit[] {
   return sets[level].map((u, i) => ({
     ...u,
     id: i + 1,
-    completed: i < (level === 'A1' ? 9 : level === 'A2' ? 5 : level === 'B1' ? 2 : 0),
-    locked: i > (level === 'A1' ? 12 : level === 'A2' ? 8 : level === 'B1' ? 4 : 2),
-    progress: i < (level === 'A1' ? 9 : 5) ? 100 : i === (level === 'A1' ? 9 : 5) ? 45 : 0,
+    completed: level === 'A1' ? false : i < (level === 'A2' ? 5 : level === 'B1' ? 2 : 0),
+    locked: level === 'A1' ? i > 0 : i > (level === 'A2' ? 8 : level === 'B1' ? 4 : 2),
+    progress: level === 'A1' ? 0 : (i < 5 ? 100 : i === 5 ? 45 : 0),
   }))
 }
 
@@ -462,7 +462,7 @@ function DashboardView({ level, units, onSelectUnit }: {
     <div className="anim-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
       <div>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '28px', fontWeight: 700, margin: '0 0 4px', color: 'var(--foreground)' }}>
-          {level} Course
+          {LEVEL_META[level].label}
         </h1>
         <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>
           {units.filter(u => u.completed).length} of 20 units completed · {Math.round(units.filter(u => u.completed).length / 20 * 100)}% progress
@@ -1201,11 +1201,11 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
 // ─── Root App ─────────────────────────────────────────────────────────────────
 
 const LEVELS: Level[] = ['A1', 'A2', 'B1', 'B2']
-const LEVEL_META: Record<Level, { label: string; color: string }> = {
-  A1: { label: 'Beginner',       color: '#10B981' },
-  A2: { label: 'Elementary',     color: '#0EA5E9' },
-  B1: { label: 'Intermediate',   color: '#8B5CF6' },
-  B2: { label: 'Upper-Intermed', color: '#F59E0B' },
+const LEVEL_META: Record<Level, { label: string; color: string; disabled?: boolean }> = {
+  A1: { label: 'English Group A', color: '#10B981' },
+  A2: { label: 'English Group B', color: '#0EA5E9' },
+  B1: { label: 'Others',          color: '#8B5CF6' },
+  B2: { label: 'Coming soon',     color: '#94A3B8', disabled: true },
 }
 
 export default function App() {
@@ -1244,7 +1244,7 @@ export default function App() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ width: '32px', height: '32px', borderRadius: '9px', background: 'linear-gradient(135deg, #4F46E5, #818CF8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>🇬🇧</div>
             <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--foreground)' }}>
-              Eng<span style={{ color: 'var(--primary)' }}>rise</span>
+              Neuro<span style={{ color: 'var(--primary)' }}>cosmos</span>
             </span>
           </div>
 
@@ -1273,29 +1273,34 @@ export default function App() {
         {/* Level tabs — only on dashboard */}
         {view === 'dashboard' && (
           <div style={{ display: 'flex', gap: '0', borderTop: '1px solid var(--border)', padding: '0 28px' }}>
-            {LEVELS.map(l => (
-              <button
-                key={l}
-                onClick={() => { setLevel(l); setSelectedUnit(null) }}
-                style={{
-                  padding: '10px 24px', background: 'none', border: 'none',
-                  borderBottom: `2.5px solid ${level === l ? 'var(--primary)' : 'transparent'}`,
-                  color: level === l ? 'var(--primary)' : 'var(--muted-foreground)',
-                  fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: level === l ? 700 : 500,
-                  cursor: 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: '8px',
-                  marginBottom: '-1px',
-                }}
-              >
-                <span style={{
-                  fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 700,
-                }}>{l}</span>
-                <span style={{
-                  fontSize: '11px', color: level === l ? LEVEL_META[l].color : 'var(--muted-foreground)',
-                  background: level === l ? `${LEVEL_META[l].color}18` : 'transparent',
-                  padding: '1px 6px', borderRadius: '4px',
-                }}>{LEVEL_META[l].label}</span>
-              </button>
-            ))}
+            {LEVELS.map(l => {
+              const isDisabled = LEVEL_META[l].disabled
+              return (
+                <button
+                  key={l}
+                  onClick={() => { if (!isDisabled) { setLevel(l); setSelectedUnit(null) } }}
+                  disabled={isDisabled}
+                  style={{
+                    padding: '10px 24px', background: 'none', border: 'none',
+                    borderBottom: `2.5px solid ${level === l && !isDisabled ? 'var(--primary)' : 'transparent'}`,
+                    color: isDisabled ? 'var(--muted-foreground)' : (level === l ? 'var(--primary)' : 'var(--muted-foreground)'),
+                    opacity: isDisabled ? 0.5 : 1,
+                    fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: level === l && !isDisabled ? 700 : 500,
+                    cursor: isDisabled ? 'not-allowed' : 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: '8px',
+                    marginBottom: '-1px',
+                  }}
+                >
+                  <span style={{
+                    fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 700,
+                  }}>{l}{isDisabled && ' 🔒'}</span>
+                  <span style={{
+                    fontSize: '11px', color: level === l && !isDisabled ? LEVEL_META[l].color : 'var(--muted-foreground)',
+                    background: level === l && !isDisabled ? `${LEVEL_META[l].color}18` : 'transparent',
+                    padding: '1px 6px', borderRadius: '4px',
+                  }}>{LEVEL_META[l].label}</span>
+                </button>
+              )
+            })}
           </div>
         )}
       </header>
