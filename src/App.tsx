@@ -24,6 +24,7 @@ interface Unit {
   transcript: string
   audioUrl?: string
   dictationSegments?: DictationSegment[]
+  readingTitle?: string
 }
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -71,29 +72,30 @@ const GRAMMAR_RULES: Record<string, { rule: string; examples: { en: string; tr: 
 function buildUnits(level: Level): Unit[] {
   const sets: Record<Level, Omit<Unit, 'id' | 'completed' | 'locked' | 'progress'>[]> = {
     A1: [
-      { title: 'Hello & Introductions', topic: 'Basics', grammar: 'Subject Pronouns', dictationSentence: 'My name is Sarah and I am from England.', translation: 'Benim adım Sarah ve ben İngiltere\'denim.', transcript: 'Hello! My name is Sarah. I am from England. Nice to meet you! I am twenty-two years old and I am a student.', audioUrl: '/working-in-my-yard.mp3', dictationSegments: [
-        {"start":0.0,"end":2.17,"text":"Working in my yard."},
-        {"start":2.17,"end":6.05,"text":"I live in a house that has a small yard."},
-        {"start":6.05,"end":9.08,"text":"In my yard, there is some lawn and a garden."},
-        {"start":9.08,"end":15.56,"text":"There is also a sidewalk that leads to the front walk, and a driveway that leads to my garage."},
-        {"start":15.56,"end":20.03,"text":"Throughout the year, I work to maintain my yard."},
-        {"start":20.03,"end":26.35,"text":"During the summer, I cut the grass that grows in my yard using a lawn mower."},
-        {"start":26.35,"end":37.87,"text":"I like the smell of the grass that has just been cut, but it's better not to cut the grass too short when the weather is dry."},
-        {"start":37.87,"end":46.52,"text":"I also put water on the lawn and garden so that the grass and flowers can grow."},
-        {"start":46.52,"end":53.25,"text":"During the fall, I rake the leaves off the trees in my yard. I use a rake to collect the leaves from the lawn."},
-        {"start":53.25,"end":61.14,"text":"Then I put the leaves into bags. I can use the leaves to make fertilizer."},
-        {"start":61.14,"end":67.2,"text":"When I was a kid, I didn't like the job of raking leaves, but now I don't mind it."},
-        {"start":67.2,"end":74.81,"text":"At the end of the fall, before cold weather arrives, I remove flowers from the garden."},
-        {"start":74.81,"end":82.46,"text":"During the winter, there is no work to do on the lawn or garden because they're covered in snow."},
-        {"start":82.46,"end":87.25,"text":"But I need to keep the snow off my sidewalk and driveway."},
-        {"start":87.25,"end":93.78,"text":"Whenever it snows, I use a shovel to clear the snow off the sidewalk and driveway."},
-        {"start":93.78,"end":100.8,"text":"Sometimes it snows a lot; if I didn't shovel the snow, it would soon be impossible to get into my house."},
-        {"start":100.8,"end":110.51,"text":"During the spring, snow melts. I clean out my yard by sweeping away leaves and removing weeds from the lawn."},
-        {"start":110.51,"end":114.39,"text":"I also put flowers back into the garden."},
-        {"start":114.39,"end":118.48,"text":"It's nice to see them again after the long, cold winter."},
-        {"start":118.48,"end":125.38,"text":"When spring comes, the grass grows very quickly, so I need to cut the grass quite often."},
-        {"start":125.38,"end":127.94,"text":"Working in the yard can be very satisfying work."},
-        {"start":127.94,"end":132.65,"text":"At night, the lawn and garden are looking green and healthy."}
+      { title: 'Hello & Introductions', topic: 'Basics', grammar: 'Subject Pronouns', readingTitle: "Jessica's First Day of School", dictationSentence: "Today is Jessica's first day of kindergarten.", translation: 'Bugün Jessica\'nın anaokulundaki ilk günü.', transcript: "Jessica's first day of school. Today is Jessica's first day of kindergarten, and her parents walk to school. Jessica's mom walks with her to her classroom. Jessica meets her teacher. His name is Mr. Parker. The school bell rings at 8:45 a.m. Jessica hugs and kisses her mom goodbye. Jessica's mom says, \"I love you.\" At 9:00 a.m., Jessica stands for the national anthem. Mr. Parker calls out children's names. Each child yells back, \"Here\". Mr. Parker teaches them about letters. Mr. Parker teaches them about numbers. At 10:15 a.m., the students have recess. Recess is fun. The students get to play and eat. At 10:30 a.m., the students go to gym class. At 11:15 a.m., the students return to Mr. Parker's classroom. Mr. Parker tells the students to sit on the carpet. Mr. Parker reads the students a story. Mr. Parker teaches the students a song. The lunch bell rings.", audioUrl: '/jessicas-first-day.mp3', dictationSegments: [
+        {"start":0.48,"end":4.0,"text":"Jessica's first day of school."},
+        {"start":4.0,"end":8.33,"text":"Today is Jessica's first day of kindergarten."},
+        {"start":8.5,"end":12.0,"text":"and her parents walk to school."},
+        {"start":12.0,"end":16.67,"text":"Jessica's mom walks with her to her classroom."},
+        {"start":16.83,"end":20.0,"text":"Jessica meets her teacher."},
+        {"start":20.17,"end":23.17,"text":"His name is Mr. Parker."},
+        {"start":23.17,"end":28.33,"text":"The school bell rings at 8:45 a.m."},
+        {"start":30.56,"end":33.0,"text":"Jessica hugs and kisses her mom goodbye."},
+        {"start":33.0,"end":37.5,"text":"Jessica's mom says, \"I love you.\""},
+        {"start":37.5,"end":43.67,"text":"At 9:00 a.m., Jessica stands for the national anthem."},
+        {"start":43.67,"end":47.83,"text":"Mr. Parker calls out children's names."},
+        {"start":47.83,"end":51.5,"text":"Each child yells back, \"Here\"."},
+        {"start":51.67,"end":56.17,"text":"Mr. Parker teaches them about letters."},
+        {"start":56.17,"end":60.83,"text":"Mr. Parker teaches them about numbers."},
+        {"start":61.0,"end":66.5,"text":"At 10:15 a.m., the students have recess."},
+        {"start":66.5,"end":69.33,"text":"Recess is fun."},
+        {"start":69.5,"end":73.0,"text":"The students get to play and eat."},
+        {"start":73.17,"end":79.17,"text":"At 10:30 a.m., the students go to gym class."},
+        {"start":79.17,"end":85.67,"text":"At 11:15 a.m., the students return to Mr. Parker's classroom."},
+        {"start":85.83,"end":90.5,"text":"Mr. Parker tells the students to sit on the carpet."},
+        {"start":90.5,"end":94.17,"text":"Mr. Parker reads the students a story."},
+        {"start":94.17,"end":98.83,"text":"Mr. Parker teaches the students a song."},
+        {"start":98.83,"end":101.67,"text":"The lunch bell rings."}
       ] },
       { title: 'Numbers & Counting', topic: 'Numbers 1–100', grammar: 'Simple Present', dictationSentence: 'There are twenty students in the classroom.', translation: 'Sınıfta yirmi öğrenci var.', transcript: 'How many students are there? There are twenty students in the classroom today. Please count them carefully.' },
       { title: 'Colors & Adjectives', topic: 'Describing things', grammar: 'Subject Pronouns', dictationSentence: 'The big red apple is on the table.', translation: 'Büyük kırmızı elma masanın üzerinde.', transcript: 'Look at the fruit bowl. The big red apple is on the table next to the yellow banana.' },
@@ -833,6 +835,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
           <div>
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: 0 }}>Dictation</h2>
             <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{unit.title} · Type what you hear</p>
+            {unit.readingTitle && <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--primary)', fontWeight: 500 }}>📖 {unit.readingTitle}</p>}
           </div>
         </div>
         <button onClick={() => setShowSettings(s => !s)} title="Settings" style={{ ...iconBtn, borderRadius: '50%' }}>
@@ -1087,34 +1090,87 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
 }
 
 function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
-  const sentences = unit.transcript.split('. ').filter(Boolean).map(s => s.endsWith('.') ? s : s + '.')
+  const segments = useMemo<DictationSegment[]>(
+    () => (unit.dictationSegments && unit.dictationSegments.length > 0)
+      ? unit.dictationSegments
+      : [{ start: 0, end: 0, text: unit.dictationSentence }],
+    [unit.dictationSegments, unit.dictationSentence]
+  )
+
   const [current, setCurrent] = useState(0)
   const [recording, setRecording] = useState(false)
-  const [done, setDone] = useState<boolean[]>(new Array(sentences.length).fill(false))
+  const [recordings, setRecordings] = useState<(string | null)[]>(() => new Array(segments.length).fill(null))
   const [recSec, setRecSec] = useState(0)
   const recRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
 
-  function handleRecord() {
+  useEffect(() => {
+    setRecordings(new Array(segments.length).fill(null))
+    setCurrent(0)
+  }, [segments])
+
+  function playOriginal() {
+    const seg = segments[current]
+    const audio = audioRef.current
+    if (!audio || !unit.audioUrl) return
+    audio.currentTime = seg.start
+    audio.play()
+    const onTime = () => {
+      if (audio.currentTime >= seg.end) { audio.pause(); audio.removeEventListener('timeupdate', onTime) }
+    }
+    audio.addEventListener('timeupdate', onTime)
+  }
+
+  function playOwn() {
+    const url = recordings[current]
+    if (!url) return
+    new Audio(url).play()
+  }
+
+  async function handleRecord() {
     if (recording) {
+      mediaRecorderRef.current?.stop()
       if (recRef.current) clearInterval(recRef.current)
       setRecording(false)
-      setDone(d => d.map((v, i) => i === current ? true : v))
-    } else {
+      return
+    }
+    try {
+      if (!streamRef.current) streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true })
+      chunksRef.current = []
+      const mr = new MediaRecorder(streamRef.current)
+      mediaRecorderRef.current = mr
+      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      mr.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+        const url = URL.createObjectURL(blob)
+        setRecordings(r => { const next = [...r]; next[current] = url; return next })
+      }
+      mr.start()
       setRecSec(0)
       setRecording(true)
       recRef.current = setInterval(() => setRecSec(s => s + 1), 1000)
+    } catch {
+      setRecording(false)
     }
   }
+
+  const done = recordings.map(r => r != null)
+  const sentences = segments.map(s => s.text)
 
   return (
     <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '680px' }}>
       <BackBtn onClick={onBack} label={unit.title} />
+      {unit.audioUrl && <audio ref={audioRef} src={unit.audioUrl} preload="metadata" />}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.shadowing.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🎙️</div>
         <div>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: 0 }}>Shadowing</h2>
           <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{unit.title} · {done.filter(Boolean).length}/{sentences.length} sentences recorded</p>
+          {unit.readingTitle && <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--primary)', fontWeight: 500 }}>📖 {unit.readingTitle}</p>}
         </div>
       </div>
 
@@ -1155,6 +1211,14 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
         <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', textAlign: 'center' }}>
           Listen to sentence {current + 1}, then record yourself saying it aloud
         </p>
+        <button onClick={playOriginal} style={{
+          padding: '7px 16px', borderRadius: '9px', border: '1px solid var(--border)',
+          background: 'var(--secondary)', color: 'var(--foreground)', fontSize: '13px', fontWeight: 500, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: '6px',
+        }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+          Listen to sentence
+        </button>
         <div style={{ position: 'relative', display: 'inline-flex' }}>
           {recording && <div className="mic-ring" style={{ position: 'absolute', inset: 0, borderRadius: '50%' }} />}
           <button onClick={handleRecord} style={{
@@ -1180,6 +1244,16 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
             </div>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: '#EF4444' }}>Recording {fmt(recSec)}</span>
           </div>
+        )}
+        {!recording && done[current] && (
+          <button onClick={playOwn} style={{
+            padding: '7px 16px', borderRadius: '9px', border: '1px solid rgba(16,185,129,0.4)',
+            background: '#ECFDF5', color: '#059669', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: '6px',
+          }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+            Play your recording
+          </button>
         )}
         <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
           <button
