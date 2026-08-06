@@ -11,6 +11,14 @@ interface DictationSegment {
   text: string
 }
 
+interface GrammarBlock {
+  kind: 'box' | 'list' | 'sentence'
+  label: string
+  en?: string
+  tr?: string
+  items?: { term: string; explanation: string }[]
+}
+
 interface Unit {
   id: number
   title: string
@@ -26,6 +34,12 @@ interface Unit {
   dictationSegments?: DictationSegment[]
   readingTitle?: string
   grammarPlaceholder?: boolean
+  unitLabel?: string
+  moduleLocks?: Partial<Record<'grammar' | 'audio' | 'dictation' | 'shadowing', boolean>>
+  hidePracticeSentence?: boolean
+  videoUrl?: string
+  passiveVideo?: boolean
+  customGrammarBlocks?: GrammarBlock[]
 }
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -127,6 +141,53 @@ function buildUnits(level: Level): Unit[] {
       { title: 'Putting It All Together', topic: 'Review', grammar: 'Mixed Review', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
     ],
     A2: [
+      { title: 'I Want This', topic: 'Requests', grammar: 'Want / Would Like', grammarPlaceholder: true, readingTitle: "Jessica's First Day of School", dictationSentence: "Today is Jessica's first day of kindergarten.", translation: 'Bugün Jessica\'nın anaokulundaki ilk günü.', transcript: "Jessica's first day of school. Today is Jessica's first day of kindergarten, and her parents walk to school. Jessica's mom walks with her to her classroom. Jessica meets her teacher. His name is Mr. Parker. The school bell rings at 8:45 a.m. Jessica hugs and kisses her mom goodbye. Jessica's mom says, \"I love you.\" At 9:00 a.m., Jessica stands for the national anthem. Mr. Parker calls out children's names. Each child yells back, \"Here\". Mr. Parker teaches them about letters. Mr. Parker teaches them about numbers. At 10:15 a.m., the students have recess. Recess is fun. The students get to play and eat. At 10:30 a.m., the students go to gym class. At 11:15 a.m., the students return to Mr. Parker's classroom. Mr. Parker tells the students to sit on the carpet. Mr. Parker reads the students a story. Mr. Parker teaches the students a song. The lunch bell rings.", audioUrl: '/jessicas-first-day.mp3', dictationSegments: [
+        {"start":0.48,"end":4.0,"text":"Jessica's first day of school."},
+        {"start":4.0,"end":8.33,"text":"Today is Jessica's first day of kindergarten."},
+        {"start":8.5,"end":12.0,"text":"and her parents walk to school."},
+        {"start":12.0,"end":16.67,"text":"Jessica's mom walks with her to her classroom."},
+        {"start":16.83,"end":20.0,"text":"Jessica meets her teacher."},
+        {"start":20.17,"end":23.17,"text":"His name is Mr. Parker."},
+        {"start":23.17,"end":28.33,"text":"The school bell rings at 8:45 a.m."},
+        {"start":30.56,"end":33.0,"text":"Jessica hugs and kisses her mom goodbye."},
+        {"start":33.0,"end":37.5,"text":"Jessica's mom says, \"I love you.\""},
+        {"start":37.5,"end":43.67,"text":"At 9:00 a.m., Jessica stands for the national anthem."},
+        {"start":43.67,"end":47.83,"text":"Mr. Parker calls out children's names."},
+        {"start":47.83,"end":51.5,"text":"Each child yells back, \"Here\"."},
+        {"start":51.67,"end":56.17,"text":"Mr. Parker teaches them about letters."},
+        {"start":56.17,"end":60.83,"text":"Mr. Parker teaches them about numbers."},
+        {"start":61.0,"end":66.5,"text":"At 10:15 a.m., the students have recess."},
+        {"start":66.5,"end":69.33,"text":"Recess is fun."},
+        {"start":69.5,"end":73.0,"text":"The students get to play and eat."},
+        {"start":73.17,"end":79.17,"text":"At 10:30 a.m., the students go to gym class."},
+        {"start":79.17,"end":85.67,"text":"At 11:15 a.m., the students return to Mr. Parker's classroom."},
+        {"start":85.83,"end":90.5,"text":"Mr. Parker tells the students to sit on the carpet."},
+        {"start":90.5,"end":94.17,"text":"Mr. Parker reads the students a story."},
+        {"start":94.17,"end":98.83,"text":"Mr. Parker teaches the students a song."},
+        {"start":98.83,"end":101.67,"text":"The lunch bell rings."}
+      ] },
+      {
+        title: 'Step 1: Foundations and Rules (Constitution, Principles and Rights)',
+        topic: 'Interview',
+        grammar: '1st - 12th',
+        unitLabel: '100Q',
+        moduleLocks: { dictation: true, shadowing: true },
+        hidePracticeSentence: true,
+        passiveVideo: true,
+        videoUrl: '/civics-q1.mp4',
+        dictationSentence: '',
+        translation: '',
+        transcript: '',
+        customGrammarBlocks: [
+          { kind: 'box', label: 'Question', en: 'What is the supreme law of the land?', tr: 'Ülkenin en yüksek kanunu nedir?' },
+          { kind: 'box', label: 'Answer', en: 'The Constitution', tr: 'Anayasa' },
+          { kind: 'list', label: 'Simplify the words', items: [
+            { term: 'Supreme (Süprem)', explanation: '"En üstün, zirve, üzerinde hiçbir şeyin olmadığı" demektir. Süpermarket (en büyük market) ya da "supreme" pizza (her şeyin üstte olduğu en zengin pizza) kelimesinden aklınızda kalabilir.' },
+            { term: 'Constitution (Kanstitüşın)', explanation: 'İngilizcedeki "constitute" (oluşturmak, bir araya getirmek) kelimesinden gelir. Parçaları birleştirip bir yapıyı "kurmak" demektir.' },
+          ] },
+          { kind: 'sentence', label: 'Memorable example', tr: 'Bir masa oyunu (örneğin Monopoly ya da futbol) oynadığınızı düşünün. Herkesin uymak zorunda olduğu, kutunun içinden çıkan o "Ana Kural Kitabı" vardır ya, işte Constitution odur. Ülkede yazılan hiçbir alt kural, bu ana kitabın kurallarına aykırı olamaz.' },
+        ],
+      },
       { title: 'Introducing Myself, Extended', topic: 'Self', grammar: 'Present Simple vs Continuous', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
       { title: 'Comparing Things', topic: 'Comparison', grammar: 'Comparatives & Superlatives', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
       { title: 'Personality & Character', topic: 'Personality', grammar: 'Adverbs of Frequency', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
@@ -203,7 +264,7 @@ function buildUnits(level: Level): Unit[] {
     ...u,
     id: i + 1,
     completed: false,
-    locked: level === 'A1' ? i > 0 : true,
+    locked: level === 'A1' ? i > 0 : level === 'A2' ? i > 1 : true,
     progress: 0,
   }))
 }
@@ -500,7 +561,7 @@ function DashboardView({ level, units, onSelectUnit }: {
         gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
         gap: '14px',
       }}>
-        {units.filter(u => !(level === 'A1' && u.locked)).map(unit => {
+        {units.filter(u => !((level === 'A1' || level === 'A2') && u.locked)).map(unit => {
           const isLocked = unit.locked
           return (
             <button
@@ -538,7 +599,7 @@ function DashboardView({ level, units, onSelectUnit }: {
                   color: 'var(--primary)', background: 'rgba(79,70,229,0.08)',
                   padding: '2px 7px', borderRadius: '4px', letterSpacing: '0.06em',
                 }}>
-                  Unit {unit.id}
+                  {unit.unitLabel ?? `Unit ${unit.id}`}
                 </span>
                 <span style={{ fontSize: '10px', color: 'var(--muted-foreground)', fontFamily: 'var(--font-mono)' }}>{unit.topic}</span>
               </div>
@@ -588,7 +649,7 @@ function UnitDetailView({ unit, onBack, onModule }: {
           <span style={{
             fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--primary)',
             background: 'rgba(79,70,229,0.1)', padding: '3px 9px', borderRadius: '5px', letterSpacing: '0.06em',
-          }}>Unit {unit.id}</span>
+          }}>{unit.unitLabel ?? `Unit ${unit.id}`}</span>
           <span style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>{unit.topic}</span>
         </div>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '32px', fontWeight: 700, margin: '0 0 6px' }}>{unit.title}</h2>
@@ -596,53 +657,64 @@ function UnitDetailView({ unit, onBack, onModule }: {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
-        {(Object.entries(MODULE_META) as [keyof typeof MODULE_META, typeof MODULE_META[keyof typeof MODULE_META]][]).map(([key, meta]) => (
-          <button
-            key={key}
-            onClick={() => onModule(key)}
-            style={{
-              textAlign: 'left', background: 'var(--card)',
-              border: '1px solid var(--border)', borderRadius: '16px',
-              padding: '24px', cursor: 'pointer',
-              boxShadow: '0 1px 5px rgba(15,23,42,0.06)',
-              transition: 'all 0.18s', display: 'flex', flexDirection: 'column', gap: '14px',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 6px 24px ${meta.color}22`; e.currentTarget.style.borderColor = `${meta.color}44` }}
-            onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 5px rgba(15,23,42,0.06)'; e.currentTarget.style.borderColor = 'var(--border)' }}
-          >
-            <div style={{
-              width: '48px', height: '48px', borderRadius: '12px',
-              background: meta.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '22px',
-            }}>{meta.icon}</div>
-            <div>
-              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, margin: '0 0 4px' }}>{meta.label}</h3>
-              <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', lineHeight: 1.5 }}>
-                {key === 'grammar' && 'Rules, patterns, and examples explained clearly.'}
-                {key === 'audio' && 'Listen to native speakers with speed control.'}
-                {key === 'dictation' && 'Type what you hear and check your accuracy.'}
-                {key === 'shadowing' && 'Record yourself and compare with the original.'}
-              </p>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Chip label={meta.label} color={meta.color} bg={meta.bg} />
-              <svg width="18" height="18" viewBox="0 0 24 24" fill={meta.color}><path d="M10 17l5-5-5-5v10z" /></svg>
-            </div>
-          </button>
-        ))}
+        {(Object.entries(MODULE_META) as [keyof typeof MODULE_META, typeof MODULE_META[keyof typeof MODULE_META]][]).map(([key, meta]) => {
+          const isModuleLocked = !!unit.moduleLocks?.[key]
+          return (
+            <button
+              key={key}
+              onClick={() => !isModuleLocked && onModule(key)}
+              disabled={isModuleLocked}
+              style={{
+                textAlign: 'left', background: isModuleLocked ? 'var(--secondary)' : 'var(--card)',
+                border: '1px solid var(--border)', borderRadius: '16px',
+                padding: '24px', cursor: isModuleLocked ? 'not-allowed' : 'pointer',
+                boxShadow: isModuleLocked ? 'none' : '0 1px 5px rgba(15,23,42,0.06)',
+                opacity: isModuleLocked ? 0.55 : 1,
+                transition: 'all 0.18s', display: 'flex', flexDirection: 'column', gap: '14px',
+                position: 'relative',
+              }}
+              onMouseEnter={e => { if (!isModuleLocked) { e.currentTarget.style.boxShadow = `0 6px 24px ${meta.color}22`; e.currentTarget.style.borderColor = `${meta.color}44` } }}
+              onMouseLeave={e => { e.currentTarget.style.boxShadow = isModuleLocked ? 'none' : '0 1px 5px rgba(15,23,42,0.06)'; e.currentTarget.style.borderColor = 'var(--border)' }}
+            >
+              {isModuleLocked && (
+                <div style={{ position: 'absolute', top: '14px', right: '14px', color: 'var(--muted-foreground)', fontSize: '14px' }}>🔒</div>
+              )}
+              <div style={{
+                width: '48px', height: '48px', borderRadius: '12px',
+                background: meta.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '22px',
+              }}>{meta.icon}</div>
+              <div>
+                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, margin: '0 0 4px', color: isModuleLocked ? 'var(--muted-foreground)' : 'var(--foreground)' }}>{meta.label}</h3>
+                <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', lineHeight: 1.5 }}>
+                  {key === 'grammar' && 'Rules, patterns, and examples explained clearly.'}
+                  {key === 'audio' && (unit.passiveVideo ? 'Watch the video.' : 'Listen to native speakers with speed control.')}
+                  {key === 'dictation' && (isModuleLocked ? 'Content coming later for this unit.' : 'Type what you hear and check your accuracy.')}
+                  {key === 'shadowing' && (isModuleLocked ? 'Content coming later for this unit.' : 'Record yourself and compare with the original.')}
+                </p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Chip label={meta.label} color={meta.color} bg={meta.bg} />
+                {!isModuleLocked && <svg width="18" height="18" viewBox="0 0 24 24" fill={meta.color}><path d="M10 17l5-5-5-5v10z" /></svg>}
+              </div>
+            </button>
+          )
+        })}
       </div>
 
       {/* Sentence preview */}
-      <div style={{
-        background: 'linear-gradient(135deg, rgba(79,70,229,0.06), rgba(129,140,248,0.06))',
-        border: '1px solid rgba(79,70,229,0.12)', borderRadius: '14px', padding: '20px 24px',
-      }}>
-        <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--primary)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-          Practice sentence
-        </p>
-        <p style={{ margin: '0 0 8px', fontSize: '16px', fontWeight: 500, lineHeight: 1.5 }}>{unit.dictationSentence}</p>
-        <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)', fontStyle: 'italic' }}>{unit.translation}</p>
-      </div>
+      {!unit.hidePracticeSentence && (
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(79,70,229,0.06), rgba(129,140,248,0.06))',
+          border: '1px solid rgba(79,70,229,0.12)', borderRadius: '14px', padding: '20px 24px',
+        }}>
+          <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--primary)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+            Practice sentence
+          </p>
+          <p style={{ margin: '0 0 8px', fontSize: '16px', fontWeight: 500, lineHeight: 1.5 }}>{unit.dictationSentence}</p>
+          <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)', fontStyle: 'italic' }}>{unit.translation}</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -680,36 +752,96 @@ function GrammarView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
         </div>
       </div>
 
-      {/* Rule box */}
-      <div style={{ background: '#EEF2FF', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '14px', padding: '20px 24px' }}>
-        <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Rule</p>
-        <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.7, color: '#1E1B4B' }}>{rule.rule}</p>
-        {rule.ruleTr && <p style={{ margin: '6px 0 0', fontSize: '13px', lineHeight: 1.6, color: '#4F46E5', fontStyle: 'italic' }}>({rule.ruleTr})</p>}
-      </div>
-
-      {/* Examples */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Examples</p>
-        {rule.examples.map((ex, i) => (
-          <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px' }}>
-            <p style={{ margin: '0 0 5px', fontSize: '15px', fontWeight: 500, lineHeight: 1.5 }}><HighlightedSentence text={ex.en} highlight={ex.highlight} /></p>
-            <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', fontStyle: 'italic' }}>{ex.tr}</p>
+      {unit.customGrammarBlocks ? (
+        unit.customGrammarBlocks.map((block, i) => {
+          if (block.kind === 'box') {
+            return (
+              <div key={i} style={{ background: '#EEF2FF', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '14px', padding: '20px 24px' }}>
+                <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{block.label}</p>
+                {block.en && <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.7, color: '#1E1B4B' }}>{block.en}</p>}
+                {block.tr && <p style={{ margin: '6px 0 0', fontSize: '13px', lineHeight: 1.6, color: '#4F46E5', fontStyle: 'italic' }}>({block.tr})</p>}
+              </div>
+            )
+          }
+          if (block.kind === 'list') {
+            return (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{block.label}</p>
+                {block.items?.map((item, j) => (
+                  <div key={j} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px' }}>
+                    <p style={{ margin: '0 0 5px', fontSize: '15px', fontWeight: 500, lineHeight: 1.5 }}>{item.term}</p>
+                    <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', lineHeight: 1.6 }}>{item.explanation}</p>
+                  </div>
+                ))}
+              </div>
+            )
+          }
+          return (
+            <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '20px 24px' }}>
+              <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{block.label}</p>
+              {block.en && <p style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 500 }}>{block.en}</p>}
+              {block.tr && <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)', lineHeight: 1.7, fontStyle: block.en ? 'italic' : 'normal' }}>{block.tr}</p>}
+            </div>
+          )
+        })
+      ) : (
+        <>
+          {/* Rule box */}
+          <div style={{ background: '#EEF2FF', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '14px', padding: '20px 24px' }}>
+            <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Rule</p>
+            <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.7, color: '#1E1B4B' }}>{rule.rule}</p>
+            {rule.ruleTr && <p style={{ margin: '6px 0 0', fontSize: '13px', lineHeight: 1.6, color: '#4F46E5', fontStyle: 'italic' }}>({rule.ruleTr})</p>}
           </div>
-        ))}
-      </div>
 
-      {/* Key sentence */}
-      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '20px 24px' }}>
-        <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Unit sentence</p>
-        <p style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 500 }}>{unit.dictationSentence}</p>
-        <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)', fontStyle: 'italic' }}>{unit.translation}</p>
-      </div>
+          {/* Examples */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Examples</p>
+            {rule.examples.map((ex, i) => (
+              <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px' }}>
+                <p style={{ margin: '0 0 5px', fontSize: '15px', fontWeight: 500, lineHeight: 1.5 }}><HighlightedSentence text={ex.en} highlight={ex.highlight} /></p>
+                <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', fontStyle: 'italic' }}>{ex.tr}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Key sentence */}
+          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '20px 24px' }}>
+            <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Unit sentence</p>
+            <p style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 500 }}>{unit.dictationSentence}</p>
+            <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)', fontStyle: 'italic' }}>{unit.translation}</p>
+          </div>
+        </>
+      )}
     </div>
   )
 }
 
 function AudioView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const [showTranscript, setShowTranscript] = useState(false)
+
+  if (unit.passiveVideo && unit.videoUrl) {
+    return (
+      <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '720px' }}>
+        <BackBtn onClick={onBack} label={unit.title} />
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.audio.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🎧</div>
+          <div>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: 0 }}>Audio / Video</h2>
+            <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{unit.title} · Watch the video</p>
+          </div>
+        </div>
+
+        <video
+          src={unit.videoUrl}
+          controls
+          controlsList="nodownload noplaybackrate"
+          style={{ width: '100%', borderRadius: '16px', background: '#000' }}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '720px' }}>
       <BackBtn onClick={onBack} label={unit.title} />
@@ -1353,11 +1485,11 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
 // ─── Root App ─────────────────────────────────────────────────────────────────
 
 const LEVELS: Level[] = ['A1', 'A2', 'B1', 'B2']
-const LEVEL_META: Record<Level, { label: string; color: string; disabled?: boolean }> = {
-  A1: { label: 'English Group A', color: '#10B981' },
-  A2: { label: 'English Group B', color: '#0EA5E9', disabled: true },
-  B1: { label: 'Others',          color: '#8B5CF6', disabled: true },
-  B2: { label: 'Coming soon',     color: '#94A3B8', disabled: true },
+const LEVEL_META: Record<Level, { code: string; label: string; color: string; disabled?: boolean }> = {
+  A1: { code: 'AF', label: 'English Group A', color: '#10B981' },
+  A2: { code: 'H',  label: 'English Group B', color: '#0EA5E9' },
+  B1: { code: 'B1', label: 'Others',          color: '#8B5CF6', disabled: true },
+  B2: { code: 'B2', label: 'Coming soon',     color: '#94A3B8', disabled: true },
 }
 
 export default function App() {
@@ -1375,7 +1507,7 @@ export default function App() {
   }
 
   const breadcrumbs = [
-    { label: level, onClick: () => { setView('dashboard'); setSelectedUnit(null) } },
+    { label: LEVEL_META[level].code, onClick: () => { setView('dashboard'); setSelectedUnit(null) } },
     ...(selectedUnit ? [{ label: `Unit ${selectedUnit.id}`, onClick: () => setView('unit') }] : []),
     ...(view !== 'dashboard' && view !== 'unit' ? [{ label: MODULE_META[view as keyof typeof MODULE_META]?.label }] : []),
   ]
@@ -1444,7 +1576,7 @@ export default function App() {
                 >
                   <span style={{
                     fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 700,
-                  }}>{l}{isDisabled && ' 🔒'}</span>
+                  }}>{LEVEL_META[l].code}{isDisabled && ' 🔒'}</span>
                   <span style={{
                     fontSize: '11px', color: level === l && !isDisabled ? LEVEL_META[l].color : 'var(--muted-foreground)',
                     background: level === l && !isDisabled ? `${LEVEL_META[l].color}18` : 'transparent',
