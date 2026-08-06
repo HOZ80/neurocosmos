@@ -1101,25 +1101,39 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const [recording, setRecording] = useState(false)
   const [recordings, setRecordings] = useState<(string | null)[]>(() => new Array(segments.length).fill(null))
   const [recSec, setRecSec] = useState(0)
+  const [speed, setSpeed] = useState(1)
+  const [loop, setLoop] = useState(false)
   const recRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const loopRef = useRef(loop)
+  loopRef.current = loop
 
   useEffect(() => {
     setRecordings(new Array(segments.length).fill(null))
     setCurrent(0)
   }, [segments])
 
+  useEffect(() => {
+    itemRefs.current[current]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [current])
+
   function playOriginal() {
     const seg = segments[current]
     const audio = audioRef.current
     if (!audio || !unit.audioUrl) return
+    audio.playbackRate = speed
     audio.currentTime = seg.start
     audio.play()
     const onTime = () => {
-      if (audio.currentTime >= seg.end) { audio.pause(); audio.removeEventListener('timeupdate', onTime) }
+      if (audio.currentTime >= seg.end) {
+        audio.pause()
+        audio.removeEventListener('timeupdate', onTime)
+        if (loopRef.current) setTimeout(playOriginal, 400)
+      }
     }
     audio.addEventListener('timeupdate', onTime)
   }
@@ -1161,7 +1175,7 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const sentences = segments.map(s => s.text)
 
   return (
-    <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '680px' }}>
+    <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '680px' }}>
       <BackBtn onClick={onBack} label={unit.title} />
       {unit.audioUrl && <audio ref={audioRef} src={unit.audioUrl} preload="metadata" />}
 
@@ -1174,51 +1188,48 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
         </div>
       </div>
 
-      {/* Sentence list */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        {sentences.map((s, i) => (
-          <button
-            key={i}
-            onClick={() => { setCurrent(i); setRecording(false) }}
-            style={{
-              textAlign: 'left', padding: '14px 18px', borderRadius: '12px',
-              border: `1.5px solid ${i === current ? 'rgba(16,185,129,0.45)' : done[i] ? 'rgba(16,185,129,0.2)' : 'var(--border)'}`,
-              background: i === current ? '#ECFDF5' : done[i] ? '#F0FDF4' : 'var(--card)',
-              cursor: 'pointer', transition: 'all 0.15s',
-              display: 'flex', alignItems: 'flex-start', gap: '12px',
-            }}
-          >
-            <div style={{
-              width: '22px', height: '22px', borderRadius: '50%', flexShrink: 0, marginTop: '1px',
-              background: done[i] ? 'var(--success)' : i === current ? 'rgba(16,185,129,0.15)' : 'var(--muted)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: i === current && !done[i] ? '2px solid rgba(16,185,129,0.5)' : 'none',
-            }}>
-              {done[i]
-                ? <svg width="11" height="11" viewBox="0 0 24 24" fill="white"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
-                : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: i === current ? '#059669' : 'var(--muted-foreground)' }}>{i + 1}</span>}
-            </div>
-            <span style={{ fontSize: '14px', lineHeight: 1.6, color: i === current ? '#065F46' : done[i] ? '#047857' : 'var(--foreground)', fontWeight: i === current ? 500 : 400 }}>{s}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Recording controls */}
+      {/* Recording controls — kept at the top so it never scrolls out of view */}
       <div style={{
         background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px',
         display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center',
       }}>
         <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', textAlign: 'center' }}>
-          Listen to sentence {current + 1}, then record yourself saying it aloud
+          Sentence {current + 1} / {sentences.length} — listen, then record yourself saying it aloud
         </p>
-        <button onClick={playOriginal} style={{
-          padding: '7px 16px', borderRadius: '9px', border: '1px solid var(--border)',
-          background: 'var(--secondary)', color: 'var(--foreground)', fontSize: '13px', fontWeight: 500, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', gap: '6px',
-        }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-          Listen to sentence
-        </button>
+        <p style={{ margin: '-8px 0 0', fontSize: '15px', fontWeight: 500, textAlign: 'center', color: 'var(--foreground)' }}>
+          {sentences[current]}
+        </p>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+          <button onClick={playOriginal} style={{
+            padding: '7px 16px', borderRadius: '9px', border: '1px solid var(--border)',
+            background: 'var(--secondary)', color: 'var(--foreground)', fontSize: '13px', fontWeight: 500, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: '6px',
+          }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+            Listen to sentence
+          </button>
+
+          <button onClick={() => setLoop(l => !l)} title="Repeat automatically" style={{
+            padding: '7px 12px', borderRadius: '9px', border: `1px solid ${loop ? 'rgba(16,185,129,0.4)' : 'var(--border)'}`,
+            background: loop ? '#ECFDF5' : 'var(--secondary)', color: loop ? '#059669' : 'var(--foreground)',
+            fontSize: '13px', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+          }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17 17H7v-4l-5 5 5 5v-4h12v-6h-2v4zM7 7h10v4l5-5-5-5v4H5v6h2V7z" /></svg>
+            Loop
+          </button>
+
+          <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: '9px', overflow: 'hidden' }}>
+            {[0.75, 1, 1.25].map(r => (
+              <button key={r} onClick={() => setSpeed(r)} style={{
+                padding: '7px 10px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
+                background: speed === r ? 'var(--primary)' : 'var(--secondary)',
+                color: speed === r ? '#fff' : 'var(--foreground)',
+              }}>{r}x</button>
+            ))}
+          </div>
+        </div>
+
         <div style={{ position: 'relative', display: 'inline-flex' }}>
           {recording && <div className="mic-ring" style={{ position: 'absolute', inset: 0, borderRadius: '50%' }} />}
           <button onClick={handleRecord} style={{
@@ -1267,6 +1278,39 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
             style={{ flex: 1, padding: '9px', borderRadius: '9px', border: '1px solid var(--border)', background: 'var(--secondary)', color: current === sentences.length - 1 ? 'var(--muted-foreground)' : 'var(--foreground)', fontSize: '13px', fontWeight: 500, cursor: current === sentences.length - 1 ? 'not-allowed' : 'pointer' }}
           >Next →</button>
         </div>
+      </div>
+
+      {/* Sentence list — fixed height, scrolls independently, auto-scrolls active line into view */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', gap: '8px',
+        maxHeight: '340px', overflowY: 'auto', paddingRight: '4px',
+      }}>
+        {sentences.map((s, i) => (
+          <button
+            key={i}
+            ref={el => { itemRefs.current[i] = el }}
+            onClick={() => { setCurrent(i); setRecording(false) }}
+            style={{
+              textAlign: 'left', padding: '14px 18px', borderRadius: '12px',
+              border: `1.5px solid ${i === current ? 'rgba(16,185,129,0.45)' : done[i] ? 'rgba(16,185,129,0.2)' : 'var(--border)'}`,
+              background: i === current ? '#ECFDF5' : done[i] ? '#F0FDF4' : 'var(--card)',
+              cursor: 'pointer', transition: 'all 0.15s',
+              display: 'flex', alignItems: 'flex-start', gap: '12px', flexShrink: 0,
+            }}
+          >
+            <div style={{
+              width: '22px', height: '22px', borderRadius: '50%', flexShrink: 0, marginTop: '1px',
+              background: done[i] ? 'var(--success)' : i === current ? 'rgba(16,185,129,0.15)' : 'var(--muted)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              border: i === current && !done[i] ? '2px solid rgba(16,185,129,0.5)' : 'none',
+            }}>
+              {done[i]
+                ? <svg width="11" height="11" viewBox="0 0 24 24" fill="white"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
+                : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: i === current ? '#059669' : 'var(--muted-foreground)' }}>{i + 1}</span>}
+            </div>
+            <span style={{ fontSize: '14px', lineHeight: 1.6, color: i === current ? '#065F46' : done[i] ? '#047857' : 'var(--foreground)', fontWeight: i === current ? 500 : 400 }}>{s}</span>
+          </button>
+        ))}
       </div>
     </div>
   )
