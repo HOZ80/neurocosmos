@@ -25,46 +25,52 @@ interface Unit {
   audioUrl?: string
   dictationSegments?: DictationSegment[]
   readingTitle?: string
+  grammarPlaceholder?: boolean
 }
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
-const GRAMMAR_RULES: Record<string, { rule: string; examples: { en: string; tr: string }[] }> = {
+const GRAMMAR_RULES: Record<string, { rule: string; ruleTr: string; examples: { en: string; tr: string; highlight: string }[] }> = {
   'Subject Pronouns': {
     rule: 'Subject pronouns replace nouns as the subject of a sentence. They tell us who or what performs the action of the verb.',
+    ruleTr: 'Özne zamirleri, cümlenin öznesi olarak isimlerin yerini alır. Eylemi kimin veya neyin yaptığını gösterirler.',
     examples: [
-      { en: 'I am a student.', tr: 'Ben bir öğrenciyim.' },
-      { en: 'She speaks English very well.', tr: 'O İngilizceyi çok iyi konuşuyor.' },
-      { en: 'They live in London.', tr: 'Onlar Londra\'da yaşıyor.' },
+      { en: 'I am a student.', tr: 'Ben bir öğrenciyim.', highlight: 'I' },
+      { en: 'She speaks English very well.', tr: 'O İngilizceyi çok iyi konuşuyor.', highlight: 'She' },
+      { en: 'They live in London.', tr: 'Onlar Londra\'da yaşıyor.', highlight: 'They' },
     ],
   },
   'Simple Present': {
     rule: 'Use the simple present for habits, routines, and general truths. Add -s/-es for third person singular (he/she/it).',
+    ruleTr: 'Alışkanlıklar, rutinler ve genel doğrular için geniş zaman kullanılır. Üçüncü tekil şahısta (he/she/it) fiile -s/-es eklenir.',
     examples: [
-      { en: 'She works at a hospital every day.', tr: 'O her gün bir hastanede çalışıyor.' },
-      { en: 'The sun rises in the east.', tr: 'Güneş doğudan doğar.' },
-      { en: 'We study English together.', tr: 'Birlikte İngilizce çalışıyoruz.' },
+      { en: 'She works at a hospital every day.', tr: 'O her gün bir hastanede çalışıyor.', highlight: 'works' },
+      { en: 'The sun rises in the east.', tr: 'Güneş doğudan doğar.', highlight: 'rises' },
+      { en: 'We study English together.', tr: 'Birlikte İngilizce çalışıyoruz.', highlight: 'study' },
     ],
   },
   'Present Continuous': {
     rule: 'Use present continuous for actions happening right now or temporary situations. Form: am/is/are + verb-ing.',
+    ruleTr: 'Şu anda gerçekleşen eylemler veya geçici durumlar için şimdiki zaman kullanılır. Yapısı: am/is/are + fiil-ing.',
     examples: [
-      { en: 'I am reading a book right now.', tr: 'Şu an bir kitap okuyorum.' },
-      { en: 'They are working on a new project.', tr: 'Yeni bir proje üzerinde çalışıyorlar.' },
+      { en: 'I am reading a book right now.', tr: 'Şu an bir kitap okuyorum.', highlight: 'am reading' },
+      { en: 'They are working on a new project.', tr: 'Yeni bir proje üzerinde çalışıyorlar.', highlight: 'are working' },
     ],
   },
   'Past Simple': {
     rule: 'Use past simple for completed actions in the past. Regular verbs add -ed; irregular verbs change form.',
+    ruleTr: 'Geçmişte tamamlanmış eylemler için geçmiş zaman kullanılır. Düzenli fiillere -ed eklenir; düzensiz fiiller farklı bir forma bürünür.',
     examples: [
-      { en: 'She visited Paris last summer.', tr: 'Geçen yaz Paris\'i ziyaret etti.' },
-      { en: 'We went to the cinema yesterday.', tr: 'Dün sinemaya gittik.' },
+      { en: 'She visited Paris last summer.', tr: 'Geçen yaz Paris\'i ziyaret etti.', highlight: 'visited' },
+      { en: 'We went to the cinema yesterday.', tr: 'Dün sinemaya gittik.', highlight: 'went' },
     ],
   },
   'Future Plans': {
     rule: 'Use "going to" for plans and intentions you\'ve already decided, or for predictions based on evidence.',
+    ruleTr: 'Önceden karar verilmiş planlar/niyetler için ya da kanıta dayalı tahminler için "going to" kullanılır.',
     examples: [
-      { en: 'I am going to study abroad next year.', tr: 'Gelecek yıl yurt dışında okuyacağım.' },
-      { en: 'It is going to rain soon.', tr: 'Yakında yağmur yağacak.' },
+      { en: 'I am going to study abroad next year.', tr: 'Gelecek yıl yurt dışında okuyacağım.', highlight: 'am going to' },
+      { en: 'It is going to rain soon.', tr: 'Yakında yağmur yağacak.', highlight: 'is going to' },
     ],
   },
 }
@@ -72,7 +78,7 @@ const GRAMMAR_RULES: Record<string, { rule: string; examples: { en: string; tr: 
 function buildUnits(level: Level): Unit[] {
   const sets: Record<Level, Omit<Unit, 'id' | 'completed' | 'locked' | 'progress'>[]> = {
     A1: [
-      { title: 'Hello & Introductions', topic: 'Basics', grammar: 'Subject Pronouns', readingTitle: "Jessica's First Day of School", dictationSentence: "Today is Jessica's first day of kindergarten.", translation: 'Bugün Jessica\'nın anaokulundaki ilk günü.', transcript: "Jessica's first day of school. Today is Jessica's first day of kindergarten, and her parents walk to school. Jessica's mom walks with her to her classroom. Jessica meets her teacher. His name is Mr. Parker. The school bell rings at 8:45 a.m. Jessica hugs and kisses her mom goodbye. Jessica's mom says, \"I love you.\" At 9:00 a.m., Jessica stands for the national anthem. Mr. Parker calls out children's names. Each child yells back, \"Here\". Mr. Parker teaches them about letters. Mr. Parker teaches them about numbers. At 10:15 a.m., the students have recess. Recess is fun. The students get to play and eat. At 10:30 a.m., the students go to gym class. At 11:15 a.m., the students return to Mr. Parker's classroom. Mr. Parker tells the students to sit on the carpet. Mr. Parker reads the students a story. Mr. Parker teaches the students a song. The lunch bell rings.", audioUrl: '/jessicas-first-day.mp3', dictationSegments: [
+      { title: 'I Want This', topic: 'Requests', grammar: 'Want / Would Like', grammarPlaceholder: true, readingTitle: "Jessica's First Day of School", dictationSentence: "Today is Jessica's first day of kindergarten.", translation: 'Bugün Jessica\'nın anaokulundaki ilk günü.', transcript: "Jessica's first day of school. Today is Jessica's first day of kindergarten, and her parents walk to school. Jessica's mom walks with her to her classroom. Jessica meets her teacher. His name is Mr. Parker. The school bell rings at 8:45 a.m. Jessica hugs and kisses her mom goodbye. Jessica's mom says, \"I love you.\" At 9:00 a.m., Jessica stands for the national anthem. Mr. Parker calls out children's names. Each child yells back, \"Here\". Mr. Parker teaches them about letters. Mr. Parker teaches them about numbers. At 10:15 a.m., the students have recess. Recess is fun. The students get to play and eat. At 10:30 a.m., the students go to gym class. At 11:15 a.m., the students return to Mr. Parker's classroom. Mr. Parker tells the students to sit on the carpet. Mr. Parker reads the students a story. Mr. Parker teaches the students a song. The lunch bell rings.", audioUrl: '/jessicas-first-day.mp3', dictationSegments: [
         {"start":0.48,"end":4.0,"text":"Jessica's first day of school."},
         {"start":4.0,"end":8.33,"text":"Today is Jessica's first day of kindergarten."},
         {"start":8.5,"end":12.0,"text":"and her parents walk to school."},
@@ -97,47 +103,55 @@ function buildUnits(level: Level): Unit[] {
         {"start":94.17,"end":98.83,"text":"Mr. Parker teaches the students a song."},
         {"start":98.83,"end":101.67,"text":"The lunch bell rings."}
       ] },
-      { title: 'Numbers & Counting', topic: 'Numbers 1–100', grammar: 'Simple Present', dictationSentence: 'There are twenty students in the classroom.', translation: 'Sınıfta yirmi öğrenci var.', transcript: 'How many students are there? There are twenty students in the classroom today. Please count them carefully.' },
-      { title: 'Colors & Adjectives', topic: 'Describing things', grammar: 'Subject Pronouns', dictationSentence: 'The big red apple is on the table.', translation: 'Büyük kırmızı elma masanın üzerinde.', transcript: 'Look at the fruit bowl. The big red apple is on the table next to the yellow banana.' },
-      { title: 'Family Members', topic: 'Family vocabulary', grammar: 'Simple Present', dictationSentence: 'She has two brothers and one sister.', translation: 'Onun iki erkek kardeşi ve bir kız kardeşi var.', transcript: 'Tell me about your family. She has two brothers and one sister. They all live together in a house.' },
-      { title: 'Days & Time', topic: 'Calendar & Clock', grammar: 'Simple Present', dictationSentence: 'The meeting starts at nine o\'clock on Monday.', translation: 'Toplantı Pazartesi günü saat dokuzda başlar.', transcript: 'Please remember: the meeting starts at nine o\'clock on Monday. Do not be late!' },
-      { title: 'Food & Drinks', topic: 'Restaurant vocabulary', grammar: 'Simple Present', dictationSentence: 'I would like a cup of tea, please.', translation: 'Bir fincan çay lütfen.', transcript: 'Welcome to the café. What would you like? I would like a cup of tea, please. Of course, here you go.' },
-      { title: 'Shopping & Prices', topic: 'Money & stores', grammar: 'Subject Pronouns', dictationSentence: 'How much does this jacket cost?', translation: 'Bu ceket ne kadar?', transcript: 'Excuse me, how much does this jacket cost? It costs forty-five pounds. Do you have a smaller size?' },
-      { title: 'Weather & Seasons', topic: 'Climate vocabulary', grammar: 'Simple Present', dictationSentence: 'It is very cold and windy today.', translation: 'Bugün çok soğuk ve rüzgarlı.', transcript: 'Good morning. Here is the weather forecast. It is very cold and windy today. Please wear a coat.' },
-      { title: 'My Home & Rooms', topic: 'House vocabulary', grammar: 'Subject Pronouns', dictationSentence: 'The kitchen is next to the living room.', translation: 'Mutfak oturma odasının yanında.', transcript: 'Let me show you my house. The kitchen is next to the living room. My bedroom is upstairs on the left.' },
-      { title: 'Daily Routines', topic: 'Everyday actions', grammar: 'Simple Present', dictationSentence: 'She wakes up at seven every morning.', translation: 'Her sabah saat yedide uyanır.', transcript: 'Tell me about your routine. She wakes up at seven every morning. Then she has breakfast and goes to work.' },
-      { title: 'Animals & Nature', topic: 'Wildlife vocabulary', grammar: 'Subject Pronouns', dictationSentence: 'The dog is running in the garden.', translation: 'Köpek bahçede koşuyor.', transcript: 'Look outside! The dog is running in the garden with the children. It loves playing outside.' },
-      { title: 'Body Parts & Health', topic: 'Medical vocabulary', grammar: 'Simple Present', dictationSentence: 'I have a headache and a sore throat.', translation: 'Başım ağrıyor ve boğazım acıyor.', transcript: 'I do not feel well today. I have a headache and a sore throat. I think I need to see a doctor.' },
-      { title: 'Transport & Directions', topic: 'Getting around', grammar: 'Subject Pronouns', dictationSentence: 'Turn left at the traffic lights.', translation: 'Trafik ışıklarında sola dönün.', transcript: 'Excuse me, where is the train station? Go straight ahead and turn left at the traffic lights. It is on your right.' },
-      { title: 'Jobs & Workplaces', topic: 'Professions', grammar: 'Simple Present', dictationSentence: 'He works as a teacher in a primary school.', translation: 'O ilköğretim okulunda öğretmen olarak çalışıyor.', transcript: 'What do you do for work? He works as a teacher in a primary school. He loves his job very much.' },
-      { title: 'Hobbies & Free Time', topic: 'Leisure activities', grammar: 'Simple Present', dictationSentence: 'She enjoys reading books in her free time.', translation: 'Boş zamanlarında kitap okumayı seviyor.', transcript: 'What do you like to do? She enjoys reading books in her free time. She reads about two books a week.' },
-      { title: 'Clothes & Fashion', topic: 'Clothing vocabulary', grammar: 'Subject Pronouns', dictationSentence: 'He is wearing a blue shirt and black trousers.', translation: 'Mavi bir gömlek ve siyah pantolon giyiyor.', transcript: 'Describe what you see. He is wearing a blue shirt and black trousers. His shoes are brown leather.' },
-      { title: 'Feelings & Emotions', topic: 'Emotional vocabulary', grammar: 'Simple Present', dictationSentence: 'I feel nervous before every exam.', translation: 'Her sınavdan önce gergin hissediyorum.', transcript: 'How do you feel about exams? I feel nervous before every exam. But after I study well, I feel more confident.' },
-      { title: 'School & Education', topic: 'Academic life', grammar: 'Subject Pronouns', dictationSentence: 'The library opens at eight in the morning.', translation: 'Kütüphane sabah sekizde açılıyor.', transcript: 'Do you know the library schedule? The library opens at eight in the morning and closes at nine at night.' },
-      { title: 'Sports & Activities', topic: 'Physical activities', grammar: 'Simple Present', dictationSentence: 'They play football every Saturday afternoon.', translation: 'Her Cumartesi öğleden sonra futbol oynuyorlar.', transcript: 'What sports do they enjoy? They play football every Saturday afternoon in the local park near the school.' },
-      { title: 'Review & Assessment', topic: 'A1 Complete review', grammar: 'Simple Present', dictationSentence: 'Learning English opens many doors in life.', translation: 'İngilizce öğrenmek hayatta birçok kapı açar.', transcript: 'Congratulations on reaching the final unit! Learning English opens many doors in life. Keep practising every day.' },
+      { title: 'Who Are You?', topic: 'Self & Others', grammar: 'To Be & Have', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'What Is This?', topic: 'Pointing', grammar: 'Demonstratives', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Where Am I?', topic: 'Places', grammar: 'There Is / Are', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'A Normal Day', topic: 'Routines', grammar: 'Simple Present', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'What Time Is It?', topic: 'Time', grammar: 'Prepositions of Time', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Let\'s Go', topic: 'Movement', grammar: 'Go / Come', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'I Love This', topic: 'Preferences', grammar: 'Like + Noun / -ing', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'My Family', topic: 'Family', grammar: 'Possessives & Plurals', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'What Are They Like?', topic: 'Description', grammar: 'Adjectives', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'How Do I Feel?', topic: 'Feelings', grammar: 'Feel + Adjective', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'I\'d Like This', topic: 'Shopping', grammar: 'Quantifiers', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'I\'m Lost', topic: 'Directions', grammar: 'Imperatives', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'I Don\'t Feel Well', topic: 'Health', grammar: 'Have Got', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Staying in Touch', topic: 'Communication', grammar: 'Can / Could (requests)', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'What Happened Yesterday?', topic: 'Past', grammar: 'Simple Past', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'What\'s Happening Now?', topic: 'Present', grammar: 'Present Continuous', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'What\'s Next?', topic: 'Future', grammar: 'Going To', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Let Me Tell You...', topic: 'Storytelling', grammar: 'Sequencing Words', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Which Is Better?', topic: 'Comparison', grammar: 'Comparatives', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'What I Can Do', topic: 'Ability', grammar: 'Can / Can\'t', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Could You Help Me?', topic: 'Polite Requests', grammar: 'Can / Could / Let\'s', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Putting It All Together', topic: 'Review', grammar: 'Mixed Review', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
     ],
     A2: [
-      { title: 'Past Experiences', topic: 'Past Simple', grammar: 'Past Simple', dictationSentence: 'She visited Paris for the first time last year.', translation: 'Geçen yıl ilk kez Paris\'i ziyaret etti.', transcript: 'Have you ever been to Paris? She visited Paris for the first time last year and absolutely loved it.' },
-      { title: 'Comparing Things', topic: 'Comparatives', grammar: 'Simple Present', dictationSentence: 'This restaurant is much better than the other one.', translation: 'Bu restoran diğerinden çok daha iyi.', transcript: 'What do you think of the two restaurants? This restaurant is much better than the other one. The food is fresher.' },
-      { title: 'Making Plans', topic: 'Future with going to', grammar: 'Future Plans', dictationSentence: 'We are going to visit my grandparents this weekend.', translation: 'Bu hafta sonu büyükanne ve büyükbabamı ziyaret edeceğiz.', transcript: 'What are your plans? We are going to visit my grandparents this weekend. I am really looking forward to it.' },
-      { title: 'Asking Questions', topic: 'Question words', grammar: 'Simple Present', dictationSentence: 'Where did you go for your last holiday?', translation: 'Son tatilinizde nereye gittiniz?', transcript: 'I would like to ask you something. Where did you go for your last holiday? How long did you stay there?' },
-      { title: 'Abilities & Possibilities', topic: 'Modal: can, could', grammar: 'Simple Present', dictationSentence: 'Could you help me with this exercise, please?', translation: 'Bu egzersizde bana yardım edebilir misiniz?', transcript: 'I need some help. Could you help me with this exercise, please? I do not understand the third question.' },
-      { title: 'Recent Events', topic: 'Present Perfect', grammar: 'Simple Present', dictationSentence: 'I have already finished my homework.', translation: 'Ödevimi zaten bitirdim.', transcript: 'Have you done your homework? I have already finished my homework. I completed it before dinner last night.' },
-      { title: 'Quantities', topic: 'Countable & Uncountable', grammar: 'Simple Present', dictationSentence: 'There is not much milk left in the fridge.', translation: 'Buzdolabında fazla süt kalmadı.', transcript: 'We need to go shopping. There is not much milk left in the fridge. We also need some bread and butter.' },
-      { title: 'Locations', topic: 'Prepositions of place', grammar: 'Subject Pronouns', dictationSentence: 'The keys are on top of the cupboard.', translation: 'Anahtarlar dolabın üstünde.', transcript: 'Have you seen my keys? The keys are on top of the cupboard, behind the vase. I found them for you.' },
-      { title: 'How Often?', topic: 'Adverbs of frequency', grammar: 'Simple Present', dictationSentence: 'She usually goes for a run before breakfast.', translation: 'Genellikle kahvaltıdan önce koşuya çıkar.', transcript: 'Is she very active? She usually goes for a run before breakfast. She does this almost every weekday morning.' },
-      { title: 'Too Much & Enough', topic: 'Too & Enough', grammar: 'Simple Present', dictationSentence: 'The coffee is too hot to drink right now.', translation: 'Kahve şu an içmek için çok sıcak.', transcript: 'Why are you waiting? The coffee is too hot to drink right now. I will wait for it to cool down a little.' },
-      { title: 'Belonging', topic: 'Possessives', grammar: 'Subject Pronouns', dictationSentence: 'Whose bag is this on the floor?', translation: 'Yerdeki bu çanta kimin?', transcript: 'Look at this. Whose bag is this on the floor? I think it belongs to the student who sits near the window.' },
-      { title: 'Adding Information', topic: 'Relative clauses', grammar: 'Simple Present', dictationSentence: 'The book that I am reading is very exciting.', translation: 'Okuduğum kitap çok heyecan verici.', transcript: 'Tell me about your book. The book that I am reading is very exciting. It is about a detective in New York.' },
-      { title: 'If & Then', topic: 'First Conditional', grammar: 'Simple Present', dictationSentence: 'If it rains tomorrow, we will stay inside.', translation: 'Yarın yağmur yağarsa içeride kalacağız.', transcript: 'What are your plans for tomorrow? If it rains tomorrow, we will stay inside and watch some films together.' },
-      { title: 'Likes & Dislikes', topic: 'Preferences', grammar: 'Simple Present', dictationSentence: 'I prefer tea to coffee in the mornings.', translation: 'Sabahları kahveye çay tercih ediyorum.', transcript: 'Which do you prefer? I prefer tea to coffee in the mornings. Coffee makes me feel too anxious early on.' },
-      { title: 'Giving Advice', topic: 'Making suggestions', grammar: 'Simple Present', dictationSentence: 'Why don\'t you try speaking English every day?', translation: 'Her gün İngilizce konuşmayı denesene?', transcript: 'I want to improve faster. Why don\'t you try speaking English every day? Even short conversations help a lot.' },
-      { title: 'Childhood Memories', topic: 'Past Continuous', grammar: 'Past Simple', dictationSentence: 'When I was young, I was learning to play piano.', translation: 'Küçükken piyano çalmayı öğreniyordum.', transcript: 'Tell me about your childhood. When I was young, I was learning to play piano. I had lessons every Saturday.' },
-      { title: 'Travel & Holidays', topic: 'Travel vocabulary', grammar: 'Past Simple', dictationSentence: 'We booked a hotel near the beach for two weeks.', translation: 'İki haftalık sahil yakınında bir otel ayırttık.', transcript: 'Tell me about your trip. We booked a hotel near the beach for two weeks. The weather was absolutely perfect.' },
-      { title: 'Technology & Media', topic: 'Digital life', grammar: 'Present Continuous', dictationSentence: 'She is streaming a documentary about wildlife.', translation: 'Yaban hayatı hakkında bir belgesel izliyor.', transcript: 'What is she watching? She is streaming a documentary about wildlife on her laptop. She finds it fascinating.' },
-      { title: 'Culture & Society', topic: 'Social topics', grammar: 'Simple Present', dictationSentence: 'Many people celebrate different festivals around the world.', translation: 'Dünyanın dört bir yanında pek çok insan farklı festivalleri kutlar.', transcript: 'Let us talk about culture. Many people celebrate different festivals around the world. It is a beautiful thing.' },
-      { title: 'A2 Final Review', topic: 'A2 Complete review', grammar: 'Past Simple', dictationSentence: 'I have learned so much English this year.', translation: 'Bu yıl çok fazla İngilizce öğrendim.', transcript: 'You have reached the end of A2! I have learned so much English this year. I feel much more confident now.' },
+      { title: 'Introducing Myself, Extended', topic: 'Self', grammar: 'Present Simple vs Continuous', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Comparing Things', topic: 'Comparison', grammar: 'Comparatives & Superlatives', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Personality & Character', topic: 'Personality', grammar: 'Adverbs of Frequency', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'My Opinions', topic: 'Opinions', grammar: 'Because & So', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Likes & Preferences', topic: 'Preferences', grammar: 'Prefer / Would rather', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'What I Was Doing', topic: 'Past Continuous', grammar: 'Past Continuous', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Have You Ever...?', topic: 'Present Perfect', grammar: 'Present Perfect', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Since & For', topic: 'Duration', grammar: 'Since / For', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'My Life Experiences', topic: 'Life Experiences', grammar: 'Present Perfect vs Past Simple', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'My Future Plans', topic: 'Future Plans', grammar: 'Will vs Going to', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Requests & Permission', topic: 'Requests', grammar: 'Can / Could / May', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Advice & Obligation', topic: 'Advice', grammar: 'Should / Must / Have to', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Travel & Trips', topic: 'Travel', grammar: 'Travel Prepositions', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Phone & Email', topic: 'Communication', grammar: 'Reported Speech (basic)', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Appointments & Plans', topic: 'Appointments', grammar: 'Future Time Clauses', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Telling a Story', topic: 'Storytelling', grammar: 'Sequencing Words', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'If This Happens', topic: 'Conditionals', grammar: 'First Conditional', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Rules & Permission', topic: 'Obligation', grammar: "Must / Mustn't / Don't have to", grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'News & Media', topic: 'Media', grammar: 'Passive Voice (intro)', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Technology & Daily Life', topic: 'Technology', grammar: 'Present Perfect Continuous (intro)', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Working Life', topic: 'Work Life', grammar: 'Question Tags', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Formal Situations', topic: 'Formal Situations', grammar: 'Formal vs Informal Language', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Solving Problems', topic: 'Problem Solving', grammar: 'Modal Verbs of Deduction', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Culture & Traditions', topic: 'Culture', grammar: 'Relative Clauses', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'A2 Complete Review & Bridge to B1', topic: 'Review', grammar: 'Mixed Review', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
     ],
     B1: [
       { title: 'Present Perfect vs Past', topic: 'Tense comparison', grammar: 'Present Continuous', dictationSentence: 'I have lived in this city since I was a child.', translation: 'Çocukluğumdan beri bu şehirde yaşıyorum.', transcript: 'Tell me about where you live. I have lived in this city since I was a child. I know every street very well.' },
@@ -188,9 +202,9 @@ function buildUnits(level: Level): Unit[] {
   return sets[level].map((u, i) => ({
     ...u,
     id: i + 1,
-    completed: level === 'A1' ? false : i < (level === 'A2' ? 5 : level === 'B1' ? 2 : 0),
-    locked: level === 'A1' ? i > 0 : i > (level === 'A2' ? 8 : level === 'B1' ? 4 : 2),
-    progress: level === 'A1' ? 0 : (i < 5 ? 100 : i === 5 ? 45 : 0),
+    completed: (level === 'A1' || level === 'A2') ? false : i < (level === 'B1' ? 2 : 0),
+    locked: (level === 'A1' || level === 'A2') ? i > 0 : i > (level === 'B1' ? 4 : 2),
+    progress: (level === 'A1' || level === 'A2') ? 0 : (i < 5 ? 100 : i === 5 ? 45 : 0),
   }))
 }
 
@@ -467,14 +481,14 @@ function DashboardView({ level, units, onSelectUnit }: {
           {LEVEL_META[level].label}
         </h1>
         <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>
-          {units.filter(u => u.completed).length} of 20 units completed · {Math.round(units.filter(u => u.completed).length / 20 * 100)}% progress
+          {units.filter(u => u.completed).length} of {units.length} units completed · {Math.round(units.filter(u => u.completed).length / units.length * 100)}% progress
         </p>
       </div>
 
       {/* Overall progress bar */}
       <div style={{ height: '6px', background: 'var(--muted)', borderRadius: '6px', overflow: 'hidden' }}>
         <div style={{
-          width: `${(units.filter(u => u.completed).length / 20) * 100}%`,
+          width: `${(units.filter(u => u.completed).length / units.length) * 100}%`,
           height: '100%', background: 'linear-gradient(90deg, var(--primary), #818CF8)',
           borderRadius: '6px', transition: 'width 0.6s ease',
         }} />
@@ -633,8 +647,27 @@ function UnitDetailView({ unit, onBack, onModule }: {
   )
 }
 
+const PLACEHOLDER_RULE = {
+  rule: 'Unit content will be added after this lesson is taught.',
+  ruleTr: '',
+  examples: [{ en: 'Example sentence.', tr: 'Example sentence.', highlight: '' }],
+}
+
+function HighlightedSentence({ text, highlight }: { text: string; highlight: string }) {
+  if (!highlight) return <>{text}</>
+  const idx = text.indexOf(highlight)
+  if (idx === -1) return <>{text}</>
+  return (
+    <>
+      {text.slice(0, idx)}
+      <span style={{ color: '#2563EB', fontWeight: 700 }}>{text.slice(idx, idx + highlight.length)}</span>
+      {text.slice(idx + highlight.length)}
+    </>
+  )
+}
+
 function GrammarView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
-  const rule = GRAMMAR_RULES[unit.grammar] ?? GRAMMAR_RULES['Simple Present']
+  const rule = unit.grammarPlaceholder ? PLACEHOLDER_RULE : (GRAMMAR_RULES[unit.grammar] ?? GRAMMAR_RULES['Simple Present'])
   return (
     <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '680px' }}>
       <BackBtn onClick={onBack} label={unit.title} />
@@ -651,6 +684,7 @@ function GrammarView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
       <div style={{ background: '#EEF2FF', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '14px', padding: '20px 24px' }}>
         <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Rule</p>
         <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.7, color: '#1E1B4B' }}>{rule.rule}</p>
+        {rule.ruleTr && <p style={{ margin: '6px 0 0', fontSize: '13px', lineHeight: 1.6, color: '#4F46E5', fontStyle: 'italic' }}>({rule.ruleTr})</p>}
       </div>
 
       {/* Examples */}
@@ -658,7 +692,7 @@ function GrammarView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
         <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Examples</p>
         {rule.examples.map((ex, i) => (
           <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px' }}>
-            <p style={{ margin: '0 0 5px', fontSize: '15px', fontWeight: 500, lineHeight: 1.5 }}>{ex.en}</p>
+            <p style={{ margin: '0 0 5px', fontSize: '15px', fontWeight: 500, lineHeight: 1.5 }}><HighlightedSentence text={ex.en} highlight={ex.highlight} /></p>
             <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', fontStyle: 'italic' }}>{ex.tr}</p>
           </div>
         ))}
@@ -1412,38 +1446,4 @@ export default function App() {
                     fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 700,
                   }}>{l}{isDisabled && ' 🔒'}</span>
                   <span style={{
-                    fontSize: '11px', color: level === l && !isDisabled ? LEVEL_META[l].color : 'var(--muted-foreground)',
-                    background: level === l && !isDisabled ? `${LEVEL_META[l].color}18` : 'transparent',
-                    padding: '1px 6px', borderRadius: '4px',
-                  }}>{LEVEL_META[l].label}</span>
-                </button>
-              )
-            })}
-          </div>
-        )}
-      </header>
-
-      {/* ── Main content ── */}
-      <main style={{ flex: 1, overflowY: 'auto', padding: '32px 28px 48px' }}>
-        {view === 'dashboard' && (
-          <DashboardView level={level} units={units} onSelectUnit={goUnit} />
-        )}
-        {view === 'unit' && selectedUnit && (
-          <UnitDetailView unit={selectedUnit} onBack={() => { setView('dashboard'); setSelectedUnit(null) }} onModule={goModule} />
-        )}
-        {view === 'grammar' && selectedUnit && (
-          <GrammarView unit={selectedUnit} onBack={() => setView('unit')} />
-        )}
-        {view === 'audio' && selectedUnit && (
-          <AudioView unit={selectedUnit} onBack={() => setView('unit')} />
-        )}
-        {view === 'dictation' && selectedUnit && (
-          <DictationView unit={selectedUnit} onBack={() => setView('unit')} />
-        )}
-        {view === 'shadowing' && selectedUnit && (
-          <ShadowingView unit={selectedUnit} onBack={() => setView('unit')} />
-        )}
-      </main>
-    </div>
-  )
-}
+                    fontSize: '11px', color: level === l && !isDisabled ? LEVEL_META[l].color : 'var(--muted-foreg
