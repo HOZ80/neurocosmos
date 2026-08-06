@@ -1446,4 +1446,38 @@ export default function App() {
                     fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 700,
                   }}>{l}{isDisabled && ' 🔒'}</span>
                   <span style={{
-                    fontSize: '11px', color: level === l && !isDisabled ? LEVEL_META[l].color : 'var(--muted-foreg
+                    fontSize: '11px', color: level === l && !isDisabled ? LEVEL_META[l].color : 'var(--muted-foreground)',
+                    background: level === l && !isDisabled ? `${LEVEL_META[l].color}18` : 'transparent',
+                    padding: '1px 6px', borderRadius: '4px',
+                  }}>{LEVEL_META[l].label}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </header>
+
+      {/* ── Main content ── */}
+      <main style={{ flex: 1, overflowY: 'auto', padding: '32px 28px 48px' }}>
+        {view === 'dashboard' && (
+          <DashboardView level={level} units={units} onSelectUnit={goUnit} />
+        )}
+        {view === 'unit' && selectedUnit && (
+          <UnitDetailView unit={selectedUnit} onBack={() => { setView('dashboard'); setSelectedUnit(null) }} onModule={goModule} />
+        )}
+        {view === 'grammar' && selectedUnit && (
+          <GrammarView unit={selectedUnit} onBack={() => setView('unit')} />
+        )}
+        {view === 'audio' && selectedUnit && (
+          <AudioView unit={selectedUnit} onBack={() => setView('unit')} />
+        )}
+        {view === 'dictation' && selectedUnit && (
+          <DictationView unit={selectedUnit} onBack={() => setView('unit')} />
+        )}
+        {view === 'shadowing' && selectedUnit && (
+          <ShadowingView unit={selectedUnit} onBack={() => setView('unit')} />
+        )}
+      </main>
+    </div>
+  )
+}
