@@ -202,9 +202,9 @@ function buildUnits(level: Level): Unit[] {
   return sets[level].map((u, i) => ({
     ...u,
     id: i + 1,
-    completed: (level === 'A1' || level === 'A2') ? false : i < (level === 'B1' ? 2 : 0),
-    locked: (level === 'A1' || level === 'A2') ? i > 0 : i > (level === 'B1' ? 4 : 2),
-    progress: (level === 'A1' || level === 'A2') ? 0 : (i < 5 ? 100 : i === 5 ? 45 : 0),
+    completed: false,
+    locked: level === 'A1' ? i > 0 : true,
+    progress: 0,
   }))
 }
 
@@ -500,7 +500,7 @@ function DashboardView({ level, units, onSelectUnit }: {
         gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
         gap: '14px',
       }}>
-        {units.map(unit => {
+        {units.filter(u => !(level === 'A1' && u.locked)).map(unit => {
           const isLocked = unit.locked
           return (
             <button
@@ -1355,8 +1355,8 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
 const LEVELS: Level[] = ['A1', 'A2', 'B1', 'B2']
 const LEVEL_META: Record<Level, { label: string; color: string; disabled?: boolean }> = {
   A1: { label: 'English Group A', color: '#10B981' },
-  A2: { label: 'English Group B', color: '#0EA5E9' },
-  B1: { label: 'Others',          color: '#8B5CF6' },
+  A2: { label: 'English Group B', color: '#0EA5E9', disabled: true },
+  B1: { label: 'Others',          color: '#8B5CF6', disabled: true },
   B2: { label: 'Coming soon',     color: '#94A3B8', disabled: true },
 }
 
