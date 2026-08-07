@@ -1661,14 +1661,101 @@ const LEVEL_META: Record<Level, { code: string; label: string; color: string; di
   B2: { code: 'B2', label: 'Coming soon',     color: '#94A3B8', disabled: true },
 }
 
+// ─── Sheets-backed content loading (100Q) ──────────────────────────────────────
+// The "Foundations and Rules" (100Q) unit's questions live in a published
+// Google Sheet, not in this file. To add/edit a question, edit the Sheet —
+// no code change needed. This file only knows how to fetch + parse it.
+
+const QUESTIONS_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRAB45RBWdRWxtKNj-qaIZePkgTD4y8HXNkc7h4wb_VnjVRETobN-uSQi8osDEIqusZKiamvu_qL40I/pub?output=csv'
+
+// Minimal CSV parser: handles quoted fields, commas/newlines inside quotes, and "" escaped quotes.
+function parseCSV(text: string): Record<string, string>[] {
+  const rows: string[][] = []
+  let row: string[] = []
+  let field = ''
+  let inQuotes = false
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++ }
+        else inQuotes = false
+      } else {
+        field += c
+      }
+    } else {
+      if (c === '"') inQuotes = true
+      else if (c === ',') { row.push(field); field = '' }
+      else if (c === '\n') { row.push(field); rows.push(row); row = []; field = '' }
+      else if (c === '\r') { /* ignore, \n handles the line break */ }
+      else field += c
+    }
+  }
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row) }
+  const [header, ...dataRows] = rows
+  if (!header) return []
+  return dataRows
+    .filter(r => r.some(cell => cell.trim() !== ''))
+    .map(r => {
+      const obj: Record<string, string> = {}
+      header.forEach((h, i) => { obj[h.trim()] = (r[i] ?? '').trim() })
+      return obj
+    })
+}
+
+// Converts parsed Sheet rows into the QuestionItem shape the app already renders.
+// Column names must match the Sheet header exactly (case-sensitive):
+// label, question, questionAudioUrl, questionTranslation, preDefinitionTitle,
+// preDefinitionText, preAnalogy, answerEn, answerTr, answerAudioUrl,
+// postDefinitionTitle, postDefinitionText, postAnalogy, videoUrl
+function rowsToQuestionChain(rows: Record<string, string>[]): QuestionItem[] {
+  return rows.map(r => ({
+    label: r.label || '',
+    question: r.question || '',
+    questionAudioUrl: r.questionAudioUrl || undefined,
+    questionTranslation: r.questionTranslation || undefined,
+    preDefinitionTitle: r.preDefinitionTitle || undefined,
+    preDefinitionText: r.preDefinitionText || undefined,
+    preAnalogy: r.preAnalogy || undefined,
+    answerEn: r.answerEn || undefined,
+    answerTr: r.answerTr || undefined,
+    answerAudioUrl: r.answerAudioUrl || undefined,
+    postDefinitionTitle: r.postDefinitionTitle || undefined,
+    postDefinitionText: r.postDefinitionText || undefined,
+    postAnalogy: r.postAnalogy || undefined,
+    videoUrl: r.videoUrl || undefined,
+  }))
+}
+
 export default function App() {
   const [level, setLevel] = useState<Level>('A1')
   const [view, setView] = useState<View>('dashboard')
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null)
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState<number | null>(null)
-  const units = buildUnits(level)
-  const selectedQuestion = selectedUnit?.questionChain && selectedQuestionIndex !== null
-    ? selectedUnit.questionChain[selectedQuestionIndex]
+
+  // Sheet-backed 100Q data. Starts null (meaning: "use the hardcoded fallback
+  // below until the Sheet has loaded"), then fills in once the fetch succeeds.
+  // If the fetch ever fails (offline, Sheet unpublished, etc.), we silently
+  // keep the hardcoded fallback so the site never breaks.
+  const [sheetQuestions, setSheetQuestions] = useState<QuestionItem[] | null>(null)
+
+  useEffect(() => {
+    fetch(QUESTIONS_SHEET_CSV_URL)
+      .then(res => res.text())
+      .then(text => {
+        const parsed = rowsToQuestionChain(parseCSV(text))
+        if (parsed.length > 0) setSheetQuestions(parsed)
+      })
+      .catch(() => { /* keep hardcoded fallback on any error */ })
+  }, [])
+
+  const units = buildUnits(level).map(u =>
+    (u.unitLabel === '100Q' && sheetQuestions) ? { ...u, questionChain: sheetQuestions } : u
+  )
+
+  const selectedUnitLive = selectedUnit ? units.find(u => u.id === selectedUnit.id) ?? selectedUnit : null
+  const selectedQuestion = selectedUnitLive?.questionChain && selectedQuestionIndex !== null
+    ? selectedUnitLive.questionChain[selectedQuestionIndex]
     : undefined
 
   function goUnit(u: Unit) { setSelectedUnit(u); setSelectedQuestionIndex(null); setView('unit') }
@@ -1682,7 +1769,7 @@ export default function App() {
 
   const breadcrumbs = [
     { label: LEVEL_META[level].code, onClick: () => { setView('dashboard'); setSelectedUnit(null) } },
-    ...(selectedUnit ? [{ label: selectedUnit.unitLabel ?? `Unit ${selectedUnit.id}`, onClick: () => { setView('unit'); setSelectedQuestionIndex(null) } }] : []),
+    ...(selectedUnitLive ? [{ label: selectedUnitLive.unitLabel ?? `Unit ${selectedUnitLive.id}`, onClick: () => { setView('unit'); setSelectedQuestionIndex(null) } }] : []),
     ...(view !== 'dashboard' && view !== 'unit' ? [{ label: selectedQuestion?.label ?? MODULE_META[view as keyof typeof MODULE_META]?.label }] : []),
   ]
 
@@ -1768,20 +1855,20 @@ export default function App() {
         {view === 'dashboard' && (
           <DashboardView level={level} units={units} onSelectUnit={goUnit} />
         )}
-        {view === 'unit' && selectedUnit && (
-          <UnitDetailView unit={selectedUnit} onBack={() => { setView('dashboard'); setSelectedUnit(null) }} onModule={goModule} onQuestion={goQuestion} />
+        {view === 'unit' && selectedUnitLive && (
+          <UnitDetailView unit={selectedUnitLive} onBack={() => { setView('dashboard'); setSelectedUnit(null) }} onModule={goModule} onQuestion={goQuestion} />
         )}
-        {view === 'grammar' && selectedUnit && (
-          <GrammarView unit={selectedUnit} question={selectedQuestion} onBack={() => { setView('unit'); setSelectedQuestionIndex(null) }} />
+        {view === 'grammar' && selectedUnitLive && (
+          <GrammarView unit={selectedUnitLive} question={selectedQuestion} onBack={() => { setView('unit'); setSelectedQuestionIndex(null) }} />
         )}
-        {view === 'audio' && selectedUnit && (
-          <AudioView unit={selectedUnit} onBack={() => setView('unit')} />
+        {view === 'audio' && selectedUnitLive && (
+          <AudioView unit={selectedUnitLive} onBack={() => setView('unit')} />
         )}
-        {view === 'dictation' && selectedUnit && (
-          <DictationView unit={selectedUnit} onBack={() => setView('unit')} />
+        {view === 'dictation' && selectedUnitLive && (
+          <DictationView unit={selectedUnitLive} onBack={() => setView('unit')} />
         )}
-        {view === 'shadowing' && selectedUnit && (
-          <ShadowingView unit={selectedUnit} onBack={() => setView('unit')} />
+        {view === 'shadowing' && selectedUnitLive && (
+          <ShadowingView unit={selectedUnitLive} onBack={() => setView('unit')} />
         )}
       </main>
     </div>
