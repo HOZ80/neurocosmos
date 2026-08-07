@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react'
 
-// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type Level = 'A1' | 'A2' | 'B1' | 'B2'
 type View = 'dashboard' | 'unit' | 'grammar' | 'audio' | 'dictation' | 'shadowing'
@@ -55,49 +55,49 @@ interface Unit {
   questionChain?: QuestionItem[]
 }
 
-// â”€â”€â”€ Data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Data ─────────────────────────────────────────────────────────────────────
 
 const GRAMMAR_RULES: Record<string, { rule: string; ruleTr: string; examples: { en: string; tr: string; highlight: string }[] }> = {
   'Subject Pronouns': {
     rule: 'Subject pronouns replace nouns as the subject of a sentence. They tell us who or what performs the action of the verb.',
-    ruleTr: 'Ã–zne zamirleri, cÃ¼mlenin Ã¶znesi olarak isimlerin yerini alÄ±r. Eylemi kimin veya neyin yaptÄ±ÄŸÄ±nÄ± gÃ¶sterirler.',
+    ruleTr: 'Özne zamirleri, cümlenin öznesi olarak isimlerin yerini alır. Eylemi kimin veya neyin yaptığını gösterirler.',
     examples: [
-      { en: 'I am a student.', tr: 'Ben bir Ã¶ÄŸrenciyim.', highlight: 'I' },
-      { en: 'She speaks English very well.', tr: 'O Ä°ngilizceyi Ã§ok iyi konuÅŸuyor.', highlight: 'She' },
-      { en: 'They live in London.', tr: 'Onlar Londra\'da yaÅŸÄ±yor.', highlight: 'They' },
+      { en: 'I am a student.', tr: 'Ben bir öğrenciyim.', highlight: 'I' },
+      { en: 'She speaks English very well.', tr: 'O İngilizceyi çok iyi konuşuyor.', highlight: 'She' },
+      { en: 'They live in London.', tr: 'Onlar Londra\'da yaşıyor.', highlight: 'They' },
     ],
   },
   'Simple Present': {
     rule: 'Use the simple present for habits, routines, and general truths. Add -s/-es for third person singular (he/she/it).',
-    ruleTr: 'AlÄ±ÅŸkanlÄ±klar, rutinler ve genel doÄŸrular iÃ§in geniÅŸ zaman kullanÄ±lÄ±r. ÃœÃ§Ã¼ncÃ¼ tekil ÅŸahÄ±sta (he/she/it) fiile -s/-es eklenir.',
+    ruleTr: 'Alışkanlıklar, rutinler ve genel doğrular için geniş zaman kullanılır. Üçüncü tekil şahısta (he/she/it) fiile -s/-es eklenir.',
     examples: [
-      { en: 'She works at a hospital every day.', tr: 'O her gÃ¼n bir hastanede Ã§alÄ±ÅŸÄ±yor.', highlight: 'works' },
-      { en: 'The sun rises in the east.', tr: 'GÃ¼neÅŸ doÄŸudan doÄŸar.', highlight: 'rises' },
-      { en: 'We study English together.', tr: 'Birlikte Ä°ngilizce Ã§alÄ±ÅŸÄ±yoruz.', highlight: 'study' },
+      { en: 'She works at a hospital every day.', tr: 'O her gün bir hastanede çalışıyor.', highlight: 'works' },
+      { en: 'The sun rises in the east.', tr: 'Güneş doğudan doğar.', highlight: 'rises' },
+      { en: 'We study English together.', tr: 'Birlikte İngilizce çalışıyoruz.', highlight: 'study' },
     ],
   },
   'Present Continuous': {
     rule: 'Use present continuous for actions happening right now or temporary situations. Form: am/is/are + verb-ing.',
-    ruleTr: 'Åu anda gerÃ§ekleÅŸen eylemler veya geÃ§ici durumlar iÃ§in ÅŸimdiki zaman kullanÄ±lÄ±r. YapÄ±sÄ±: am/is/are + fiil-ing.',
+    ruleTr: 'Şu anda gerçekleşen eylemler veya geçici durumlar için şimdiki zaman kullanılır. Yapısı: am/is/are + fiil-ing.',
     examples: [
-      { en: 'I am reading a book right now.', tr: 'Åu an bir kitap okuyorum.', highlight: 'am reading' },
-      { en: 'They are working on a new project.', tr: 'Yeni bir proje Ã¼zerinde Ã§alÄ±ÅŸÄ±yorlar.', highlight: 'are working' },
+      { en: 'I am reading a book right now.', tr: 'Şu an bir kitap okuyorum.', highlight: 'am reading' },
+      { en: 'They are working on a new project.', tr: 'Yeni bir proje üzerinde çalışıyorlar.', highlight: 'are working' },
     ],
   },
   'Past Simple': {
     rule: 'Use past simple for completed actions in the past. Regular verbs add -ed; irregular verbs change form.',
-    ruleTr: 'GeÃ§miÅŸte tamamlanmÄ±ÅŸ eylemler iÃ§in geÃ§miÅŸ zaman kullanÄ±lÄ±r. DÃ¼zenli fiillere -ed eklenir; dÃ¼zensiz fiiller farklÄ± bir forma bÃ¼rÃ¼nÃ¼r.',
+    ruleTr: 'Geçmişte tamamlanmış eylemler için geçmiş zaman kullanılır. Düzenli fiillere -ed eklenir; düzensiz fiiller farklı bir forma bürünür.',
     examples: [
-      { en: 'She visited Paris last summer.', tr: 'GeÃ§en yaz Paris\'i ziyaret etti.', highlight: 'visited' },
-      { en: 'We went to the cinema yesterday.', tr: 'DÃ¼n sinemaya gittik.', highlight: 'went' },
+      { en: 'She visited Paris last summer.', tr: 'Geçen yaz Paris\'i ziyaret etti.', highlight: 'visited' },
+      { en: 'We went to the cinema yesterday.', tr: 'Dün sinemaya gittik.', highlight: 'went' },
     ],
   },
   'Future Plans': {
     rule: 'Use "going to" for plans and intentions you\'ve already decided, or for predictions based on evidence.',
-    ruleTr: 'Ã–nceden karar verilmiÅŸ planlar/niyetler iÃ§in ya da kanÄ±ta dayalÄ± tahminler iÃ§in "going to" kullanÄ±lÄ±r.',
+    ruleTr: 'Önceden karar verilmiş planlar/niyetler için ya da kanıta dayalı tahminler için "going to" kullanılır.',
     examples: [
-      { en: 'I am going to study abroad next year.', tr: 'Gelecek yÄ±l yurt dÄ±ÅŸÄ±nda okuyacaÄŸÄ±m.', highlight: 'am going to' },
-      { en: 'It is going to rain soon.', tr: 'YakÄ±nda yaÄŸmur yaÄŸacak.', highlight: 'is going to' },
+      { en: 'I am going to study abroad next year.', tr: 'Gelecek yıl yurt dışında okuyacağım.', highlight: 'am going to' },
+      { en: 'It is going to rain soon.', tr: 'Yakında yağmur yağacak.', highlight: 'is going to' },
     ],
   },
 }
@@ -105,7 +105,7 @@ const GRAMMAR_RULES: Record<string, { rule: string; ruleTr: string; examples: { 
 function buildUnits(level: Level): Unit[] {
   const sets: Record<Level, Omit<Unit, 'id' | 'completed' | 'locked' | 'progress'>[]> = {
     A1: [
-      { title: 'I Want This', topic: 'Requests', grammar: 'Want / Would Like', grammarPlaceholder: true, readingTitle: "Jessica's First Day of School", dictationSentence: "Today is Jessica's first day of kindergarten.", translation: 'BugÃ¼n Jessica\'nÄ±n anaokulundaki ilk gÃ¼nÃ¼.', transcript: "Jessica's first day of school. Today is Jessica's first day of kindergarten, and her parents walk to school. Jessica's mom walks with her to her classroom. Jessica meets her teacher. His name is Mr. Parker. The school bell rings at 8:45 a.m. Jessica hugs and kisses her mom goodbye. Jessica's mom says, \"I love you.\" At 9:00 a.m., Jessica stands for the national anthem. Mr. Parker calls out children's names. Each child yells back, \"Here\". Mr. Parker teaches them about letters. Mr. Parker teaches them about numbers. At 10:15 a.m., the students have recess. Recess is fun. The students get to play and eat. At 10:30 a.m., the students go to gym class. At 11:15 a.m., the students return to Mr. Parker's classroom. Mr. Parker tells the students to sit on the carpet. Mr. Parker reads the students a story. Mr. Parker teaches the students a song. The lunch bell rings.", audioUrl: '/jessicas-first-day.mp3', dictationSegments: [
+      { title: 'I Want This', topic: 'Requests', grammar: 'Want / Would Like', grammarPlaceholder: true, readingTitle: "Jessica's First Day of School", dictationSentence: "Today is Jessica's first day of kindergarten.", translation: 'Bugün Jessica\'nın anaokulundaki ilk günü.', transcript: "Jessica's first day of school. Today is Jessica's first day of kindergarten, and her parents walk to school. Jessica's mom walks with her to her classroom. Jessica meets her teacher. His name is Mr. Parker. The school bell rings at 8:45 a.m. Jessica hugs and kisses her mom goodbye. Jessica's mom says, \"I love you.\" At 9:00 a.m., Jessica stands for the national anthem. Mr. Parker calls out children's names. Each child yells back, \"Here\". Mr. Parker teaches them about letters. Mr. Parker teaches them about numbers. At 10:15 a.m., the students have recess. Recess is fun. The students get to play and eat. At 10:30 a.m., the students go to gym class. At 11:15 a.m., the students return to Mr. Parker's classroom. Mr. Parker tells the students to sit on the carpet. Mr. Parker reads the students a story. Mr. Parker teaches the students a song. The lunch bell rings.", audioUrl: '/jessicas-first-day.mp3', dictationSegments: [
         {"start":0.48,"end":4.0,"text":"Jessica's first day of school."},
         {"start":4.0,"end":8.33,"text":"Today is Jessica's first day of kindergarten."},
         {"start":8.5,"end":12.0,"text":"and her parents walk to school."},
@@ -154,7 +154,7 @@ function buildUnits(level: Level): Unit[] {
       { title: 'Putting It All Together', topic: 'Review', grammar: 'Mixed Review', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
     ],
     A2: [
-      { title: 'I Want This', topic: 'Requests', grammar: 'Want / Would Like', grammarPlaceholder: true, readingTitle: "Jessica's First Day of School", dictationSentence: "Today is Jessica's first day of kindergarten.", translation: 'BugÃ¼n Jessica\'nÄ±n anaokulundaki ilk gÃ¼nÃ¼.', transcript: "Jessica's first day of school. Today is Jessica's first day of kindergarten, and her parents walk to school. Jessica's mom walks with her to her classroom. Jessica meets her teacher. His name is Mr. Parker. The school bell rings at 8:45 a.m. Jessica hugs and kisses her mom goodbye. Jessica's mom says, \"I love you.\" At 9:00 a.m., Jessica stands for the national anthem. Mr. Parker calls out children's names. Each child yells back, \"Here\". Mr. Parker teaches them about letters. Mr. Parker teaches them about numbers. At 10:15 a.m., the students have recess. Recess is fun. The students get to play and eat. At 10:30 a.m., the students go to gym class. At 11:15 a.m., the students return to Mr. Parker's classroom. Mr. Parker tells the students to sit on the carpet. Mr. Parker reads the students a story. Mr. Parker teaches the students a song. The lunch bell rings.", audioUrl: '/jessicas-first-day.mp3', dictationSegments: [
+      { title: 'I Want This', topic: 'Requests', grammar: 'Want / Would Like', grammarPlaceholder: true, readingTitle: "Jessica's First Day of School", dictationSentence: "Today is Jessica's first day of kindergarten.", translation: 'Bugün Jessica\'nın anaokulundaki ilk günü.', transcript: "Jessica's first day of school. Today is Jessica's first day of kindergarten, and her parents walk to school. Jessica's mom walks with her to her classroom. Jessica meets her teacher. His name is Mr. Parker. The school bell rings at 8:45 a.m. Jessica hugs and kisses her mom goodbye. Jessica's mom says, \"I love you.\" At 9:00 a.m., Jessica stands for the national anthem. Mr. Parker calls out children's names. Each child yells back, \"Here\". Mr. Parker teaches them about letters. Mr. Parker teaches them about numbers. At 10:15 a.m., the students have recess. Recess is fun. The students get to play and eat. At 10:30 a.m., the students go to gym class. At 11:15 a.m., the students return to Mr. Parker's classroom. Mr. Parker tells the students to sit on the carpet. Mr. Parker reads the students a story. Mr. Parker teaches the students a song. The lunch bell rings.", audioUrl: '/jessicas-first-day.mp3', dictationSegments: [
         {"start":0.48,"end":4.0,"text":"Jessica's first day of school."},
         {"start":4.0,"end":8.33,"text":"Today is Jessica's first day of kindergarten."},
         {"start":8.5,"end":12.0,"text":"and her parents walk to school."},
@@ -199,10 +199,10 @@ function buildUnits(level: Level): Unit[] {
             videoUrl: '/civics-q1.mp4',
             blocks: [
               { kind: 'list', label: 'Simplify the words', items: [
-                { term: 'Supreme (SÃ¼prem)', explanation: '"En Ã¼stÃ¼n, zirve, Ã¼zerinde hiÃ§bir ÅŸeyin olmadÄ±ÄŸÄ±" demektir. SÃ¼permarket (en bÃ¼yÃ¼k market) ya da "supreme" pizza (her ÅŸeyin Ã¼stte olduÄŸu en zengin pizza) kelimesinden aklÄ±nÄ±zda kalabilir.' },
-                { term: 'Constitution (KanstitÃ¼ÅŸÄ±n)', explanation: 'Ä°ngilizcedeki "constitute" (oluÅŸturmak, bir araya getirmek) kelimesinden gelir. ParÃ§alarÄ± birleÅŸtirip bir yapÄ±yÄ± "kurmak" demektir.' },
+                { term: 'Supreme (Süprem)', explanation: '"En üstün, zirve, üzerinde hiçbir şeyin olmadığı" demektir. Süpermarket (en büyük market) ya da "supreme" pizza (her şeyin üstte olduğu en zengin pizza) kelimesinden aklınızda kalabilir.' },
+                { term: 'Constitution (Kanstitüşın)', explanation: 'İngilizcedeki "constitute" (oluşturmak, bir araya getirmek) kelimesinden gelir. Parçaları birleştirip bir yapıyı "kurmak" demektir.' },
               ] },
-              { kind: 'sentence', label: 'Memorable example', tr: 'Bir masa oyunu (Ã¶rneÄŸin Monopoly ya da futbol) oynadÄ±ÄŸÄ±nÄ±zÄ± dÃ¼ÅŸÃ¼nÃ¼n. Herkesin uymak zorunda olduÄŸu, kutunun iÃ§inden Ã§Ä±kan o "Ana Kural KitabÄ±" vardÄ±r ya, iÅŸte Constitution odur. Ãœlkede yazÄ±lan hiÃ§bir alt kural, bu ana kitabÄ±n kurallarÄ±na aykÄ±rÄ± olamaz.' },
+              { kind: 'sentence', label: 'Memorable example', tr: 'Bir masa oyunu (örneğin Monopoly ya da futbol) oynadığınızı düşünün. Herkesin uymak zorunda olduğu, kutunun içinden çıkan o "Ana Kural Kitabı" vardır ya, işte Constitution odur. Ülkede yazılan hiçbir alt kural, bu ana kitabın kurallarına aykırı olamaz.' },
             ],
           },
           { label: '2nd Question', question: 'Content will be added soon.' },
@@ -238,48 +238,48 @@ function buildUnits(level: Level): Unit[] {
       { title: 'A2 Complete Review & Bridge to B1', topic: 'Review', grammar: 'Mixed Review', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
     ],
     B1: [
-      { title: 'Present Perfect vs Past', topic: 'Tense comparison', grammar: 'Present Continuous', dictationSentence: 'I have lived in this city since I was a child.', translation: 'Ã‡ocukluÄŸumdan beri bu ÅŸehirde yaÅŸÄ±yorum.', transcript: 'Tell me about where you live. I have lived in this city since I was a child. I know every street very well.' },
-      { title: 'Passive Voice', topic: 'Passive structures', grammar: 'Simple Present', dictationSentence: 'The report was written by the team leader.', translation: 'Rapor ekip lideri tarafÄ±ndan yazÄ±ldÄ±.', transcript: 'Who wrote the report? The report was written by the team leader. It was submitted before the deadline.' },
-      { title: 'Reported Speech', topic: 'Indirect speech', grammar: 'Past Simple', dictationSentence: 'She said that she would call me in the morning.', translation: 'Sabah beni arayacaÄŸÄ±nÄ± sÃ¶yledi.', transcript: 'Did she leave a message? She said that she would call me in the morning. I am still waiting for her call.' },
-      { title: 'Second Conditional', topic: 'Hypothetical situations', grammar: 'Future Plans', dictationSentence: 'If I won the lottery, I would travel the world.', translation: 'Piyangoyu kazansaydÄ±m dÃ¼nyayÄ± gezerdi.', transcript: 'What would you do? If I won the lottery, I would travel the world for at least a year. Everywhere I dream about.' },
-      { title: 'Third Conditional', topic: 'Unreal past', grammar: 'Past Simple', dictationSentence: 'If she had studied harder, she would have passed.', translation: 'Daha Ã§ok Ã§alÄ±ÅŸsaydÄ± geÃ§ebilirdi.', transcript: 'What a shame about the exam. If she had studied harder, she would have passed. It was a close result though.' },
-      { title: 'Modal Perfect', topic: 'Modals in past', grammar: 'Simple Present', dictationSentence: 'He should have arrived by now.', translation: 'O ÅŸimdiye kadar gelmiÅŸ olmalÄ±ydÄ±.', transcript: 'Where is he? He should have arrived by now. He left home three hours ago. I hope everything is alright.' },
-      { title: 'Relative Clauses', topic: 'Who, which, that', grammar: 'Simple Present', dictationSentence: 'The woman who called this morning was my aunt.', translation: 'Bu sabah arayan kadÄ±n teyzimdi.', transcript: 'Did you speak to the caller? The woman who called this morning was my aunt. She wanted to invite us for dinner.' },
-      { title: 'Gerunds & Infinitives', topic: 'Verb patterns', grammar: 'Present Continuous', dictationSentence: 'She enjoys listening to classical music while studying.', translation: 'Ders Ã§alÄ±ÅŸÄ±rken klasik mÃ¼zik dinlemeyi seviyor.', transcript: 'What does she like? She enjoys listening to classical music while studying. She says it helps her concentrate better.' },
-      { title: 'Expressing Regret', topic: 'I wish / If only', grammar: 'Past Simple', dictationSentence: 'I wish I had taken that job opportunity.', translation: 'KeÅŸke o iÅŸ fÄ±rsatÄ±nÄ± kaÃ§Ä±rmasaydÄ±m.', transcript: 'Do you have any regrets? I wish I had taken that job opportunity. It would have changed my life completely.' },
-      { title: 'Formal Writing', topic: 'Academic register', grammar: 'Simple Present', dictationSentence: 'The results indicate a significant improvement.', translation: 'SonuÃ§lar Ã¶nemli bir iyileÅŸmeye iÅŸaret ediyor.', transcript: 'What do the data show? The results indicate a significant improvement in students\' performance over the term.' },
-      { title: 'Cause & Effect', topic: 'Linking words', grammar: 'Simple Present', dictationSentence: 'Due to heavy traffic, the bus arrived late.', translation: 'YoÄŸun trafik nedeniyle otobÃ¼s geÃ§ geldi.', transcript: 'Why were you late? Due to heavy traffic, the bus arrived forty minutes late. I apologise for the inconvenience.' },
-      { title: 'Expressing Opinions', topic: 'Discourse markers', grammar: 'Simple Present', dictationSentence: 'In my opinion, reading is the best way to improve.', translation: 'Bana gÃ¶re okumak geliÅŸmenin en iyi yoludur.', transcript: 'What do you think? In my opinion, reading is the best way to improve your vocabulary and comprehension.' },
-      { title: 'Describing Trends', topic: 'Data language', grammar: 'Present Continuous', dictationSentence: 'The number of online learners is increasing rapidly.', translation: 'Ã‡evrimiÃ§i Ã¶ÄŸrenci sayÄ±sÄ± hÄ±zla artÄ±yor.', transcript: 'What does the graph show? The number of online learners is increasing rapidly, especially among adults over thirty.' },
-      { title: 'Narrative Tenses', topic: 'Telling stories', grammar: 'Past Simple', dictationSentence: 'While she was walking home, she found a wallet.', translation: 'Eve yÃ¼rÃ¼rken bir cÃ¼zdan buldu.', transcript: 'Tell me what happened. While she was walking home, she found a wallet on the pavement near the park.' },
-      { title: 'Concession', topic: 'Although, however', grammar: 'Simple Present', dictationSentence: 'Although it was raining, they continued playing.', translation: 'YaÄŸmur yaÄŸmasÄ±na raÄŸmen oynamaya devam ettiler.', transcript: 'Why did they keep playing? Although it was raining, they continued playing because the match was almost over.' },
-      { title: 'Academic Vocabulary', topic: 'IELTS word bank', grammar: 'Simple Present', dictationSentence: 'The study demonstrates a clear correlation.', translation: 'Ã‡alÄ±ÅŸma aÃ§Ä±k bir korelasyon ortaya koyuyor.', transcript: 'Summarise the research. The study demonstrates a clear correlation between sleep quality and academic performance.' },
-      { title: 'Presentations', topic: 'Formal speaking', grammar: 'Present Continuous', dictationSentence: 'I would like to begin by explaining the background.', translation: 'Arka planÄ± aÃ§Ä±klayarak baÅŸlamak istiyorum.', transcript: 'Please start your presentation. I would like to begin by explaining the background of our research project.' },
-      { title: 'Negotiation', topic: 'Business English', grammar: 'Future Plans', dictationSentence: 'We would be willing to lower the price slightly.', translation: 'FiyatÄ± biraz dÃ¼ÅŸÃ¼rmeye razÄ± oluruz.', transcript: 'Can we reach an agreement? We would be willing to lower the price slightly if you increase your order volume.' },
-      { title: 'Culture & Values', topic: 'Intercultural topics', grammar: 'Simple Present', dictationSentence: 'Different cultures have different approaches to time.', translation: 'FarklÄ± kÃ¼ltÃ¼rlerin zamana farklÄ± yaklaÅŸÄ±mlarÄ± vardÄ±r.', transcript: 'Let us discuss cultural differences. Different cultures have different approaches to time and punctuality.' },
-      { title: 'B1 Final Review', topic: 'B1 Complete review', grammar: 'Present Continuous', dictationSentence: 'My English is getting better every single day.', translation: 'Ä°ngilizcim her geÃ§en gÃ¼n daha da iyileÅŸiyor.', transcript: 'You have completed B1! My English is getting better every single day. I am proud of all the progress I have made.' },
+      { title: 'Present Perfect vs Past', topic: 'Tense comparison', grammar: 'Present Continuous', dictationSentence: 'I have lived in this city since I was a child.', translation: 'Çocukluğumdan beri bu şehirde yaşıyorum.', transcript: 'Tell me about where you live. I have lived in this city since I was a child. I know every street very well.' },
+      { title: 'Passive Voice', topic: 'Passive structures', grammar: 'Simple Present', dictationSentence: 'The report was written by the team leader.', translation: 'Rapor ekip lideri tarafından yazıldı.', transcript: 'Who wrote the report? The report was written by the team leader. It was submitted before the deadline.' },
+      { title: 'Reported Speech', topic: 'Indirect speech', grammar: 'Past Simple', dictationSentence: 'She said that she would call me in the morning.', translation: 'Sabah beni arayacağını söyledi.', transcript: 'Did she leave a message? She said that she would call me in the morning. I am still waiting for her call.' },
+      { title: 'Second Conditional', topic: 'Hypothetical situations', grammar: 'Future Plans', dictationSentence: 'If I won the lottery, I would travel the world.', translation: 'Piyangoyu kazansaydım dünyayı gezerdi.', transcript: 'What would you do? If I won the lottery, I would travel the world for at least a year. Everywhere I dream about.' },
+      { title: 'Third Conditional', topic: 'Unreal past', grammar: 'Past Simple', dictationSentence: 'If she had studied harder, she would have passed.', translation: 'Daha çok çalışsaydı geçebilirdi.', transcript: 'What a shame about the exam. If she had studied harder, she would have passed. It was a close result though.' },
+      { title: 'Modal Perfect', topic: 'Modals in past', grammar: 'Simple Present', dictationSentence: 'He should have arrived by now.', translation: 'O şimdiye kadar gelmiş olmalıydı.', transcript: 'Where is he? He should have arrived by now. He left home three hours ago. I hope everything is alright.' },
+      { title: 'Relative Clauses', topic: 'Who, which, that', grammar: 'Simple Present', dictationSentence: 'The woman who called this morning was my aunt.', translation: 'Bu sabah arayan kadın teyzimdi.', transcript: 'Did you speak to the caller? The woman who called this morning was my aunt. She wanted to invite us for dinner.' },
+      { title: 'Gerunds & Infinitives', topic: 'Verb patterns', grammar: 'Present Continuous', dictationSentence: 'She enjoys listening to classical music while studying.', translation: 'Ders çalışırken klasik müzik dinlemeyi seviyor.', transcript: 'What does she like? She enjoys listening to classical music while studying. She says it helps her concentrate better.' },
+      { title: 'Expressing Regret', topic: 'I wish / If only', grammar: 'Past Simple', dictationSentence: 'I wish I had taken that job opportunity.', translation: 'Keşke o iş fırsatını kaçırmasaydım.', transcript: 'Do you have any regrets? I wish I had taken that job opportunity. It would have changed my life completely.' },
+      { title: 'Formal Writing', topic: 'Academic register', grammar: 'Simple Present', dictationSentence: 'The results indicate a significant improvement.', translation: 'Sonuçlar önemli bir iyileşmeye işaret ediyor.', transcript: 'What do the data show? The results indicate a significant improvement in students\' performance over the term.' },
+      { title: 'Cause & Effect', topic: 'Linking words', grammar: 'Simple Present', dictationSentence: 'Due to heavy traffic, the bus arrived late.', translation: 'Yoğun trafik nedeniyle otobüs geç geldi.', transcript: 'Why were you late? Due to heavy traffic, the bus arrived forty minutes late. I apologise for the inconvenience.' },
+      { title: 'Expressing Opinions', topic: 'Discourse markers', grammar: 'Simple Present', dictationSentence: 'In my opinion, reading is the best way to improve.', translation: 'Bana göre okumak gelişmenin en iyi yoludur.', transcript: 'What do you think? In my opinion, reading is the best way to improve your vocabulary and comprehension.' },
+      { title: 'Describing Trends', topic: 'Data language', grammar: 'Present Continuous', dictationSentence: 'The number of online learners is increasing rapidly.', translation: 'Çevrimiçi öğrenci sayısı hızla artıyor.', transcript: 'What does the graph show? The number of online learners is increasing rapidly, especially among adults over thirty.' },
+      { title: 'Narrative Tenses', topic: 'Telling stories', grammar: 'Past Simple', dictationSentence: 'While she was walking home, she found a wallet.', translation: 'Eve yürürken bir cüzdan buldu.', transcript: 'Tell me what happened. While she was walking home, she found a wallet on the pavement near the park.' },
+      { title: 'Concession', topic: 'Although, however', grammar: 'Simple Present', dictationSentence: 'Although it was raining, they continued playing.', translation: 'Yağmur yağmasına rağmen oynamaya devam ettiler.', transcript: 'Why did they keep playing? Although it was raining, they continued playing because the match was almost over.' },
+      { title: 'Academic Vocabulary', topic: 'IELTS word bank', grammar: 'Simple Present', dictationSentence: 'The study demonstrates a clear correlation.', translation: 'Çalışma açık bir korelasyon ortaya koyuyor.', transcript: 'Summarise the research. The study demonstrates a clear correlation between sleep quality and academic performance.' },
+      { title: 'Presentations', topic: 'Formal speaking', grammar: 'Present Continuous', dictationSentence: 'I would like to begin by explaining the background.', translation: 'Arka planı açıklayarak başlamak istiyorum.', transcript: 'Please start your presentation. I would like to begin by explaining the background of our research project.' },
+      { title: 'Negotiation', topic: 'Business English', grammar: 'Future Plans', dictationSentence: 'We would be willing to lower the price slightly.', translation: 'Fiyatı biraz düşürmeye razı oluruz.', transcript: 'Can we reach an agreement? We would be willing to lower the price slightly if you increase your order volume.' },
+      { title: 'Culture & Values', topic: 'Intercultural topics', grammar: 'Simple Present', dictationSentence: 'Different cultures have different approaches to time.', translation: 'Farklı kültürlerin zamana farklı yaklaşımları vardır.', transcript: 'Let us discuss cultural differences. Different cultures have different approaches to time and punctuality.' },
+      { title: 'B1 Final Review', topic: 'B1 Complete review', grammar: 'Present Continuous', dictationSentence: 'My English is getting better every single day.', translation: 'İngilizcim her geçen gün daha da iyileşiyor.', transcript: 'You have completed B1! My English is getting better every single day. I am proud of all the progress I have made.' },
     ],
     B2: [
-      { title: 'Advanced Conditionals', topic: 'Mixed conditionals', grammar: 'Future Plans', dictationSentence: 'Had she known, she would not have agreed to it.', translation: 'Bilseydi buna razÄ± olmayacaktÄ±.', transcript: 'What do you think she would have done? Had she known, she would not have agreed to it under any circumstances.' },
-      { title: 'Inversion & Emphasis', topic: 'Fronting structures', grammar: 'Simple Present', dictationSentence: 'Never have I seen such a remarkable performance.', translation: 'Bu kadar olaÄŸanÃ¼stÃ¼ bir performans hiÃ§ gÃ¶rmedim.', transcript: 'How did you find the concert? Never have I seen such a remarkable performance. The soloist was extraordinary.' },
-      { title: 'Discourse & Cohesion', topic: 'Coherent writing', grammar: 'Simple Present', dictationSentence: 'Nevertheless, the evidence strongly supports this view.', translation: 'Bununla birlikte, kanÄ±tlar bu gÃ¶rÃ¼ÅŸÃ¼ gÃ¼Ã§lÃ¼ biÃ§imde desteklemektedir.', transcript: 'Continue your argument. Nevertheless, the evidence strongly supports this view, despite the initial scepticism.' },
-      { title: 'Idiomatic Language', topic: 'Phrasal verbs', grammar: 'Present Continuous', dictationSentence: 'She put off the meeting until further notice.', translation: 'ToplantÄ±yÄ± bir sonraki duyuruya kadar erteledi.', transcript: 'Was the meeting cancelled? She put off the meeting until further notice due to unforeseen circumstances.' },
-      { title: 'Academic Writing', topic: 'Essay structure', grammar: 'Simple Present', dictationSentence: 'This essay will critically examine three key arguments.', translation: 'Bu deneme Ã¼Ã§ temel argÃ¼manÄ± eleÅŸtirel biÃ§imde inceleyecektir.', transcript: 'Introduce your essay. This essay will critically examine three key arguments relating to climate change policy.' },
-      { title: 'Stance & Hedging', topic: 'Academic register', grammar: 'Simple Present', dictationSentence: 'It could be argued that this approach is insufficient.', translation: 'Bu yaklaÅŸÄ±mÄ±n yetersiz olduÄŸu ileri sÃ¼rÃ¼lebilir.', transcript: 'State your position carefully. It could be argued that this approach is insufficient to address the core problem.' },
-      { title: 'Nominalisation', topic: 'Formal style', grammar: 'Simple Present', dictationSentence: 'The implementation of the policy caused significant debate.', translation: 'PolitikanÄ±n uygulanmasÄ± Ã¶nemli bir tartÄ±ÅŸmaya yol aÃ§tÄ±.', transcript: 'Describe the reaction. The implementation of the policy caused significant debate among senior stakeholders.' },
-      { title: 'Complex Sentences', topic: 'Subordination', grammar: 'Present Continuous', dictationSentence: 'Provided that you submit on time, marks will not be deducted.', translation: 'ZamanÄ±nda teslim etmeniz koÅŸuluyla puan indirilmeyecektir.', transcript: 'What are the conditions? Provided that you submit on time, marks will not be deducted for minor errors.' },
-      { title: 'Critical Thinking', topic: 'Evaluating arguments', grammar: 'Simple Present', dictationSentence: 'While this argument has merit, it overlooks key factors.', translation: 'Bu argÃ¼man deÄŸer taÅŸÄ±sa da temel faktÃ¶rleri gÃ¶z ardÄ± ediyor.', transcript: 'Evaluate this argument. While this argument has merit, it overlooks key factors such as economic inequality.' },
-      { title: 'Collocations', topic: 'High-frequency pairs', grammar: 'Simple Present', dictationSentence: 'The company made a significant breakthrough in research.', translation: 'Åirket araÅŸtÄ±rmada Ã¶nemli bir atÄ±lÄ±m gerÃ§ekleÅŸtirdi.', transcript: 'What did the company achieve? The company made a significant breakthrough in research that changed the industry.' },
-      { title: 'Media & Journalism', topic: 'News vocabulary', grammar: 'Past Simple', dictationSentence: 'Officials confirmed that negotiations are still ongoing.', translation: 'Yetkililer mÃ¼zakerelerin hÃ¢lÃ¢ sÃ¼rdÃ¼ÄŸÃ¼nÃ¼ doÄŸruladÄ±.', transcript: 'What was announced? Officials confirmed that negotiations are still ongoing and no agreement has been reached.' },
-      { title: 'Environmental Issues', topic: 'Ecology language', grammar: 'Present Continuous', dictationSentence: 'Deforestation is threatening biodiversity across the globe.', translation: 'OrmansÄ±zlaÅŸma kÃ¼resel Ã¶lÃ§ekte biyolojik Ã§eÅŸitliliÄŸi tehdit ediyor.', transcript: 'Describe the environmental concern. Deforestation is threatening biodiversity across the globe at an alarming rate.' },
-      { title: 'Global Economy', topic: 'Economics register', grammar: 'Simple Present', dictationSentence: 'Inflation remains a persistent challenge for policymakers.', translation: 'Enflasyon politika yapÄ±cÄ±lar iÃ§in kalÄ±cÄ± bir sorun olmaya devam ediyor.', transcript: 'Describe the economic situation. Inflation remains a persistent challenge for policymakers in most developed nations.' },
-      { title: 'Social Justice', topic: 'Sociological terms', grammar: 'Simple Present', dictationSentence: 'Systemic inequality affects access to quality education.', translation: 'Sistemik eÅŸitsizlik kaliteli eÄŸitime eriÅŸimi etkiliyor.', transcript: 'Discuss the issue. Systemic inequality affects access to quality education, particularly in low-income communities.' },
-      { title: 'Rhetoric & Persuasion', topic: 'Debate techniques', grammar: 'Simple Present', dictationSentence: 'It is undeniable that action must be taken immediately.', translation: 'Derhal harekete geÃ§ilmesi gerektiÄŸi inkÃ¢r edilemez.', transcript: 'Make your case. It is undeniable that action must be taken immediately to prevent further damage to the environment.' },
-      { title: 'Technology & Ethics', topic: 'Digital society', grammar: 'Present Continuous', dictationSentence: 'Artificial intelligence is reshaping the labour market.', translation: 'Yapay zeka iÅŸ piyasasÄ±nÄ± yeniden ÅŸekillendiriyor.', transcript: 'Discuss AI\'s impact. Artificial intelligence is reshaping the labour market at a pace few had anticipated.' },
-      { title: 'Intercultural Competence', topic: 'Global citizenship', grammar: 'Simple Present', dictationSentence: 'Cultural sensitivity is essential in international business.', translation: 'KÃ¼ltÃ¼rel duyarlÄ±lÄ±k uluslararasÄ± iÅŸ dÃ¼nyasÄ±nda vazgeÃ§ilmezdir.', transcript: 'Why does culture matter? Cultural sensitivity is essential in international business to avoid misunderstandings.' },
-      { title: 'Research & Evidence', topic: 'Academic citation', grammar: 'Simple Present', dictationSentence: 'According to recent studies, sleep improves memory retention.', translation: 'Son Ã§alÄ±ÅŸmalara gÃ¶re uyku hafÄ±za tutmayÄ± iyileÅŸtiriyor.', transcript: 'Cite the research. According to recent studies, sleep improves memory retention significantly in adolescents.' },
-      { title: 'Innovation & Change', topic: 'Future language', grammar: 'Future Plans', dictationSentence: 'This technology is set to revolutionise healthcare.', translation: 'Bu teknoloji saÄŸlÄ±k hizmetlerinde devrim yaratmaya hazÄ±rlanÄ±yor.', transcript: 'What is predicted? This technology is set to revolutionise healthcare by making diagnostics faster and cheaper.' },
-      { title: 'B2 Final Review', topic: 'B2 Complete review', grammar: 'Simple Present', dictationSentence: 'Proficiency in English is an invaluable asset worldwide.', translation: 'Ä°ngilizce yeterliliÄŸi dÃ¼nya genelinde paha biÃ§ilmez bir varlÄ±ktÄ±r.', transcript: 'Celebrate your achievement! Proficiency in English is an invaluable asset worldwide. You should be very proud.' },
+      { title: 'Advanced Conditionals', topic: 'Mixed conditionals', grammar: 'Future Plans', dictationSentence: 'Had she known, she would not have agreed to it.', translation: 'Bilseydi buna razı olmayacaktı.', transcript: 'What do you think she would have done? Had she known, she would not have agreed to it under any circumstances.' },
+      { title: 'Inversion & Emphasis', topic: 'Fronting structures', grammar: 'Simple Present', dictationSentence: 'Never have I seen such a remarkable performance.', translation: 'Bu kadar olağanüstü bir performans hiç görmedim.', transcript: 'How did you find the concert? Never have I seen such a remarkable performance. The soloist was extraordinary.' },
+      { title: 'Discourse & Cohesion', topic: 'Coherent writing', grammar: 'Simple Present', dictationSentence: 'Nevertheless, the evidence strongly supports this view.', translation: 'Bununla birlikte, kanıtlar bu görüşü güçlü biçimde desteklemektedir.', transcript: 'Continue your argument. Nevertheless, the evidence strongly supports this view, despite the initial scepticism.' },
+      { title: 'Idiomatic Language', topic: 'Phrasal verbs', grammar: 'Present Continuous', dictationSentence: 'She put off the meeting until further notice.', translation: 'Toplantıyı bir sonraki duyuruya kadar erteledi.', transcript: 'Was the meeting cancelled? She put off the meeting until further notice due to unforeseen circumstances.' },
+      { title: 'Academic Writing', topic: 'Essay structure', grammar: 'Simple Present', dictationSentence: 'This essay will critically examine three key arguments.', translation: 'Bu deneme üç temel argümanı eleştirel biçimde inceleyecektir.', transcript: 'Introduce your essay. This essay will critically examine three key arguments relating to climate change policy.' },
+      { title: 'Stance & Hedging', topic: 'Academic register', grammar: 'Simple Present', dictationSentence: 'It could be argued that this approach is insufficient.', translation: 'Bu yaklaşımın yetersiz olduğu ileri sürülebilir.', transcript: 'State your position carefully. It could be argued that this approach is insufficient to address the core problem.' },
+      { title: 'Nominalisation', topic: 'Formal style', grammar: 'Simple Present', dictationSentence: 'The implementation of the policy caused significant debate.', translation: 'Politikanın uygulanması önemli bir tartışmaya yol açtı.', transcript: 'Describe the reaction. The implementation of the policy caused significant debate among senior stakeholders.' },
+      { title: 'Complex Sentences', topic: 'Subordination', grammar: 'Present Continuous', dictationSentence: 'Provided that you submit on time, marks will not be deducted.', translation: 'Zamanında teslim etmeniz koşuluyla puan indirilmeyecektir.', transcript: 'What are the conditions? Provided that you submit on time, marks will not be deducted for minor errors.' },
+      { title: 'Critical Thinking', topic: 'Evaluating arguments', grammar: 'Simple Present', dictationSentence: 'While this argument has merit, it overlooks key factors.', translation: 'Bu argüman değer taşısa da temel faktörleri göz ardı ediyor.', transcript: 'Evaluate this argument. While this argument has merit, it overlooks key factors such as economic inequality.' },
+      { title: 'Collocations', topic: 'High-frequency pairs', grammar: 'Simple Present', dictationSentence: 'The company made a significant breakthrough in research.', translation: 'Şirket araştırmada önemli bir atılım gerçekleştirdi.', transcript: 'What did the company achieve? The company made a significant breakthrough in research that changed the industry.' },
+      { title: 'Media & Journalism', topic: 'News vocabulary', grammar: 'Past Simple', dictationSentence: 'Officials confirmed that negotiations are still ongoing.', translation: 'Yetkililer müzakerelerin hâlâ sürdüğünü doğruladı.', transcript: 'What was announced? Officials confirmed that negotiations are still ongoing and no agreement has been reached.' },
+      { title: 'Environmental Issues', topic: 'Ecology language', grammar: 'Present Continuous', dictationSentence: 'Deforestation is threatening biodiversity across the globe.', translation: 'Ormansızlaşma küresel ölçekte biyolojik çeşitliliği tehdit ediyor.', transcript: 'Describe the environmental concern. Deforestation is threatening biodiversity across the globe at an alarming rate.' },
+      { title: 'Global Economy', topic: 'Economics register', grammar: 'Simple Present', dictationSentence: 'Inflation remains a persistent challenge for policymakers.', translation: 'Enflasyon politika yapıcılar için kalıcı bir sorun olmaya devam ediyor.', transcript: 'Describe the economic situation. Inflation remains a persistent challenge for policymakers in most developed nations.' },
+      { title: 'Social Justice', topic: 'Sociological terms', grammar: 'Simple Present', dictationSentence: 'Systemic inequality affects access to quality education.', translation: 'Sistemik eşitsizlik kaliteli eğitime erişimi etkiliyor.', transcript: 'Discuss the issue. Systemic inequality affects access to quality education, particularly in low-income communities.' },
+      { title: 'Rhetoric & Persuasion', topic: 'Debate techniques', grammar: 'Simple Present', dictationSentence: 'It is undeniable that action must be taken immediately.', translation: 'Derhal harekete geçilmesi gerektiği inkâr edilemez.', transcript: 'Make your case. It is undeniable that action must be taken immediately to prevent further damage to the environment.' },
+      { title: 'Technology & Ethics', topic: 'Digital society', grammar: 'Present Continuous', dictationSentence: 'Artificial intelligence is reshaping the labour market.', translation: 'Yapay zeka iş piyasasını yeniden şekillendiriyor.', transcript: 'Discuss AI\'s impact. Artificial intelligence is reshaping the labour market at a pace few had anticipated.' },
+      { title: 'Intercultural Competence', topic: 'Global citizenship', grammar: 'Simple Present', dictationSentence: 'Cultural sensitivity is essential in international business.', translation: 'Kültürel duyarlılık uluslararası iş dünyasında vazgeçilmezdir.', transcript: 'Why does culture matter? Cultural sensitivity is essential in international business to avoid misunderstandings.' },
+      { title: 'Research & Evidence', topic: 'Academic citation', grammar: 'Simple Present', dictationSentence: 'According to recent studies, sleep improves memory retention.', translation: 'Son çalışmalara göre uyku hafıza tutmayı iyileştiriyor.', transcript: 'Cite the research. According to recent studies, sleep improves memory retention significantly in adolescents.' },
+      { title: 'Innovation & Change', topic: 'Future language', grammar: 'Future Plans', dictationSentence: 'This technology is set to revolutionise healthcare.', translation: 'Bu teknoloji sağlık hizmetlerinde devrim yaratmaya hazırlanıyor.', transcript: 'What is predicted? This technology is set to revolutionise healthcare by making diagnostics faster and cheaper.' },
+      { title: 'B2 Final Review', topic: 'B2 Complete review', grammar: 'Simple Present', dictationSentence: 'Proficiency in English is an invaluable asset worldwide.', translation: 'İngilizce yeterliliği dünya genelinde paha biçilmez bir varlıktır.', transcript: 'Celebrate your achievement! Proficiency in English is an invaluable asset worldwide. You should be very proud.' },
     ],
   }
 
@@ -292,7 +292,7 @@ function buildUnits(level: Level): Unit[] {
   }))
 }
 
-// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmt(s: number) {
   return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
@@ -332,13 +332,13 @@ function compareWords(typed: string, target: string) {
   })
 }
 
-// â”€â”€â”€ Shared small components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Shared small components ──────────────────────────────────────────────────
 
 const MODULE_META = {
-  grammar:   { label: 'Grammar',     icon: 'ğŸ“–', color: '#6366F1', bg: '#EEF2FF' },
-  audio:     { label: 'Audio/Video', icon: 'ğŸ§', color: '#0EA5E9', bg: '#E0F2FE' },
-  dictation: { label: 'Dictation',   icon: 'âœï¸',  color: '#F59E0B', bg: '#FEF3C7' },
-  shadowing: { label: 'Shadowing',   icon: 'ğŸ™ï¸', color: '#10B981', bg: '#D1FAE5' },
+  grammar:   { label: 'Grammar',     icon: '📖', color: '#6366F1', bg: '#EEF2FF' },
+  audio:     { label: 'Audio/Video', icon: '🎧', color: '#0EA5E9', bg: '#E0F2FE' },
+  dictation: { label: 'Dictation',   icon: '✍️',  color: '#F59E0B', bg: '#FEF3C7' },
+  shadowing: { label: 'Shadowing',   icon: '🎙️', color: '#10B981', bg: '#D1FAE5' },
 }
 
 function Chip({ label, color, bg }: { label: string; color: string; bg: string }) {
@@ -368,7 +368,7 @@ function BackBtn({ onClick, label = 'Back' }: { onClick: () => void; label?: str
   )
 }
 
-// â”€â”€â”€ MiniPlayer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── MiniPlayer ───────────────────────────────────────────────────────────────
 
 interface MiniPlayerHandle {
   playSegment: (start: number, end: number) => void
@@ -525,7 +525,7 @@ const MiniPlayer = forwardRef<MiniPlayerHandle, {
           color: 'var(--foreground)', borderRadius: '6px',
           padding: '4px 6px', cursor: 'pointer', outline: 'none', flexShrink: 0,
         }}>
-          {[0.75, 1, 1.25, 1.5].map(s => <option key={s} value={s}>{s}Ã—</option>)}
+          {[0.75, 1, 1.25, 1.5].map(s => <option key={s} value={s}>{s}×</option>)}
         </select>
 
         {/* Transcript toggle */}
@@ -551,7 +551,7 @@ const iconBtn: React.CSSProperties = {
   transition: 'background 0.15s', flexShrink: 0,
 }
 
-// â”€â”€â”€ Views â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Views ────────────────────────────────────────────────────────────────────
 
 function DashboardView({ level, units, onSelectUnit }: {
   level: Level
@@ -565,7 +565,7 @@ function DashboardView({ level, units, onSelectUnit }: {
           {LEVEL_META[level].label}
         </h1>
         <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>
-          {units.filter(u => u.completed).length} of {units.length} units completed Â· {Math.round(units.filter(u => u.completed).length / units.length * 100)}% progress
+          {units.filter(u => u.completed).length} of {units.length} units completed · {Math.round(units.filter(u => u.completed).length / units.length * 100)}% progress
         </p>
       </div>
 
@@ -613,7 +613,7 @@ function DashboardView({ level, units, onSelectUnit }: {
                 </div>
               )}
               {isLocked && (
-                <div style={{ position: 'absolute', top: '10px', right: '10px', color: 'var(--muted-foreground)', fontSize: '14px' }}>ğŸ”’</div>
+                <div style={{ position: 'absolute', top: '10px', right: '10px', color: 'var(--muted-foreground)', fontSize: '14px' }}>🔒</div>
               )}
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -700,7 +700,7 @@ function UnitDetailView({ unit, onBack, onModule, onQuestion }: {
                 width: '48px', height: '48px', borderRadius: '12px',
                 background: MODULE_META.grammar.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '22px',
-              }}>ğŸ“–</div>
+              }}>📖</div>
               <div>
                 <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, margin: '0 0 4px' }}>{q.label}</h3>
                 <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', lineHeight: 1.5 }}>{q.question}</p>
@@ -734,7 +734,7 @@ function UnitDetailView({ unit, onBack, onModule, onQuestion }: {
                 onMouseLeave={e => { e.currentTarget.style.boxShadow = isModuleLocked ? 'none' : '0 1px 5px rgba(15,23,42,0.06)'; e.currentTarget.style.borderColor = 'var(--border)' }}
               >
                 {isModuleLocked && (
-                  <div style={{ position: 'absolute', top: '14px', right: '14px', color: 'var(--muted-foreground)', fontSize: '14px' }}>ğŸ”’</div>
+                  <div style={{ position: 'absolute', top: '14px', right: '14px', color: 'var(--muted-foreground)', fontSize: '14px' }}>🔒</div>
                 )}
                 <div style={{
                   width: '48px', height: '48px', borderRadius: '12px',
@@ -843,7 +843,7 @@ function AudioIconButton({ src }: { src: string }) {
           border: 'none', background: '#6366F1', color: '#fff', fontSize: '15px',
           cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}
-      >ğŸ”Š</button>
+      >🔊</button>
       <audio ref={ref} src={src} preload="none" />
     </>
   )
@@ -857,10 +857,10 @@ function GrammarView({ unit, question, onBack }: { unit: Unit; question?: Questi
       <BackBtn onClick={onBack} label={unit.title} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.grammar.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>ğŸ“–</div>
+        <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.grammar.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>📖</div>
         <div>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: 0 }}>{unit.grammar}</h2>
-          <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>Grammar Â· {unit.title}</p>
+          <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>Grammar · {unit.title}</p>
         </div>
       </div>
 
@@ -890,7 +890,7 @@ function GrammarView({ unit, question, onBack }: { unit: Unit; question?: Questi
                 borderRadius: '10px', padding: '10px 22px', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
               }}
             >
-              CevabÄ± gÃ¶r
+              Cevabı gör
             </button>
           )}
 
@@ -961,10 +961,10 @@ function AudioView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
         <BackBtn onClick={onBack} label={unit.title} />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.audio.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>ğŸ§</div>
+          <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.audio.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🎧</div>
           <div>
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: 0 }}>Audio / Video</h2>
-            <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{unit.title} Â· Watch the video</p>
+            <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{unit.title} · Watch the video</p>
           </div>
         </div>
 
@@ -983,10 +983,10 @@ function AudioView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
       <BackBtn onClick={onBack} label={unit.title} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.audio.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>ğŸ§</div>
+        <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.audio.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🎧</div>
         <div>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: 0 }}>Audio / Video</h2>
-          <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{unit.title} Â· Listening practice</p>
+          <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{unit.title} · Listening practice</p>
         </div>
       </div>
 
@@ -996,9 +996,9 @@ function AudioView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
         borderRadius: '20px', padding: '32px', color: '#fff',
         display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center',
       }}>
-        <div style={{ fontSize: '36px', marginBottom: '8px' }}>ğŸ§</div>
+        <div style={{ fontSize: '36px', marginBottom: '8px' }}>🎧</div>
         <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 600 }}>{unit.title}</p>
-        <p style={{ margin: 0, fontSize: '13px', opacity: 0.65, fontFamily: 'var(--font-mono)' }}>2:22 Â· Listening</p>
+        <p style={{ margin: 0, fontSize: '13px', opacity: 0.65, fontFamily: 'var(--font-mono)' }}>2:22 · Listening</p>
       </div>
 
       <MiniPlayer audioUrl={unit.audioUrl} showTranscript={showTranscript} onToggleTranscript={() => setShowTranscript(t => !t)} duration={142} />
@@ -1107,7 +1107,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
     setShowTranscript(false)
   }
 
-  // Keyboard shortcuts: Enter checks/advances, Ctrl+R replays, â†/â†’ navigate segments.
+  // Keyboard shortcuts: Enter checks/advances, Ctrl+R replays, ←/→ navigate segments.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const inTextarea = document.activeElement === textareaRef.current
@@ -1133,11 +1133,11 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.dictation.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>âœï¸</div>
+          <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.dictation.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>✍️</div>
           <div>
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: 0 }}>Dictation</h2>
-            <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{unit.title} Â· Type what you hear</p>
-            {unit.readingTitle && <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--primary)', fontWeight: 500 }}>ğŸ“– {unit.readingTitle}</p>}
+            <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{unit.title} · Type what you hear</p>
+            {unit.readingTitle && <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--primary)', fontWeight: 500 }}>📖 {unit.readingTitle}</p>}
           </div>
         </div>
         <button onClick={() => setShowSettings(s => !s)} title="Settings" style={{ ...iconBtn, borderRadius: '50%' }}>
@@ -1149,11 +1149,11 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
         <div className="anim-slide-down" style={{ background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
             <input type="checkbox" checked={hintOnWrong} onChange={e => setHintOnWrong(e.target.checked)} />
-            YanlÄ±ÅŸta ipucu gÃ¶ster
+            Yanlışta ipucu göster
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
             <input type="checkbox" checked={fullOnWrong} onChange={e => setFullOnWrong(e.target.checked)} />
-            YanlÄ±ÅŸta tam cevabÄ± gÃ¶ster
+            Yanlışta tam cevabı göster
           </label>
         </div>
       )}
@@ -1182,7 +1182,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
       )}
 
       {done ? (
-        /* â”€â”€ Completion State â”€â”€ */
+        /* ── Completion State ── */
         <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div style={{
             background: '#ECFDF5', border: '1px solid rgba(16,185,129,0.3)',
@@ -1196,8 +1196,8 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
               <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
             </div>
             <div>
-              <p style={{ margin: '0 0 2px', fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: '#065F46' }}>Tebrikler, dersi tamamladÄ±n! ğŸ‰</p>
-              <p style={{ margin: 0, fontSize: '13px', color: '#047857' }}>{correctCount}/{segments.length} doÄŸru</p>
+              <p style={{ margin: '0 0 2px', fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: '#065F46' }}>Tebrikler, dersi tamamladın! 🎉</p>
+              <p style={{ margin: 0, fontSize: '13px', color: '#047857' }}>{correctCount}/{segments.length} doğru</p>
             </div>
           </div>
 
@@ -1205,7 +1205,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
             background: 'linear-gradient(135deg, #1E3A8A 0%, #3730A3 100%)',
             borderRadius: '14px', padding: '20px 24px', color: '#fff',
           }}>
-            <p style={{ margin: '0 0 8px', fontFamily: 'var(--font-mono)', fontSize: '10px', opacity: 0.65, textTransform: 'uppercase', letterSpacing: '0.12em' }}>ğŸ‡¹ğŸ‡· Turkish Translation</p>
+            <p style={{ margin: '0 0 8px', fontFamily: 'var(--font-mono)', fontSize: '10px', opacity: 0.65, textTransform: 'uppercase', letterSpacing: '0.12em' }}>🇹🇷 Turkish Translation</p>
             <p style={{ margin: '0 0 10px', fontSize: '15px', fontWeight: 600, lineHeight: 1.5, opacity: 0.95 }}>{unit.dictationSentence}</p>
             <div style={{ height: '1px', background: 'rgba(255,255,255,0.15)', marginBottom: '10px' }} />
             <p style={{ margin: 0, fontSize: '16px', fontStyle: 'italic', lineHeight: 1.6, opacity: 0.9 }}>{unit.translation}</p>
@@ -1226,7 +1226,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
               ref={textareaRef}
               value={typed}
               onChange={e => { setTyped(e.target.value); setChecked(false); setReadyForNext(false) }}
-              placeholder="Type the sentence you hear from the audioâ€¦"
+              placeholder="Type the sentence you hear from the audio…"
               rows={4}
               disabled={checked && allCorrect}
               style={{
@@ -1289,13 +1289,13 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
                 fontSize: '14px', fontWeight: 600, cursor: typed.trim() ? 'pointer' : 'not-allowed',
                 letterSpacing: '0.02em', transition: 'all 0.15s',
               }}
-            >{readyForNext ? 'Next â†’' : 'Check Answer'}</button>
+            >{readyForNext ? 'Next →' : 'Check Answer'}</button>
             <button onClick={replay} style={{
               padding: '12px 16px', borderRadius: '10px',
               border: '1px solid var(--border)', background: 'transparent',
               color: 'var(--muted-foreground)', fontSize: '14px', fontWeight: 500,
               cursor: 'pointer', transition: 'all 0.15s',
-            }}>Replay â†»</button>
+            }}>Replay ↻</button>
             <button onClick={handleReset} style={{
               padding: '12px 16px', borderRadius: '10px',
               border: '1px solid var(--border)', background: 'transparent',
@@ -1311,25 +1311,25 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
               border: '1px solid var(--border)', background: 'transparent',
               color: curIndex === 0 ? 'var(--muted)' : 'var(--muted-foreground)', fontSize: '13px', fontWeight: 500,
               cursor: curIndex === 0 ? 'not-allowed' : 'pointer', transition: 'all 0.15s',
-            }}>â† Previous</button>
+            }}>← Previous</button>
             <button onClick={goNext} style={{
               flex: 1, padding: '10px', borderRadius: '10px',
               border: '1px solid var(--border)', background: 'transparent',
               color: 'var(--muted-foreground)', fontSize: '13px', fontWeight: 500,
               cursor: 'pointer', transition: 'all 0.15s',
-            }}>Next â†’</button>
+            }}>Next →</button>
           </div>
           <p style={{ margin: 0, fontSize: '11px', color: 'var(--muted-foreground)' }}>
-            <kbd>Enter</kbd> check Â· correct then <kbd>Enter</kbd> again for next &nbsp; <kbd>Ctrl+R</kbd> replay &nbsp; <kbd>â†</kbd>/<kbd>â†’</kbd> segments
+            <kbd>Enter</kbd> check · correct then <kbd>Enter</kbd> again for next &nbsp; <kbd>Ctrl+R</kbd> replay &nbsp; <kbd>←</kbd>/<kbd>→</kbd> segments
           </p>
 
-          {/* â”€â”€ Error State â”€â”€ */}
+          {/* ── Error State ── */}
           {checked && !allCorrect && (
             <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               {/* Word-by-word review */}
               <div style={{ background: '#FFF5F5', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '14px', padding: '18px 20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                  <span style={{ fontSize: '18px' }}>âš ï¸</span>
+                  <span style={{ fontSize: '18px' }}>⚠️</span>
                   <p style={{ margin: 0, fontWeight: 600, fontSize: '14px', color: '#B91C1C' }}>Some words need correction</p>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: hint && (hintOnWrong || fullOnWrong) ? '14px' : 0 }}>
@@ -1340,7 +1340,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
                       color: r.correct ? '#15803D' : '#B91C1C',
                       border: `1px solid ${r.correct ? 'rgba(21,128,61,0.2)' : 'rgba(185,28,28,0.25)'}`,
                       textDecoration: r.correct ? 'none' : 'underline wavy rgba(185,28,28,0.5)',
-                    }}>{r.typed || 'â€”'}</span>
+                    }}>{r.typed || '—'}</span>
                   ))}
                 </div>
                 {/* Masked/full hint */}
@@ -1366,7 +1366,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
             </div>
           )}
 
-          {/* â”€â”€ Success State â”€â”€ */}
+          {/* ── Success State ── */}
           {checked && allCorrect && (
             <div className="anim-slide-down" style={{
               background: '#ECFDF5', border: '1px solid rgba(16,185,129,0.3)',
@@ -1380,7 +1380,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
               </div>
               <div>
-                <p style={{ margin: '0 0 2px', fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: '#065F46' }}>DoÄŸru! ğŸ‰</p>
+                <p style={{ margin: '0 0 2px', fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: '#065F46' }}>Doğru! 🎉</p>
                 <p style={{ margin: 0, fontSize: '13px', color: '#047857' }}>Press Enter or Next to continue.</p>
               </div>
             </div>
@@ -1482,21 +1482,21 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
       {unit.audioUrl && <audio ref={audioRef} src={unit.audioUrl} preload="metadata" />}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.shadowing.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>ğŸ™ï¸</div>
+        <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.shadowing.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🎙️</div>
         <div>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: 0 }}>Shadowing</h2>
-          <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{unit.title} Â· {done.filter(Boolean).length}/{sentences.length} sentences recorded</p>
-          {unit.readingTitle && <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--primary)', fontWeight: 500 }}>ğŸ“– {unit.readingTitle}</p>}
+          <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{unit.title} · {done.filter(Boolean).length}/{sentences.length} sentences recorded</p>
+          {unit.readingTitle && <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--primary)', fontWeight: 500 }}>📖 {unit.readingTitle}</p>}
         </div>
       </div>
 
-      {/* Recording controls â€” kept at the top so it never scrolls out of view */}
+      {/* Recording controls — kept at the top so it never scrolls out of view */}
       <div style={{
         background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px',
         display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center',
       }}>
         <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', textAlign: 'center' }}>
-          Sentence {current + 1} / {sentences.length} â€” listen, then record yourself saying it aloud
+          Sentence {current + 1} / {sentences.length} — listen, then record yourself saying it aloud
         </p>
         <p style={{ margin: '-8px 0 0', fontSize: '15px', fontWeight: 500, textAlign: 'center', color: 'var(--foreground)' }}>
           {sentences[current]}
@@ -1545,7 +1545,7 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
             onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.06)' }}
             onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)' }}
           >
-            {recording ? 'â¹' : 'ğŸ™ï¸'}
+            {recording ? '⏹' : '🎙️'}
           </button>
         </div>
         {recording && (
@@ -1573,16 +1573,16 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
             onClick={() => setCurrent(c => Math.max(0, c - 1))}
             disabled={current === 0}
             style={{ flex: 1, padding: '9px', borderRadius: '9px', border: '1px solid var(--border)', background: 'var(--secondary)', color: current === 0 ? 'var(--muted-foreground)' : 'var(--foreground)', fontSize: '13px', fontWeight: 500, cursor: current === 0 ? 'not-allowed' : 'pointer' }}
-          >â† Previous</button>
+          >← Previous</button>
           <button
             onClick={() => setCurrent(c => Math.min(sentences.length - 1, c + 1))}
             disabled={current === sentences.length - 1}
             style={{ flex: 1, padding: '9px', borderRadius: '9px', border: '1px solid var(--border)', background: 'var(--secondary)', color: current === sentences.length - 1 ? 'var(--muted-foreground)' : 'var(--foreground)', fontSize: '13px', fontWeight: 500, cursor: current === sentences.length - 1 ? 'not-allowed' : 'pointer' }}
-          >Next â†’</button>
+          >Next →</button>
         </div>
       </div>
 
-      {/* Sentence list â€” fixed height, scrolls independently, auto-scrolls active line into view */}
+      {/* Sentence list — fixed height, scrolls independently, auto-scrolls active line into view */}
       <div style={{
         display: 'flex', flexDirection: 'column', gap: '8px',
         maxHeight: '340px', overflowY: 'auto', paddingRight: '4px',
@@ -1618,7 +1618,7 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   )
 }
 
-// â”€â”€â”€ Root App â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Root App ─────────────────────────────────────────────────────────────────
 
 const LEVELS: Level[] = ['A1', 'A2', 'B1', 'B2']
 const LEVEL_META: Record<Level, { code: string; label: string; color: string; disabled?: boolean }> = {
@@ -1656,7 +1656,7 @@ export default function App() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
 
-      {/* â”€â”€ Nav â”€â”€ */}
+      {/* ── Nav ── */}
       <header style={{
         flexShrink: 0,
         background: '#fff',
@@ -1667,7 +1667,7 @@ export default function App() {
         {/* Top bar */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', height: '58px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '9px', background: 'linear-gradient(135deg, #4F46E5, #818CF8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>ğŸ‡¬ğŸ‡§</div>
+            <div style={{ width: '32px', height: '32px', borderRadius: '9px', background: 'linear-gradient(135deg, #4F46E5, #818CF8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>🇬🇧</div>
             <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--foreground)' }}>
               Neuro<span style={{ color: 'var(--primary)' }}>cosmos</span>
             </span>
@@ -1690,12 +1690,12 @@ export default function App() {
 
           {/* User */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--muted-foreground)' }}>ğŸ”¥ 14 days</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--muted-foreground)' }}>🔥 14 days</span>
             <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, #4F46E5, #818CF8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 700, color: '#fff' }}>S</div>
           </div>
         </div>
 
-        {/* Level tabs â€” only on dashboard */}
+        {/* Level tabs — only on dashboard */}
         {view === 'dashboard' && (
           <div style={{ display: 'flex', gap: '0', borderTop: '1px solid var(--border)', padding: '0 28px' }}>
             {LEVELS.map(l => {
@@ -1717,7 +1717,7 @@ export default function App() {
                 >
                   <span style={{
                     fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 700,
-                  }}>{LEVEL_META[l].code}{isDisabled && ' ğŸ”’'}</span>
+                  }}>{LEVEL_META[l].code}{isDisabled && ' 🔒'}</span>
                   <span style={{
                     fontSize: '11px', color: level === l && !isDisabled ? LEVEL_META[l].color : 'var(--muted-foreground)',
                     background: level === l && !isDisabled ? `${LEVEL_META[l].color}18` : 'transparent',
@@ -1730,7 +1730,7 @@ export default function App() {
         )}
       </header>
 
-      {/* â”€â”€ Main content â”€â”€ */}
+      {/* ── Main content ── */}
       <main style={{ flex: 1, overflowY: 'auto', padding: '32px 28px 48px' }}>
         {view === 'dashboard' && (
           <DashboardView level={level} units={units} onSelectUnit={goUnit} />
