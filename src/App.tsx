@@ -21,6 +21,7 @@ interface GrammarBlock {
 
 interface QuestionItem {
   label: string
+  sectionTitle?: string
   question: string
   questionAudioUrl?: string
   questionTranslation?: string
@@ -882,7 +883,9 @@ function GrammarView({ unit, question, onBack }: { unit: Unit; question?: Questi
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.grammar.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>📖</div>
         <div>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: 0 }}>{unit.grammar}</h2>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: 0 }}>
+            {question ? `${question.sectionTitle || unit.grammar.split(' / ')[0]} / ${question.label}` : unit.grammar}
+          </h2>
           <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>Grammar · {unit.title}</p>
         </div>
       </div>
@@ -1711,6 +1714,7 @@ function parseCSV(text: string): Record<string, string>[] {
 function rowsToQuestionChain(rows: Record<string, string>[]): QuestionItem[] {
   return rows.map(r => ({
     label: r.label || '',
+    sectionTitle: r.sectionTitle || undefined,
     question: r.question || '',
     questionAudioUrl: r.questionAudioUrl || undefined,
     questionTranslation: r.questionTranslation || undefined,
