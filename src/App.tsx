@@ -19,23 +19,21 @@ interface GrammarBlock {
   items?: { term: string; explanation: string }[]
 }
 
-interface VocabItem {
-  term: string
-  explanation: string
-}
-
 interface QuestionItem {
   label: string
   question: string
   questionAudioUrl?: string
   questionTranslation?: string
   explanation?: string
-  preAnswerVocab?: VocabItem[]
+  preDefinitionTitle?: string
+  preDefinitionText?: string
+  preAnalogy?: string
   answerEn?: string
   answerTr?: string
   answerAudioUrl?: string
-  postAnswerVocab?: VocabItem[]
-  example?: string
+  postDefinitionTitle?: string
+  postDefinitionText?: string
+  postAnalogy?: string
   blocks?: GrammarBlock[]
   videoUrl?: string
 }
@@ -203,17 +201,13 @@ function buildUnits(level: Level): Unit[] {
             question: 'What is the supreme law of the land?',
             questionAudioUrl: '/civics-q1-question.mp3',
             questionTranslation: 'Ülkenin en yüksek kanunu nedir?',
-            preAnswerVocab: [
-              { term: 'Supreme', explanation: '"En üstün, zirve, üzerinde hiçbir şeyin olmadığı" demektir. Süpermarket (en büyük market) ya da "supreme" pizza (her şeyin üstte olduğu en zengin pizza) kelimesinden aklınızda kalabilir.' },
-              { term: 'Law', explanation: 'Kanun' },
-            ],
+            preDefinitionTitle: 'Supreme law of the land',
+            preDefinitionText: 'Belirli bir ülkenin coğrafi/hukuki sınırları içindeki en üstün yasasını tanımlar.',
+            preAnalogy: 'Hukuk sisteminde yasalar bir piramit gibidir. Piramidin en tepesinde yer alan metin supreme lawdur.',
             answerEn: 'The Constitution',
             answerTr: 'Anayasa',
             answerAudioUrl: '/civics-q1-answer.mp3',
-            postAnswerVocab: [
-              { term: 'Constitution', explanation: 'İngilizcedeki "constitute" (oluşturmak, bir araya getirmek) kelimesinden gelir. Parçaları birleştirip bir yapıyı "kurmak" demektir.' },
-            ],
-            example: 'Bir masa oyunu (örneğin Monopoly ya da futbol) oynadığınızı düşünün. Herkesin uymak zorunda olduğu, kutunun içinden çıkan o "Ana Kural Kitabı" vardır ya, işte Constitution odur. Ülkede yazılan hiçbir alt kural, bu ana kitabın kurallarına aykırı olamaz.',
+            postAnalogy: 'Devletin gücünü sınırlandıran, vatandaşların temel haklarını güvenceye alan ve ülkedeki diğer tüm kuralları bağlayan en yetkili, en üstün yasa anlamına gelir. Eğer meclis, Anayasa\'ya aykırı bir yasa çıkarırsa, o yasa geçersiz sayılır veya iptal edilir. Onu bir "Ana Kural Kitabı" olarak düşünürsek, ülkede yazılan hiçbir alt kural, bu ana kitabın kurallarına aykırı olamaz.',
             videoUrl: '/civics-q1.mp4',
           },
           { label: '2nd Question', question: 'Content will be added soon.' },
@@ -859,15 +853,21 @@ function AudioIconButton({ src }: { src: string }) {
   )
 }
 
-function renderVocabBlock(items: VocabItem[]) {
+function renderDefinitionCard(title?: string, text?: string) {
+  if (!title && !text) return null
   return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '4px 20px' }}>
-      {items.map((v, i) => (
-        <div key={i} style={{ padding: '16px 0', borderBottom: i < items.length - 1 ? '1px solid var(--border)' : 'none' }}>
-          <p style={{ margin: '0 0 5px', fontSize: '15px', fontWeight: 500 }}>{v.term}</p>
-          <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', lineHeight: 1.6 }}>{v.explanation}</p>
-        </div>
-      ))}
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '20px 24px' }}>
+      {title && <p style={{ margin: text ? '0 0 6px' : 0, fontSize: '16px', fontWeight: 700, color: 'var(--foreground)' }}>{title}</p>}
+      {text && <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)', lineHeight: 1.7 }}>{text}</p>}
+    </div>
+  )
+}
+
+function renderAnalogyCard(text?: string) {
+  if (!text) return null
+  return (
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '20px 24px' }}>
+      <p style={{ margin: 0, fontSize: '14px', color: 'var(--foreground)', lineHeight: 1.7, fontStyle: 'italic' }}>{text}</p>
     </div>
   )
 }
@@ -913,10 +913,11 @@ function GrammarView({ unit, question, onBack }: { unit: Unit; question?: Questi
             </div>
           )}
 
-          {/* Pre-answer vocabulary, one block, items back to back */}
-          {question.preAnswerVocab && question.preAnswerVocab.length > 0 && renderVocabBlock(question.preAnswerVocab)}
+          {/* Pre-answer definition + analogy */}
+          {renderDefinitionCard(question.preDefinitionTitle, question.preDefinitionText)}
+          {renderAnalogyCard(question.preAnalogy)}
 
-          {!showAnswer && (question.answerEn || question.postAnswerVocab || question.example) && (
+          {!showAnswer && (question.answerEn || question.postDefinitionText || question.postAnalogy) && (
             <button
               onClick={() => setShowAnswer(true)}
               style={{
@@ -930,22 +931,23 @@ function GrammarView({ unit, question, onBack }: { unit: Unit; question?: Questi
 
           {showAnswer && (
             <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              {(question.answerEn || question.answerTr) && (
+              {question.answerEn && (
                 <div style={{ background: '#EEF2FF', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '14px', padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
                   <div>
                     <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Answer</p>
-                    {question.answerEn && <p style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1E1B4B' }}>{question.answerEn}</p>}
-                    {question.answerTr && <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#4F46E5', fontStyle: 'italic' }}>({question.answerTr})</p>}
+                    <p style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1E1B4B' }}>{question.answerEn}</p>
                   </div>
                   {question.answerAudioUrl && <AudioIconButton src={question.answerAudioUrl} />}
                 </div>
               )}
-              {question.postAnswerVocab && question.postAnswerVocab.length > 0 && renderVocabBlock(question.postAnswerVocab)}
-              {question.example && (
-                <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '20px 24px' }}>
-                  <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)', lineHeight: 1.7 }}>{question.example}</p>
+              {question.answerTr && (
+                <div style={{ background: '#EEF2FF', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '14px', padding: '20px 24px' }}>
+                  <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Translation</p>
+                  <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.7, color: '#1E1B4B' }}>{question.answerTr}</p>
                 </div>
               )}
+              {renderDefinitionCard(question.postDefinitionTitle, question.postDefinitionText)}
+              {renderAnalogyCard(question.postAnalogy)}
             </div>
           )}
         </>
