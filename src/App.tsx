@@ -19,14 +19,23 @@ interface GrammarBlock {
   items?: { term: string; explanation: string }[]
 }
 
+interface VocabItem {
+  term: string
+  explanation: string
+}
+
 interface QuestionItem {
   label: string
   question: string
   questionAudioUrl?: string
+  questionTranslation?: string
   explanation?: string
+  preAnswerVocab?: VocabItem[]
   answerEn?: string
   answerTr?: string
   answerAudioUrl?: string
+  postAnswerVocab?: VocabItem[]
+  example?: string
   blocks?: GrammarBlock[]
   videoUrl?: string
 }
@@ -180,9 +189,9 @@ function buildUnits(level: Level): Unit[] {
         {"start":98.83,"end":101.67,"text":"The lunch bell rings."}
       ] },
       {
-        title: 'Step 1: Foundations and Rules (Constitution, Principles and Rights)',
+        title: 'Foundations and Rules',
         topic: 'Interview',
-        grammar: '1st - 12th',
+        grammar: 'Constitution, Principles and Rights / 1st - 12th',
         unitLabel: '100Q',
         hidePracticeSentence: true,
         dictationSentence: '',
@@ -193,17 +202,19 @@ function buildUnits(level: Level): Unit[] {
             label: '1st Question',
             question: 'What is the supreme law of the land?',
             questionAudioUrl: '/civics-q1-question.mp3',
+            questionTranslation: 'Ülkenin en yüksek kanunu nedir?',
+            preAnswerVocab: [
+              { term: 'Supreme', explanation: '"En üstün, zirve, üzerinde hiçbir şeyin olmadığı" demektir. Süpermarket (en büyük market) ya da "supreme" pizza (her şeyin üstte olduğu en zengin pizza) kelimesinden aklınızda kalabilir.' },
+              { term: 'Law', explanation: 'Kanun' },
+            ],
             answerEn: 'The Constitution',
             answerTr: 'Anayasa',
             answerAudioUrl: '/civics-q1-answer.mp3',
-            videoUrl: '/civics-q1.mp4',
-            blocks: [
-              { kind: 'list', label: 'Simplify the words', items: [
-                { term: 'Supreme (Süprem)', explanation: '"En üstün, zirve, üzerinde hiçbir şeyin olmadığı" demektir. Süpermarket (en büyük market) ya da "supreme" pizza (her şeyin üstte olduğu en zengin pizza) kelimesinden aklınızda kalabilir.' },
-                { term: 'Constitution (Kanstitüşın)', explanation: 'İngilizcedeki "constitute" (oluşturmak, bir araya getirmek) kelimesinden gelir. Parçaları birleştirip bir yapıyı "kurmak" demektir.' },
-              ] },
-              { kind: 'sentence', label: 'Memorable example', tr: 'Bir masa oyunu (örneğin Monopoly ya da futbol) oynadığınızı düşünün. Herkesin uymak zorunda olduğu, kutunun içinden çıkan o "Ana Kural Kitabı" vardır ya, işte Constitution odur. Ülkede yazılan hiçbir alt kural, bu ana kitabın kurallarına aykırı olamaz.' },
+            postAnswerVocab: [
+              { term: 'Constitution', explanation: 'İngilizcedeki "constitute" (oluşturmak, bir araya getirmek) kelimesinden gelir. Parçaları birleştirip bir yapıyı "kurmak" demektir.' },
             ],
+            example: 'Bir masa oyunu (örneğin Monopoly ya da futbol) oynadığınızı düşünün. Herkesin uymak zorunda olduğu, kutunun içinden çıkan o "Ana Kural Kitabı" vardır ya, işte Constitution odur. Ülkede yazılan hiçbir alt kural, bu ana kitabın kurallarına aykırı olamaz.',
+            videoUrl: '/civics-q1.mp4',
           },
           { label: '2nd Question', question: 'Content will be added soon.' },
           { label: '3rd Question', question: 'Content will be added soon.' },
@@ -705,8 +716,7 @@ function UnitDetailView({ unit, onBack, onModule, onQuestion }: {
                 <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, margin: '0 0 4px' }}>{q.label}</h3>
                 <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', lineHeight: 1.5 }}>{q.question}</p>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Chip label="Grammar" color={MODULE_META.grammar.color} bg={MODULE_META.grammar.bg} />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill={MODULE_META.grammar.color}><path d="M10 17l5-5-5-5v10z" /></svg>
               </div>
             </button>
@@ -849,6 +859,19 @@ function AudioIconButton({ src }: { src: string }) {
   )
 }
 
+function renderVocabBlock(items: VocabItem[]) {
+  return (
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '4px 20px' }}>
+      {items.map((v, i) => (
+        <div key={i} style={{ padding: '16px 0', borderBottom: i < items.length - 1 ? '1px solid var(--border)' : 'none' }}>
+          <p style={{ margin: '0 0 5px', fontSize: '15px', fontWeight: 500 }}>{v.term}</p>
+          <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', lineHeight: 1.6 }}>{v.explanation}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function GrammarView({ unit, question, onBack }: { unit: Unit; question?: QuestionItem; onBack: () => void }) {
   const [showAnswer, setShowAnswer] = useState(false)
   const rule = unit.grammarPlaceholder ? PLACEHOLDER_RULE : (GRAMMAR_RULES[unit.grammar] ?? GRAMMAR_RULES['Simple Present'])
@@ -870,10 +893,18 @@ function GrammarView({ unit, question, onBack }: { unit: Unit; question?: Questi
           <div style={{ background: '#EEF2FF', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '14px', padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
             <div>
               <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Question</p>
-              <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.7, color: '#1E1B4B' }}>{question.question}</p>
+              <p style={{ margin: 0, fontSize: '15px', fontWeight: 700, lineHeight: 1.7, color: '#1E1B4B' }}>{question.question}</p>
             </div>
             {question.questionAudioUrl && <AudioIconButton src={question.questionAudioUrl} />}
           </div>
+
+          {/* Translation box */}
+          {question.questionTranslation && (
+            <div style={{ background: '#EEF2FF', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '14px', padding: '20px 24px' }}>
+              <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Translation</p>
+              <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.7, color: '#1E1B4B' }}>{question.questionTranslation}</p>
+            </div>
+          )}
 
           {/* Question explanation, shown before the answer is revealed */}
           {question.explanation && (
@@ -882,7 +913,10 @@ function GrammarView({ unit, question, onBack }: { unit: Unit; question?: Questi
             </div>
           )}
 
-          {!showAnswer && (question.answerEn || question.blocks) && (
+          {/* Pre-answer vocabulary, one block, items back to back */}
+          {question.preAnswerVocab && question.preAnswerVocab.length > 0 && renderVocabBlock(question.preAnswerVocab)}
+
+          {!showAnswer && (question.answerEn || question.postAnswerVocab || question.example) && (
             <button
               onClick={() => setShowAnswer(true)}
               style={{
@@ -906,14 +940,11 @@ function GrammarView({ unit, question, onBack }: { unit: Unit; question?: Questi
                   {question.answerAudioUrl && <AudioIconButton src={question.answerAudioUrl} />}
                 </div>
               )}
-              {question.blocks && renderGrammarBlocks(question.blocks)}
-              {question.videoUrl && (
-                <video
-                  src={question.videoUrl}
-                  controls
-                  controlsList="nodownload noplaybackrate"
-                  style={{ width: '100%', borderRadius: '16px', background: '#000' }}
-                />
+              {question.postAnswerVocab && question.postAnswerVocab.length > 0 && renderVocabBlock(question.postAnswerVocab)}
+              {question.example && (
+                <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '20px 24px' }}>
+                  <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)', lineHeight: 1.7 }}>{question.example}</p>
+                </div>
               )}
             </div>
           )}
