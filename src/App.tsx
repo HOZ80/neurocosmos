@@ -1436,80 +1436,72 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   )
 
   const [current, setCurrent] = useState(0)
-  const [recording, setRecording] = useState(false)
-  const [recordings, setRecordings] = useState<(string | null)[]>(() => new Array(segments.length).fill(null))
-  const [recSec, setRecSec] = useState(0)
+  const [isPlaying, setIsPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
   const [loop, setLoop] = useState(false)
-  const recRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<Blob[]>([])
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
   const loopRef = useRef(loop)
   loopRef.current = loop
+  // Bumped on every navigation/stop so stale timeupdate/timeout callbacks from a
+  // previous sentence can recognize they're outdated and do nothing.
+  const playTokenRef = useRef(0)
 
   useEffect(() => {
-    setRecordings(new Array(segments.length).fill(null))
     setCurrent(0)
+    playTokenRef.current++
+    setIsPlaying(false)
   }, [segments])
 
   useEffect(() => {
     itemRefs.current[current]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [current])
 
-  function playOriginal() {
-    const seg = segments[current]
+  // Stop everything cleanly on unmount.
+  useEffect(() => () => { playTokenRef.current++; audioRef.current?.pause() }, [])
+
+  function playSegment(index: number) {
     const audio = audioRef.current
     if (!audio || !unit.audioUrl) return
+    const seg = segments[index]
+    playTokenRef.current++
+    const token = playTokenRef.current
+    audio.pause()
     audio.playbackRate = speed
     audio.currentTime = seg.start
-    audio.play()
     const onTime = () => {
+      if (token !== playTokenRef.current) { audio.removeEventListener('timeupdate', onTime); return }
       if (audio.currentTime >= seg.end) {
         audio.pause()
         audio.removeEventListener('timeupdate', onTime)
-        if (loopRef.current) setTimeout(playOriginal, 400)
+        setIsPlaying(false)
+        if (loopRef.current) {
+          setTimeout(() => { if (token === playTokenRef.current) playSegment(index) }, 400)
+        }
       }
     }
     audio.addEventListener('timeupdate', onTime)
+    audio.play()
+    setIsPlaying(true)
   }
 
-  function playOwn() {
-    const url = recordings[current]
-    if (!url) return
-    new Audio(url).play()
+  function goTo(index: number) {
+    const clamped = Math.max(0, Math.min(segments.length - 1, index))
+    setCurrent(clamped)
+    playSegment(clamped)
   }
 
-  async function handleRecord() {
-    if (recording) {
-      mediaRecorderRef.current?.stop()
-      if (recRef.current) clearInterval(recRef.current)
-      setRecording(false)
-      return
-    }
-    try {
-      if (!streamRef.current) streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true })
-      chunksRef.current = []
-      const mr = new MediaRecorder(streamRef.current)
-      mediaRecorderRef.current = mr
-      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
-      mr.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
-        const url = URL.createObjectURL(blob)
-        setRecordings(r => { const next = [...r]; next[current] = url; return next })
-      }
-      mr.start()
-      setRecSec(0)
-      setRecording(true)
-      recRef.current = setInterval(() => setRecSec(s => s + 1), 1000)
-    } catch {
-      setRecording(false)
+  function togglePlayPause() {
+    const audio = audioRef.current
+    if (!audio) return
+    if (isPlaying) {
+      audio.pause()
+      setIsPlaying(false)
+    } else {
+      playSegment(current)
     }
   }
 
-  const done = recordings.map(r => r != null)
   const sentences = segments.map(s => s.text)
 
   return (
@@ -1521,40 +1513,31 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
         <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.shadowing.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🎙️</div>
         <div>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: 0 }}>Shadowing</h2>
-          <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{unit.title} · {done.filter(Boolean).length}/{sentences.length} sentences recorded</p>
+          <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{unit.title} · {sentences.length} sentences</p>
           {unit.readingTitle && <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--primary)', fontWeight: 500 }}>📖 {unit.readingTitle}</p>}
         </div>
       </div>
 
-      {/* Recording controls — kept at the top so it never scrolls out of view */}
+      {/* Playback controls — kept at the top so they never scroll out of view */}
       <div style={{
         background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px',
         display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center',
       }}>
         <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', textAlign: 'center' }}>
-          Sentence {current + 1} / {sentences.length} — listen, then record yourself saying it aloud
+          Sentence {current + 1} / {sentences.length} — play it, then shadow it out loud
         </p>
         <p style={{ margin: '-8px 0 0', fontSize: '15px', fontWeight: 500, textAlign: 'center', color: 'var(--foreground)' }}>
           {sentences[current]}
         </p>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
-          <button onClick={playOriginal} style={{
-            padding: '7px 16px', borderRadius: '9px', border: '1px solid var(--border)',
-            background: 'var(--secondary)', color: 'var(--foreground)', fontSize: '13px', fontWeight: 500, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: '6px',
-          }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-            Listen to sentence
-          </button>
-
-          <button onClick={() => setLoop(l => !l)} title="Repeat automatically" style={{
+          <button onClick={() => setLoop(l => !l)} title="Repeat this sentence automatically" style={{
             padding: '7px 12px', borderRadius: '9px', border: `1px solid ${loop ? 'rgba(16,185,129,0.4)' : 'var(--border)'}`,
             background: loop ? '#ECFDF5' : 'var(--secondary)', color: loop ? '#059669' : 'var(--foreground)',
             fontSize: '13px', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
           }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17 17H7v-4l-5 5 5 5v-4h12v-6h-2v4zM7 7h10v4l5-5-5-5v4H5v6h2V7z" /></svg>
-            Loop
+            Loop this sentence
           </button>
 
           <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: '9px', overflow: 'hidden' }}>
@@ -1568,50 +1551,30 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
           </div>
         </div>
 
-        <div style={{ position: 'relative', display: 'inline-flex' }}>
-          {recording && <div className="mic-ring" style={{ position: 'absolute', inset: 0, borderRadius: '50%' }} />}
-          <button onClick={handleRecord} style={{
-            width: '68px', height: '68px', borderRadius: '50%', border: 'none',
-            background: recording ? 'linear-gradient(135deg, #EF4444, #DC2626)' : 'linear-gradient(135deg, #10B981, #059669)',
-            color: '#fff', cursor: 'pointer', fontSize: '26px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: recording ? '0 4px 20px rgba(239,68,68,0.4)' : '0 4px 20px rgba(16,185,129,0.3)',
-            transition: 'all 0.2s', position: 'relative', zIndex: 1,
-          }}
-            onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.06)' }}
-            onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)' }}
-          >
-            {recording ? '⏹' : '🎙️'}
-          </button>
-        </div>
-        {recording && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
-              {[1,2,3,4,5].map(i => (
-                <div key={i} className="wave-bar" style={{ width: '4px', background: '#EF4444', borderRadius: '3px', height: '4px', animationDuration: `${0.4 + i * 0.07}s` }} />
-              ))}
-            </div>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: '#EF4444' }}>Recording {fmt(recSec)}</span>
-          </div>
-        )}
-        {!recording && done[current] && (
-          <button onClick={playOwn} style={{
-            padding: '7px 16px', borderRadius: '9px', border: '1px solid rgba(16,185,129,0.4)',
-            background: '#ECFDF5', color: '#059669', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: '6px',
-          }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-            Play your recording
-          </button>
-        )}
+        <button onClick={togglePlayPause} style={{
+          width: '68px', height: '68px', borderRadius: '50%', border: 'none',
+          background: 'linear-gradient(135deg, #6366F1, #4F46E5)',
+          color: '#fff', cursor: 'pointer', fontSize: '26px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 4px 20px rgba(99,102,241,0.35)',
+          transition: 'transform 0.15s',
+        }}
+          onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.06)' }}
+          onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)' }}
+        >
+          {isPlaying
+            ? <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z" /></svg>
+            : <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: '3px' }}><path d="M8 5v14l11-7z" /></svg>}
+        </button>
+
         <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
           <button
-            onClick={() => setCurrent(c => Math.max(0, c - 1))}
+            onClick={() => goTo(current - 1)}
             disabled={current === 0}
             style={{ flex: 1, padding: '9px', borderRadius: '9px', border: '1px solid var(--border)', background: 'var(--secondary)', color: current === 0 ? 'var(--muted-foreground)' : 'var(--foreground)', fontSize: '13px', fontWeight: 500, cursor: current === 0 ? 'not-allowed' : 'pointer' }}
           >← Previous</button>
           <button
-            onClick={() => setCurrent(c => Math.min(sentences.length - 1, c + 1))}
+            onClick={() => goTo(current + 1)}
             disabled={current === sentences.length - 1}
             style={{ flex: 1, padding: '9px', borderRadius: '9px', border: '1px solid var(--border)', background: 'var(--secondary)', color: current === sentences.length - 1 ? 'var(--muted-foreground)' : 'var(--foreground)', fontSize: '13px', fontWeight: 500, cursor: current === sentences.length - 1 ? 'not-allowed' : 'pointer' }}
           >Next →</button>
@@ -1627,26 +1590,24 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
           <button
             key={i}
             ref={el => { itemRefs.current[i] = el }}
-            onClick={() => { setCurrent(i); setRecording(false) }}
+            onClick={() => goTo(i)}
             style={{
               textAlign: 'left', padding: '14px 18px', borderRadius: '12px',
-              border: `1.5px solid ${i === current ? 'rgba(16,185,129,0.45)' : done[i] ? 'rgba(16,185,129,0.2)' : 'var(--border)'}`,
-              background: i === current ? '#ECFDF5' : done[i] ? '#F0FDF4' : 'var(--card)',
+              border: `1.5px solid ${i === current ? 'rgba(99,102,241,0.45)' : 'var(--border)'}`,
+              background: i === current ? '#EEF2FF' : 'var(--card)',
               cursor: 'pointer', transition: 'all 0.15s',
               display: 'flex', alignItems: 'flex-start', gap: '12px', flexShrink: 0,
             }}
           >
             <div style={{
               width: '22px', height: '22px', borderRadius: '50%', flexShrink: 0, marginTop: '1px',
-              background: done[i] ? 'var(--success)' : i === current ? 'rgba(16,185,129,0.15)' : 'var(--muted)',
+              background: i === current ? 'rgba(99,102,241,0.15)' : 'var(--muted)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: i === current && !done[i] ? '2px solid rgba(16,185,129,0.5)' : 'none',
+              border: i === current ? '2px solid rgba(99,102,241,0.5)' : 'none',
             }}>
-              {done[i]
-                ? <svg width="11" height="11" viewBox="0 0 24 24" fill="white"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
-                : <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: i === current ? '#059669' : 'var(--muted-foreground)' }}>{i + 1}</span>}
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: i === current ? '#4F46E5' : 'var(--muted-foreground)' }}>{i + 1}</span>
             </div>
-            <span style={{ fontSize: '14px', lineHeight: 1.6, color: i === current ? '#065F46' : done[i] ? '#047857' : 'var(--foreground)', fontWeight: i === current ? 500 : 400 }}>{s}</span>
+            <span style={{ fontSize: '14px', lineHeight: 1.6, color: i === current ? '#3730A3' : 'var(--foreground)', fontWeight: i === current ? 500 : 400 }}>{s}</span>
           </button>
         ))}
       </div>
