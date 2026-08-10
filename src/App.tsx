@@ -835,7 +835,7 @@ function renderGrammarBlocks(blocks: GrammarBlock[]) {
   })
 }
 
-function AudioIconButton({ src }: { src: string }) {
+function AudioIconButton({ src, bg }: { src: string; bg?: string }) {
   const ref = useRef<HTMLAudioElement>(null)
   return (
     <>
@@ -845,7 +845,7 @@ function AudioIconButton({ src }: { src: string }) {
         aria-label="Play audio"
         style={{
           width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0,
-          border: 'none', background: '#6366F1', color: '#fff', fontSize: '15px',
+          border: 'none', background: bg || '#6366F1', color: '#fff', fontSize: '15px',
           cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}
       >🔊</button>
@@ -893,12 +893,12 @@ function GrammarView({ unit, question, onBack }: { unit: Unit; question?: Questi
       {question ? (
         <>
           {/* Question box, with listen icon */}
-          <div style={{ background: '#EEF2FF', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '14px', padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+          <div style={{ background: '#EEF2FF', border: '1px solid #B20909', borderRadius: '14px', padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
             <div>
-              <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Question</p>
+              <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#B20909', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Question</p>
               <p style={{ margin: 0, fontSize: '15px', fontWeight: 700, lineHeight: 1.7, color: '#1E1B4B' }}>{question.question}</p>
             </div>
-            {question.questionAudioUrl && <AudioIconButton src={question.questionAudioUrl} />}
+            {question.questionAudioUrl && <AudioIconButton src={question.questionAudioUrl} bg="#B20909" />}
           </div>
 
           {/* Translation box */}
@@ -935,12 +935,12 @@ function GrammarView({ unit, question, onBack }: { unit: Unit; question?: Questi
           {showAnswer && (
             <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
               {question.answerEn && (
-                <div style={{ background: '#EEF2FF', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '14px', padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+                <div style={{ background: '#EEF2FF', border: '1px solid #33710F', borderRadius: '14px', padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
                   <div>
-                    <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Answer</p>
+                    <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#33710F', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Answer</p>
                     <p style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1E1B4B' }}>{question.answerEn}</p>
                   </div>
-                  {question.answerAudioUrl && <AudioIconButton src={question.answerAudioUrl} />}
+                  {question.answerAudioUrl && <AudioIconButton src={question.answerAudioUrl} bg="#33710F" />}
                 </div>
               )}
               {question.answerTr && (
