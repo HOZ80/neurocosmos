@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo, forwardRef, useImperativeHandle }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Level = 'A1' | 'A2' | 'B1' | 'B2'
+type Level = 'A1' | 'A2' | 'B1' | 'B2' | 'P'
 type View = 'dashboard' | 'unit' | 'grammar' | 'audio' | 'dictation' | 'shadowing'
 
 interface DictationSegment {
@@ -56,6 +56,7 @@ interface Unit {
   grammarPlaceholder?: boolean
   unitLabel?: string
   moduleLocks?: Partial<Record<'grammar' | 'audio' | 'dictation' | 'shadowing', boolean>>
+  hiddenModules?: Array<'grammar' | 'audio' | 'dictation' | 'shadowing'>
   hidePracticeSentence?: boolean
   videoUrl?: string
   passiveVideo?: boolean
@@ -287,13 +288,44 @@ function buildUnits(level: Level): Unit[] {
       { title: 'Innovation & Change', topic: 'Future language', grammar: 'Future Plans', dictationSentence: 'This technology is set to revolutionise healthcare.', translation: 'Bu teknoloji sağlık hizmetlerinde devrim yaratmaya hazırlanıyor.', transcript: 'What is predicted? This technology is set to revolutionise healthcare by making diagnostics faster and cheaper.' },
       { title: 'B2 Final Review', topic: 'B2 Complete review', grammar: 'Simple Present', dictationSentence: 'Proficiency in English is an invaluable asset worldwide.', translation: 'İngilizce yeterliliği dünya genelinde paha biçilmez bir varlıktır.', transcript: 'Celebrate your achievement! Proficiency in English is an invaluable asset worldwide. You should be very proud.' },
     ],
+    // 'P' (Kişisel) sekmesi — A1/A2 ile birebir aynı ünite yapısını kullanır
+    // (Grammar / Audio / Dictation / Shadowing modülleri dahil). Tek fark:
+    // bu sekme başkalarına hiç görünmüyor, sadece şifreyle senin açabilmen.
+    // Yeni bir ünite eklemek istediğinde, A1/A2'deki gibi bu diziye yeni bir
+    // { title:..., topic:..., grammar:..., dictationSentence:..., ... } objesi
+    // eklemen yeterli.
+    P: [
+      {
+        title: 'Çalışma Notu 1',
+        topic: 'Kişisel',
+        grammar: 'Serbest',
+        hiddenModules: ['audio'],
+        dictationSentence: 'Example sentence.',
+        translation: 'Örnek cümle.',
+        transcript: 'Bu ünitenin dictation/shadowing içeriğini gerçek ses+altyazı geldiğinde dolduracağız.',
+        customGrammarBlocks: [
+          {
+            kind: 'box',
+            label: 'Bilinmeyen Kelime ve Yapılar',
+            en: 'Buraya öğrenmek istediğin/bilmediğin kelime, deyim veya yapıları yazacaksın.',
+            tr: 'Örnek: "nevertheless" — bununla birlikte',
+          },
+          {
+            kind: 'sentence',
+            label: 'Açıklama',
+            en: 'Buraya o kelime/yapının açıklamasını, kullanım örneklerini yazacaksın.',
+            tr: 'Bu blok beyaz zeminli, senin not defterindeki "açıklama" kısmı gibi düşün.',
+          },
+        ],
+      },
+    ],
   }
 
   return sets[level].map((u, i) => ({
     ...u,
     id: i + 1,
     completed: false,
-    locked: level === 'A1' ? i > 0 : level === 'A2' ? i > 1 : true,
+    locked: level === 'A1' ? i > 0 : level === 'A2' ? i > 1 : level === 'P' ? false : true,
     progress: 0,
   }))
 }
@@ -559,6 +591,55 @@ const iconBtn: React.CSSProperties = {
 
 // ─── Views ────────────────────────────────────────────────────────────────────
 
+function PasswordModal({ onSubmit, onClose, error }: {
+  onSubmit: (pw: string) => void
+  onClose: () => void
+  error: boolean
+}) {
+  const [value, setValue] = useState('')
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
+      }}
+    >
+      <div onClick={e => e.stopPropagation()} style={{
+        background: 'var(--card)', borderRadius: '16px', padding: '24px',
+        width: '280px', boxShadow: '0 12px 40px rgba(15,23,42,0.25)',
+        display: 'flex', flexDirection: 'column', gap: '12px',
+      }}>
+        <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: 700, color: 'var(--foreground)' }}>
+          🔒 Kişisel alan
+        </h3>
+        <input
+          type="password"
+          value={value}
+          autoFocus
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') onSubmit(value) }}
+          placeholder="Şifre"
+          style={{
+            padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)',
+            fontSize: '14px', outline: 'none', fontFamily: 'inherit',
+          }}
+        />
+        {error && <span style={{ fontSize: '12px', color: '#DC2626' }}>Yanlış şifre.</span>}
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
+          <button onClick={onClose} style={{
+            background: 'none', border: 'none', fontSize: '13px', color: 'var(--muted-foreground)', cursor: 'pointer', padding: '8px 4px',
+          }}>Vazgeç</button>
+          <button onClick={() => onSubmit(value)} style={{
+            background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '8px',
+            padding: '8px 16px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+          }}>Aç</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function DashboardView({ level, units, onSelectUnit }: {
   level: Level
   units: Unit[]
@@ -719,7 +800,9 @@ function UnitDetailView({ unit, onBack, onModule, onQuestion }: {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
-          {(Object.entries(MODULE_META) as [keyof typeof MODULE_META, typeof MODULE_META[keyof typeof MODULE_META]][]).map(([key, meta]) => {
+          {(Object.entries(MODULE_META) as [keyof typeof MODULE_META, typeof MODULE_META[keyof typeof MODULE_META]][])
+            .filter(([key]) => !unit.hiddenModules?.includes(key))
+            .map(([key, meta]) => {
             const isModuleLocked = !!unit.moduleLocks?.[key]
             return (
               <button
@@ -1617,13 +1700,27 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
 
-const LEVELS: Level[] = ['A1', 'A2', 'B1', 'B2']
-const LEVEL_META: Record<Level, { code: string; label: string; color: string; disabled?: boolean }> = {
+const LEVELS: Level[] = ['A1', 'A2', 'B1', 'B2', 'P']
+const LEVEL_META: Record<Level, { code: string; label: string; color: string; disabled?: boolean; private?: boolean }> = {
   A1: { code: 'AF', label: 'English Group A', color: '#10B981' },
   A2: { code: 'H',  label: 'English Group B', color: '#0EA5E9' },
   B1: { code: 'B1', label: 'Others',          color: '#8B5CF6', disabled: true },
   B2: { code: 'B2', label: 'Coming soon',     color: '#94A3B8', disabled: true },
+  // 'P': başkalarına her zaman kilitli görünür (🔒). Sadece doğru şifre
+  // girilince açılır — bkz. PRIVATE_PASSWORD ve tab bar'daki tıklama mantığı.
+  P:  { code: 'P',  label: 'Kişisel',          color: '#F59E0B', disabled: true, private: true },
 }
+
+// ─── Kişisel alan (sadece sana özel) ───────────────────────────────────────────
+// Bu sekme başkalarına hep kilitli/pasif görünür. Sen şifreyi girince açılır ve
+// tarayıcında hatırlanır (tekrar şifre girmen gerekmez, aynı cihaz/tarayıcıda).
+//
+// ÖNEMLİ: Aşağıdaki şifreyi kendi seçtiğin bir şeyle değiştir. Bu şifre kod
+// içinde düz yazıyor — yani "birisi kaynağa bakarsa görebilir" seviyesinde bir
+// koruma. Gerçek bir gizlilik/güvenlik önlemi değil, sadece rastgele birinin
+// linke tıklayıp tesadüfen görmesini engelliyor.
+const PRIVATE_PASSWORD = 'BURAYA_KENDI_SIFRENI_YAZ'
+const PRIVATE_UNLOCK_KEY = 'nc_private_unlocked'
 
 // ─── Sheets-backed content loading (100Q) ──────────────────────────────────────
 // The "Foundations and Rules" (100Q) unit's questions live in a published
@@ -1697,6 +1794,33 @@ export default function App() {
   const [view, setView] = useState<View>('dashboard')
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null)
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState<number | null>(null)
+
+  // ── Kişisel alan kilidi ──
+  const [privateUnlocked, setPrivateUnlocked] = useState<boolean>(() => {
+    try { return localStorage.getItem(PRIVATE_UNLOCK_KEY) === 'true' } catch { return false }
+  })
+  const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const [passwordError, setPasswordError] = useState(false)
+
+  function handlePasswordSubmit(pw: string) {
+    if (pw === PRIVATE_PASSWORD) {
+      setPrivateUnlocked(true)
+      try { localStorage.setItem(PRIVATE_UNLOCK_KEY, 'true') } catch {}
+      setShowPasswordModal(false)
+      setPasswordError(false)
+      setLevel('P')
+      setSelectedUnit(null)
+    } else {
+      setPasswordError(true)
+    }
+  }
+
+  function handleLockPrivate() {
+    setPrivateUnlocked(false)
+    try { localStorage.removeItem(PRIVATE_UNLOCK_KEY) } catch {}
+    setLevel('A1')
+    setSelectedUnit(null)
+  }
 
   // Sheet-backed 100Q data. Starts null (meaning: "use the hardcoded fallback
   // below until the Sheet has loaded"), then fills in once the fetch succeeds.
@@ -1775,6 +1899,12 @@ export default function App() {
 
           {/* User */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {level === 'P' && privateUnlocked && (
+              <button onClick={handleLockPrivate} style={{
+                background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
+                padding: '5px 10px', fontSize: '12px', fontWeight: 600, color: 'var(--foreground)', cursor: 'pointer',
+              }}>🔒 Kilitle</button>
+            )}
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--muted-foreground)' }}>🔥 14 days</span>
             <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, #4F46E5, #818CF8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 700, color: '#fff' }}>S</div>
           </div>
@@ -1784,30 +1914,42 @@ export default function App() {
         {view === 'dashboard' && (
           <div style={{ display: 'flex', gap: '0', borderTop: '1px solid var(--border)', padding: '0 28px' }}>
             {LEVELS.map(l => {
-              const isDisabled = LEVEL_META[l].disabled
+              const meta = LEVEL_META[l]
+              const isPrivate = !!meta.private
+              // B1/B2: herkese (senin de dahil) tamamen kilitli, tıklanamaz.
+              // P: her zaman tıklanabilir — açık değilse şifre sorar, açıksa normal sekme gibi davranır.
+              const isHardDisabled = !!meta.disabled && !isPrivate
+              const looksLocked = isHardDisabled || (isPrivate && !privateUnlocked)
               return (
                 <button
                   key={l}
-                  onClick={() => { if (!isDisabled) { setLevel(l); setSelectedUnit(null) } }}
-                  disabled={isDisabled}
+                  onClick={() => {
+                    if (isPrivate) {
+                      if (privateUnlocked) { setLevel('P'); setSelectedUnit(null) }
+                      else setShowPasswordModal(true)
+                    } else if (!meta.disabled) {
+                      setLevel(l); setSelectedUnit(null)
+                    }
+                  }}
+                  disabled={isHardDisabled}
                   style={{
                     padding: '10px 24px', background: 'none', border: 'none',
-                    borderBottom: `2.5px solid ${level === l && !isDisabled ? 'var(--primary)' : 'transparent'}`,
-                    color: isDisabled ? 'var(--muted-foreground)' : (level === l ? 'var(--primary)' : 'var(--muted-foreground)'),
-                    opacity: isDisabled ? 0.5 : 1,
-                    fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: level === l && !isDisabled ? 700 : 500,
-                    cursor: isDisabled ? 'not-allowed' : 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: '8px',
+                    borderBottom: `2.5px solid ${level === l && !looksLocked ? 'var(--primary)' : 'transparent'}`,
+                    color: looksLocked ? 'var(--muted-foreground)' : (level === l ? 'var(--primary)' : 'var(--muted-foreground)'),
+                    opacity: looksLocked ? 0.5 : 1,
+                    fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: level === l && !looksLocked ? 700 : 500,
+                    cursor: isHardDisabled ? 'not-allowed' : 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: '8px',
                     marginBottom: '-1px',
                   }}
                 >
                   <span style={{
                     fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 700,
-                  }}>{LEVEL_META[l].code}{isDisabled && ' 🔒'}</span>
+                  }}>{meta.code}{looksLocked && ' 🔒'}</span>
                   <span style={{
-                    fontSize: '11px', color: level === l && !isDisabled ? LEVEL_META[l].color : 'var(--muted-foreground)',
-                    background: level === l && !isDisabled ? `${LEVEL_META[l].color}18` : 'transparent',
+                    fontSize: '11px', color: level === l && !looksLocked ? meta.color : 'var(--muted-foreground)',
+                    background: level === l && !looksLocked ? `${meta.color}18` : 'transparent',
                     padding: '1px 6px', borderRadius: '4px',
-                  }}>{LEVEL_META[l].label}</span>
+                  }}>{meta.label}</span>
                 </button>
               )
             })}
@@ -1836,6 +1978,14 @@ export default function App() {
           <ShadowingView unit={selectedUnitLive} onBack={() => setView('unit')} />
         )}
       </main>
+
+      {showPasswordModal && (
+        <PasswordModal
+          error={passwordError}
+          onSubmit={handlePasswordSubmit}
+          onClose={() => { setShowPasswordModal(false); setPasswordError(false) }}
+        />
+      )}
     </div>
   )
 }
