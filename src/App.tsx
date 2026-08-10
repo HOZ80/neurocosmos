@@ -1719,7 +1719,7 @@ const LEVEL_META: Record<Level, { code: string; label: string; color: string; di
 // içinde düz yazıyor — yani "birisi kaynağa bakarsa görebilir" seviyesinde bir
 // koruma. Gerçek bir gizlilik/güvenlik önlemi değil, sadece rastgele birinin
 // linke tıklayıp tesadüfen görmesini engelliyor.
-const PRIVATE_PASSWORD = 'BURAYA_KENDI_SIFRENI_YAZ'
+const PRIVATE_PASSWORD = '87654321'
 const PRIVATE_UNLOCK_KEY = 'nc_private_unlocked'
 
 // ─── Sheets-backed content loading (100Q) ──────────────────────────────────────
