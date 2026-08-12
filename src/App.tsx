@@ -999,11 +999,21 @@ function renderAnalogyCard(text?: string) {
   if (sections.length === 0) return null
   return (
     <>
-      {sections.map((sec, i) => (
-        <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '20px 24px' }}>
-          <p style={{ margin: 0, fontSize: '14px', color: 'var(--foreground)', lineHeight: 1.7, fontStyle: 'italic', whiteSpace: 'pre-wrap' }}>{sec}</p>
-        </div>
-      ))}
+      {sections.map((sec, i) => {
+        const lines = sec.split('\n')
+        let title: string | undefined
+        let body = sec
+        if (lines[0].trim().startsWith('#')) {
+          title = lines[0].trim().replace(/^#+\s*/, '')
+          body = lines.slice(1).join('\n').trim()
+        }
+        return (
+          <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '20px 24px' }}>
+            {title && <p style={{ margin: body ? '0 0 6px' : 0, fontSize: '15px', fontWeight: 700, color: 'var(--foreground)' }}>{title}</p>}
+            {body && <p style={{ margin: 0, fontSize: '14px', color: 'var(--foreground)', lineHeight: 1.7, fontStyle: 'italic', whiteSpace: 'pre-wrap' }}>{body}</p>}
+          </div>
+        )
+      })}
     </>
   )
 }
