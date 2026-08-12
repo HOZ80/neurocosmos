@@ -57,6 +57,7 @@ interface Unit {
   unitLabel?: string
   moduleLocks?: Partial<Record<'grammar' | 'audio' | 'dictation' | 'shadowing', boolean>>
   hiddenModules?: Array<'grammar' | 'audio' | 'dictation' | 'shadowing'>
+  freeSourceSelect?: boolean
   hidePracticeSentence?: boolean
   videoUrl?: string
   passiveVideo?: boolean
@@ -327,6 +328,7 @@ function buildUnits(level: Level): Unit[] {
     completed: false,
     locked: level === 'A1' ? i > 0 : level === 'A2' ? i > 1 : level === 'P' ? false : true,
     progress: 0,
+    freeSourceSelect: level === 'P',
   }))
 }
 
@@ -406,6 +408,104 @@ function BackBtn({ onClick, label = 'Back' }: { onClick: () => void; label?: str
   )
 }
 
+// ─── Local file source (kişisel alan — serbest ses/altyazı seçimi) ────────────
+// Robust SRT parser: scans line-by-line for timecodes instead of relying on
+// blank-line block splitting, so it tolerates missing blank lines between
+// blocks, a BOM at the start of the file, CRLF endings, and captions that
+// happen to start with a bare number. Ported from the standalone shadowing
+// tool after real-world testing turned up all of these edge cases.
+const SRT_TIME_RE = /(\d{1,2}):(\d\d):(\d\d)[,.](\d{1,3})\s*-->\s*(\d{1,2}):(\d\d):(\d\d)[,.](\d{1,3})/
+
+function parseSRT(text: string): DictationSegment[] {
+  const lines = text.replace(/^\uFEFF/, '').replace(/\r/g, '').split('\n')
+  const result: DictationSegment[] = []
+  let i = 0
+  while (i < lines.length) {
+    const m = lines[i].match(SRT_TIME_RE)
+    if (m) {
+      const start = (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) + (+m[4]) / Math.pow(10, m[4].length)
+      const end = (+m[5]) * 3600 + (+m[6]) * 60 + (+m[7]) + (+m[8]) / Math.pow(10, m[8].length)
+      i++
+      const textLines: string[] = []
+      while (i < lines.length && lines[i].trim() !== '') {
+        if (/^\d+$/.test(lines[i].trim()) && SRT_TIME_RE.test(lines[i + 1] || '')) break
+        textLines.push(lines[i])
+        i++
+      }
+      const text2 = textLines.join(' ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+      if (text2) result.push({ start, end, text: text2 })
+    } else {
+      i++
+    }
+  }
+  return result
+}
+
+function pickerLabelStyle(accentColor: string): React.CSSProperties {
+  return {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+    padding: '16px', borderRadius: '12px', border: `1.5px dashed ${accentColor}66`,
+    background: `${accentColor}0d`, color: accentColor, fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+  }
+}
+
+// Lets the personal (P) area pick any audio + .srt file on the spot, instead
+// of using content baked into the unit ahead of time. accept="*/*" on the srt
+// input is deliberate — on mobile, a tighter accept filter can hide .srt
+// files picked from Google Drive since their reported MIME type varies.
+function LocalSourcePicker({ accentColor, onLoaded }: {
+  accentColor: string
+  onLoaded: (audioUrl: string, segments: DictationSegment[]) => void
+}) {
+  const [audioName, setAudioName] = useState<string | null>(null)
+  const [srtName, setSrtName] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const audioUrlRef = useRef<string | null>(null)
+  const segmentsRef = useRef<DictationSegment[] | null>(null)
+
+  function tryReveal() {
+    if (audioUrlRef.current && segmentsRef.current) onLoaded(audioUrlRef.current, segmentsRef.current)
+  }
+
+  function handleAudioFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    audioUrlRef.current = URL.createObjectURL(file)
+    setAudioName(file.name)
+    tryReveal()
+  }
+
+  function handleSrtFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const parsed = parseSRT(String(reader.result))
+      if (parsed.length === 0) { setError('Altyazı okunamadı, formatı kontrol et.'); return }
+      setError(null)
+      segmentsRef.current = parsed
+      setSrtName(file.name)
+      tryReveal()
+    }
+    reader.readAsText(file)
+  }
+
+  return (
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <p style={{ margin: '0 0 4px', fontSize: '13px', color: 'var(--muted-foreground)' }}>Kişisel alan — o an istediğin ses ve altyazı dosyasını seç.</p>
+      <label style={pickerLabelStyle(accentColor)}>
+        <span>{audioName ? `✓ ${audioName}` : '🎧 Ses dosyası seç'}</span>
+        <input type="file" accept="audio/*" onChange={handleAudioFile} style={{ display: 'none' }} />
+      </label>
+      <label style={pickerLabelStyle(accentColor)}>
+        <span>{srtName ? `✓ ${srtName}` : '📄 Altyazı (.srt) dosyası seç'}</span>
+        <input type="file" accept="*/*" onChange={handleSrtFile} style={{ display: 'none' }} />
+      </label>
+      {error && <p style={{ margin: 0, fontSize: '12px', color: '#DC2626' }}>{error}</p>}
+    </div>
+  )
+}
+
 // ─── MiniPlayer ───────────────────────────────────────────────────────────────
 
 interface MiniPlayerHandle {
@@ -431,14 +531,26 @@ const MiniPlayer = forwardRef<MiniPlayerHandle, {
       segmentEndRef.current = end
       const audio = audioRef.current
       if (audioUrl && audio) {
-        audio.currentTime = start
-        audio.play()
+        const seek = () => { audio.currentTime = start; audio.play() }
+        if (audio.readyState >= 1) {
+          seek()
+        } else {
+          const onMeta = () => { audio.removeEventListener('loadedmetadata', onMeta); seek() }
+          audio.addEventListener('loadedmetadata', onMeta)
+        }
       } else {
         setElapsed(start)
         setPlaying(true)
       }
     },
   }), [audioUrl])
+
+  // Force a fresh metadata load whenever the source changes — matters for the
+  // personal area, where audioUrl can switch between different locally-picked
+  // blob URLs while this component stays mounted.
+  useEffect(() => {
+    if (audioUrl && audioRef.current) audioRef.current.load()
+  }, [audioUrl])
 
   // Real playback: drive elapsed/duration/playing off the <audio> element.
   useEffect(() => {
@@ -1195,12 +1307,17 @@ function AudioView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
 }
 
 function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
-  const segments = useMemo<DictationSegment[]>(
-    () => (unit.dictationSegments && unit.dictationSegments.length > 0)
+  const [pickedAudioUrl, setPickedAudioUrl] = useState<string | null>(null)
+  const [pickedSegments, setPickedSegments] = useState<DictationSegment[] | null>(null)
+  const needsPicker = !!unit.freeSourceSelect && (!pickedAudioUrl || !pickedSegments)
+  const activeAudioUrl = unit.freeSourceSelect ? (pickedAudioUrl ?? undefined) : unit.audioUrl
+
+  const segments = useMemo<DictationSegment[]>(() => {
+    if (unit.freeSourceSelect) return pickedSegments ?? []
+    return (unit.dictationSegments && unit.dictationSegments.length > 0)
       ? unit.dictationSegments
-      : [{ start: 0, end: 0, text: unit.dictationSentence }],
-    [unit.dictationSegments, unit.dictationSentence]
-  )
+      : [{ start: 0, end: 0, text: unit.dictationSentence }]
+  }, [unit.freeSourceSelect, unit.dictationSegments, unit.dictationSentence, pickedSegments])
 
   const [showTranscript, setShowTranscript] = useState(false)
   const [typed, setTyped] = useState('')
@@ -1339,6 +1456,13 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
         </div>
       )}
 
+      {needsPicker ? (
+        <LocalSourcePicker
+          accentColor={MODULE_META.dictation.color}
+          onLoaded={(audioUrl, segs) => { setPickedAudioUrl(audioUrl); setPickedSegments(segs) }}
+        />
+      ) : (
+        <>
       {/* Segment progress */}
       {!done && (
         <div>
@@ -1353,7 +1477,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
       )}
 
       {/* Player */}
-      <MiniPlayer ref={playerRef} audioUrl={unit.audioUrl} showTranscript={showTranscript} onToggleTranscript={() => setShowTranscript(t => !t)} />
+      <MiniPlayer ref={playerRef} audioUrl={activeAudioUrl} showTranscript={showTranscript} onToggleTranscript={() => setShowTranscript(t => !t)} />
 
       {showTranscript && (
         <div className="anim-slide-down" style={{ background: '#FFFBEB', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '12px', padding: '16px 20px' }}>
@@ -1398,6 +1522,15 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
             color: 'var(--muted-foreground)', fontSize: '14px', fontWeight: 500,
             cursor: 'pointer', transition: 'all 0.15s',
           }}>Restart</button>
+
+          {unit.freeSourceSelect && (
+            <button
+              onClick={() => { setPickedAudioUrl(null); setPickedSegments(null) }}
+              style={{ alignSelf: 'center', background: 'none', border: 'none', color: 'var(--muted-foreground)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              Farklı ses/altyazı seç
+            </button>
+          )}
         </div>
       ) : (
         <>
@@ -1566,6 +1699,17 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
               </div>
             </div>
           )}
+
+          {unit.freeSourceSelect && (
+            <button
+              onClick={() => { setPickedAudioUrl(null); setPickedSegments(null) }}
+              style={{ alignSelf: 'center', background: 'none', border: 'none', color: 'var(--muted-foreground)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              Farklı ses/altyazı seç
+            </button>
+          )}
+        </>
+      )}
         </>
       )}
     </div>
@@ -1713,12 +1857,17 @@ function DictationAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
 }
 
 function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
-  const segments = useMemo<DictationSegment[]>(
-    () => (unit.dictationSegments && unit.dictationSegments.length > 0)
+  const [pickedAudioUrl, setPickedAudioUrl] = useState<string | null>(null)
+  const [pickedSegments, setPickedSegments] = useState<DictationSegment[] | null>(null)
+  const needsPicker = !!unit.freeSourceSelect && (!pickedAudioUrl || !pickedSegments)
+  const activeAudioUrl = unit.freeSourceSelect ? (pickedAudioUrl ?? undefined) : unit.audioUrl
+
+  const segments = useMemo<DictationSegment[]>(() => {
+    if (unit.freeSourceSelect) return pickedSegments ?? []
+    return (unit.dictationSegments && unit.dictationSegments.length > 0)
       ? unit.dictationSegments
-      : [{ start: 0, end: 0, text: unit.dictationSentence }],
-    [unit.dictationSegments, unit.dictationSentence]
-  )
+      : [{ start: 0, end: 0, text: unit.dictationSentence }]
+  }, [unit.freeSourceSelect, unit.dictationSegments, unit.dictationSentence, pickedSegments])
 
   const [current, setCurrent] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -1747,13 +1896,13 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
 
   function playSegment(index: number) {
     const audio = audioRef.current
-    if (!audio || !unit.audioUrl) return
+    if (!audio || !activeAudioUrl) return
     const seg = segments[index]
     playTokenRef.current++
     const token = playTokenRef.current
     audio.pause()
     audio.playbackRate = speed
-    audio.currentTime = seg.start
+
     const onTime = () => {
       if (token !== playTokenRef.current) { audio.removeEventListener('timeupdate', onTime); return }
       if (audio.currentTime >= seg.end) {
@@ -1765,6 +1914,19 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
         }
       }
     }
+
+    // Freshly-picked local files may not have metadata loaded yet — seeking
+    // before that is silently ignored in some mobile browsers, so wait for it.
+    if (audio.readyState >= 1) {
+      audio.currentTime = seg.start
+    } else {
+      const onMeta = () => {
+        audio.removeEventListener('loadedmetadata', onMeta)
+        if (token === playTokenRef.current) audio.currentTime = seg.start
+      }
+      audio.addEventListener('loadedmetadata', onMeta)
+    }
+
     audio.addEventListener('timeupdate', onTime)
     audio.play()
     setIsPlaying(true)
@@ -1792,110 +1954,128 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   return (
     <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '680px' }}>
       <BackBtn onClick={onBack} label={unit.title} />
-      {unit.audioUrl && <audio ref={audioRef} src={unit.audioUrl} preload="metadata" />}
+      {activeAudioUrl && <audio ref={audioRef} src={activeAudioUrl} preload="metadata" />}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.shadowing.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🎙️</div>
         <div>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: 0 }}>Shadowing</h2>
-          <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{unit.title} · {sentences.length} sentences</p>
+          <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{unit.title} · {needsPicker ? 'kaynak seç' : `${sentences.length} sentences`}</p>
           {unit.readingTitle && <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--primary)', fontWeight: 500 }}>📖 {unit.readingTitle}</p>}
         </div>
       </div>
 
-      {/* Playback controls — kept at the top so they never scroll out of view */}
-      <div style={{
-        background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px',
-        display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center',
-      }}>
-        <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', textAlign: 'center' }}>
-          Sentence {current + 1} / {sentences.length} — play it, then shadow it out loud
-        </p>
-        <p style={{ margin: '-8px 0 0', fontSize: '15px', fontWeight: 500, textAlign: 'center', color: 'var(--foreground)' }}>
-          {sentences[current]}
-        </p>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
-          <button onClick={() => setLoop(l => !l)} title="Repeat this sentence automatically" style={{
-            padding: '7px 12px', borderRadius: '9px', border: `1px solid ${loop ? 'rgba(16,185,129,0.4)' : 'var(--border)'}`,
-            background: loop ? '#ECFDF5' : 'var(--secondary)', color: loop ? '#059669' : 'var(--foreground)',
-            fontSize: '13px', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+      {needsPicker ? (
+        <LocalSourcePicker
+          accentColor={MODULE_META.shadowing.color}
+          onLoaded={(audioUrl, segs) => { setPickedAudioUrl(audioUrl); setPickedSegments(segs) }}
+        />
+      ) : (
+        <>
+          {/* Playback controls — kept at the top so they never scroll out of view */}
+          <div style={{
+            background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px',
+            display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center',
           }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17 17H7v-4l-5 5 5 5v-4h12v-6h-2v4zM7 7h10v4l5-5-5-5v4H5v6h2V7z" /></svg>
-            Loop this sentence
-          </button>
+            <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', textAlign: 'center' }}>
+              Sentence {current + 1} / {sentences.length} — play it, then shadow it out loud
+            </p>
+            <p style={{ margin: '-8px 0 0', fontSize: '15px', fontWeight: 500, textAlign: 'center', color: 'var(--foreground)' }}>
+              {sentences[current]}
+            </p>
 
-          <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: '9px', overflow: 'hidden' }}>
-            {[0.75, 1, 1.25].map(r => (
-              <button key={r} onClick={() => setSpeed(r)} style={{
-                padding: '7px 10px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
-                background: speed === r ? 'var(--primary)' : 'var(--secondary)',
-                color: speed === r ? '#fff' : 'var(--foreground)',
-              }}>{r}x</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+              <button onClick={() => setLoop(l => !l)} title="Repeat this sentence automatically" style={{
+                padding: '7px 12px', borderRadius: '9px', border: `1px solid ${loop ? 'rgba(16,185,129,0.4)' : 'var(--border)'}`,
+                background: loop ? '#ECFDF5' : 'var(--secondary)', color: loop ? '#059669' : 'var(--foreground)',
+                fontSize: '13px', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+              }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17 17H7v-4l-5 5 5 5v-4h12v-6h-2v4zM7 7h10v4l5-5-5-5v4H5v6h2V7z" /></svg>
+                Loop this sentence
+              </button>
+
+              <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: '9px', overflow: 'hidden' }}>
+                {[0.75, 1, 1.25].map(r => (
+                  <button key={r} onClick={() => setSpeed(r)} style={{
+                    padding: '7px 10px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
+                    background: speed === r ? 'var(--primary)' : 'var(--secondary)',
+                    color: speed === r ? '#fff' : 'var(--foreground)',
+                  }}>{r}x</button>
+                ))}
+              </div>
+            </div>
+
+            <button onClick={togglePlayPause} style={{
+              width: '68px', height: '68px', borderRadius: '50%', border: 'none',
+              background: 'linear-gradient(135deg, #6366F1, #4F46E5)',
+              color: '#fff', cursor: 'pointer', fontSize: '26px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 4px 20px rgba(99,102,241,0.35)',
+              transition: 'transform 0.15s',
+            }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.06)' }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)' }}
+            >
+              {isPlaying
+                ? <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z" /></svg>
+                : <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: '3px' }}><path d="M8 5v14l11-7z" /></svg>}
+            </button>
+
+            <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+              <button
+                onClick={() => goTo(current - 1)}
+                disabled={current === 0}
+                style={{ flex: 1, padding: '9px', borderRadius: '9px', border: '1px solid var(--border)', background: 'var(--secondary)', color: current === 0 ? 'var(--muted-foreground)' : 'var(--foreground)', fontSize: '13px', fontWeight: 500, cursor: current === 0 ? 'not-allowed' : 'pointer' }}
+              >← Previous</button>
+              <button
+                onClick={() => goTo(current + 1)}
+                disabled={current === sentences.length - 1}
+                style={{ flex: 1, padding: '9px', borderRadius: '9px', border: '1px solid var(--border)', background: 'var(--secondary)', color: current === sentences.length - 1 ? 'var(--muted-foreground)' : 'var(--foreground)', fontSize: '13px', fontWeight: 500, cursor: current === sentences.length - 1 ? 'not-allowed' : 'pointer' }}
+              >Next →</button>
+            </div>
+          </div>
+
+          {/* Sentence list — fixed height, scrolls independently, auto-scrolls active line into view */}
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: '8px',
+            maxHeight: '340px', overflowY: 'auto', paddingRight: '4px',
+          }}>
+            {sentences.map((s, i) => (
+              <button
+                key={i}
+                ref={el => { itemRefs.current[i] = el }}
+                onClick={() => goTo(i)}
+                style={{
+                  textAlign: 'left', padding: '14px 18px', borderRadius: '12px',
+                  border: `1.5px solid ${i === current ? 'rgba(99,102,241,0.45)' : 'var(--border)'}`,
+                  background: i === current ? '#EEF2FF' : 'var(--card)',
+                  cursor: 'pointer', transition: 'all 0.15s',
+                  display: 'flex', alignItems: 'flex-start', gap: '12px', flexShrink: 0,
+                }}
+              >
+                <div style={{
+                  width: '22px', height: '22px', borderRadius: '50%', flexShrink: 0, marginTop: '1px',
+                  background: i === current ? 'rgba(99,102,241,0.15)' : 'var(--muted)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: i === current ? '2px solid rgba(99,102,241,0.5)' : 'none',
+                }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: i === current ? '#4F46E5' : 'var(--muted-foreground)' }}>{i + 1}</span>
+                </div>
+                <span style={{ fontSize: '14px', lineHeight: 1.6, color: i === current ? '#3730A3' : 'var(--foreground)', fontWeight: i === current ? 500 : 400 }}>{s}</span>
+              </button>
             ))}
           </div>
-        </div>
 
-        <button onClick={togglePlayPause} style={{
-          width: '68px', height: '68px', borderRadius: '50%', border: 'none',
-          background: 'linear-gradient(135deg, #6366F1, #4F46E5)',
-          color: '#fff', cursor: 'pointer', fontSize: '26px',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 4px 20px rgba(99,102,241,0.35)',
-          transition: 'transform 0.15s',
-        }}
-          onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.06)' }}
-          onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)' }}
-        >
-          {isPlaying
-            ? <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z" /></svg>
-            : <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: '3px' }}><path d="M8 5v14l11-7z" /></svg>}
-        </button>
-
-        <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
-          <button
-            onClick={() => goTo(current - 1)}
-            disabled={current === 0}
-            style={{ flex: 1, padding: '9px', borderRadius: '9px', border: '1px solid var(--border)', background: 'var(--secondary)', color: current === 0 ? 'var(--muted-foreground)' : 'var(--foreground)', fontSize: '13px', fontWeight: 500, cursor: current === 0 ? 'not-allowed' : 'pointer' }}
-          >← Previous</button>
-          <button
-            onClick={() => goTo(current + 1)}
-            disabled={current === sentences.length - 1}
-            style={{ flex: 1, padding: '9px', borderRadius: '9px', border: '1px solid var(--border)', background: 'var(--secondary)', color: current === sentences.length - 1 ? 'var(--muted-foreground)' : 'var(--foreground)', fontSize: '13px', fontWeight: 500, cursor: current === sentences.length - 1 ? 'not-allowed' : 'pointer' }}
-          >Next →</button>
-        </div>
-      </div>
-
-      {/* Sentence list — fixed height, scrolls independently, auto-scrolls active line into view */}
-      <div style={{
-        display: 'flex', flexDirection: 'column', gap: '8px',
-        maxHeight: '340px', overflowY: 'auto', paddingRight: '4px',
-      }}>
-        {sentences.map((s, i) => (
-          <button
-            key={i}
-            ref={el => { itemRefs.current[i] = el }}
-            onClick={() => goTo(i)}
-            style={{
-              textAlign: 'left', padding: '14px 18px', borderRadius: '12px',
-              border: `1.5px solid ${i === current ? 'rgba(99,102,241,0.45)' : 'var(--border)'}`,
-              background: i === current ? '#EEF2FF' : 'var(--card)',
-              cursor: 'pointer', transition: 'all 0.15s',
-              display: 'flex', alignItems: 'flex-start', gap: '12px', flexShrink: 0,
-            }}
-          >
-            <div style={{
-              width: '22px', height: '22px', borderRadius: '50%', flexShrink: 0, marginTop: '1px',
-              background: i === current ? 'rgba(99,102,241,0.15)' : 'var(--muted)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: i === current ? '2px solid rgba(99,102,241,0.5)' : 'none',
-            }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: i === current ? '#4F46E5' : 'var(--muted-foreground)' }}>{i + 1}</span>
-            </div>
-            <span style={{ fontSize: '14px', lineHeight: 1.6, color: i === current ? '#3730A3' : 'var(--foreground)', fontWeight: i === current ? 500 : 400 }}>{s}</span>
-          </button>
-        ))}
-      </div>
+          {unit.freeSourceSelect && (
+            <button
+              onClick={() => { setPickedAudioUrl(null); setPickedSegments(null) }}
+              style={{ alignSelf: 'center', background: 'none', border: 'none', color: 'var(--muted-foreground)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              Farklı ses/altyazı seç
+            </button>
+          )}
+        </>
+      )}
     </div>
   )
 }
