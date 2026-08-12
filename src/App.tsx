@@ -964,22 +964,47 @@ function AudioIconButton({ src, bg }: { src: string; bg?: string }) {
   )
 }
 
+// Splits a Sheet cell's text into multiple sections wherever a line contains
+// only "---" (Alt+Enter within the cell to create the separator line). Lets
+// one field render as several stacked cards instead of a single block.
+function splitSections(text?: string): string[] {
+  if (!text) return []
+  const lines = text.split('\n')
+  const sections: string[] = []
+  let current: string[] = []
+  for (const line of lines) {
+    if (line.trim() === '---') {
+      sections.push(current.join('\n').trim())
+      current = []
+    } else {
+      current.push(line)
+    }
+  }
+  sections.push(current.join('\n').trim())
+  return sections.filter(s => s.length > 0)
+}
+
 function renderDefinitionCard(title?: string, text?: string) {
   if (!title && !text) return null
   return (
     <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '20px 24px' }}>
       {title && <p style={{ margin: text ? '0 0 6px' : 0, fontSize: '16px', fontWeight: 700, color: 'var(--foreground)' }}>{title}</p>}
-      {text && <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)', lineHeight: 1.7 }}>{text}</p>}
+      {text && <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{text}</p>}
     </div>
   )
 }
 
 function renderAnalogyCard(text?: string) {
-  if (!text) return null
+  const sections = splitSections(text)
+  if (sections.length === 0) return null
   return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '20px 24px' }}>
-      <p style={{ margin: 0, fontSize: '14px', color: 'var(--foreground)', lineHeight: 1.7, fontStyle: 'italic' }}>{text}</p>
-    </div>
+    <>
+      {sections.map((sec, i) => (
+        <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '20px 24px' }}>
+          <p style={{ margin: 0, fontSize: '14px', color: 'var(--foreground)', lineHeight: 1.7, fontStyle: 'italic', whiteSpace: 'pre-wrap' }}>{sec}</p>
+        </div>
+      ))}
+    </>
   )
 }
 
@@ -1006,7 +1031,7 @@ function GrammarView({ unit, question, onBack }: { unit: Unit; question?: Questi
           <div style={{ background: '#EEF2FF', border: '1px solid #B20909', borderRadius: '14px', padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
             <div>
               <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#B20909', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Question</p>
-              <p style={{ margin: 0, fontSize: '15px', fontWeight: 700, lineHeight: 1.7, color: '#1E1B4B' }}>{question.question}</p>
+              <p style={{ margin: 0, fontSize: '15px', fontWeight: 700, lineHeight: 1.7, color: '#1E1B4B', whiteSpace: 'pre-wrap' }}>{question.question}</p>
             </div>
             {question.questionAudioUrl && <AudioIconButton src={question.questionAudioUrl} bg="#B20909" />}
           </div>
@@ -1015,14 +1040,14 @@ function GrammarView({ unit, question, onBack }: { unit: Unit; question?: Questi
           {question.questionTranslation && (
             <div style={{ background: '#EEF2FF', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '14px', padding: '20px 24px' }}>
               <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Translation</p>
-              <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.7, color: '#1E1B4B' }}>{question.questionTranslation}</p>
+              <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.7, color: '#1E1B4B', whiteSpace: 'pre-wrap' }}>{question.questionTranslation}</p>
             </div>
           )}
 
           {/* Question explanation, shown before the answer is revealed */}
           {question.explanation && (
             <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px' }}>
-              <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)', lineHeight: 1.7 }}>{question.explanation}</p>
+              <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{question.explanation}</p>
             </div>
           )}
 
@@ -1056,7 +1081,7 @@ function GrammarView({ unit, question, onBack }: { unit: Unit; question?: Questi
               {question.answerTr && (
                 <div style={{ background: '#EEF2FF', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '14px', padding: '20px 24px' }}>
                   <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Translation</p>
-                  <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.7, color: '#1E1B4B' }}>{question.answerTr}</p>
+                  <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.7, color: '#1E1B4B', whiteSpace: 'pre-wrap' }}>{question.answerTr}</p>
                 </div>
               )}
               {renderDefinitionCard(question.postDefinitionTitle, question.postDefinitionText)}
@@ -2018,6 +2043,7 @@ export default function App() {
   function goModule(m: keyof typeof MODULE_META) { setSelectedQuestionIndex(null); setView(m as View) }
   function goQuestion(i: number) { setSelectedQuestionIndex(i); setView('grammar') }
   function goDictationAll() { setSelectedQuestionIndex(null); setView('dictationAll') }
+  function goHome() { setView('dashboard'); setSelectedUnit(null); setSelectedQuestionIndex(null) }
   function goBack() {
     if (view === 'dashboard') return
     if (view === 'unit') { setView('dashboard'); setSelectedUnit(null) }
@@ -2043,12 +2069,22 @@ export default function App() {
       }}>
         {/* Top bar */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', height: '58px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '9px', background: 'linear-gradient(135deg, #4F46E5, #818CF8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>🇬🇧</div>
+          <button onClick={goHome} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+            <div style={{ width: '32px', height: '32px', borderRadius: '9px', background: 'linear-gradient(135deg, #4F46E5, #818CF8)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9.5 3.5c-1.8 0-3.2 1.3-3.4 3-1.4.4-2.4 1.7-2.4 3.2 0 .7.2 1.3.6 1.9-.5.6-.8 1.4-.8 2.2 0 1.6 1.1 2.9 2.6 3.3.1 1.7 1.5 3 3.2 3 .7 0 1.3-.2 1.8-.5" />
+                <path d="M12 4.3v14.9" />
+                <path d="M14.5 3.5c1.8 0 3.2 1.3 3.4 3 1.4.4 2.4 1.7 2.4 3.2 0 .7-.2 1.3-.6 1.9.5.6.8 1.4.8 2.2 0 1.6-1.1 2.9-2.6 3.3-.1 1.7-1.5 3-3.2 3-.7 0-1.3-.2-1.8-.5" />
+                <path d="M9 8.7c.6.5 1.5.8 2 .8" />
+                <path d="M15 8.7c-.6.5-1.5.8-2 .8" />
+                <path d="M8 13.2c.6.4 1.3.6 2 .6" />
+                <path d="M16 13.2c-.6.4-1.3.6-2 .6" />
+              </svg>
+            </div>
             <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--foreground)' }}>
               Neuro<span style={{ color: 'var(--primary)' }}>cosmos</span>
             </span>
-          </div>
+          </button>
 
           {/* Breadcrumb */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
