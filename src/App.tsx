@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useMemo, forwardRef, useImperativeHandle }
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Level = 'A1' | 'A2' | 'B1' | 'B2' | 'P'
-type View = 'dashboard' | 'unit' | 'grammar' | 'audio' | 'dictation' | 'shadowing'
+type View = 'dashboard' | 'unit' | 'grammar' | 'audio' | 'dictation' | 'shadowing' | 'dictationAll'
 
 interface DictationSegment {
   start: number
@@ -745,11 +745,12 @@ function DashboardView({ level, units, onSelectUnit }: {
   )
 }
 
-function UnitDetailView({ unit, onBack, onModule, onQuestion }: {
+function UnitDetailView({ unit, onBack, onModule, onQuestion, onDictationAll }: {
   unit: Unit
   onBack: () => void
   onModule: (m: keyof typeof MODULE_META) => void
   onQuestion: (index: number) => void
+  onDictationAll: () => void
 }) {
   return (
     <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -797,6 +798,32 @@ function UnitDetailView({ unit, onBack, onModule, onQuestion }: {
               </div>
             </button>
           ))}
+
+          <button
+            onClick={onDictationAll}
+            style={{
+              textAlign: 'left', background: 'var(--card)',
+              border: `1.5px solid ${MODULE_META.dictation.color}33`, borderRadius: '16px',
+              padding: '24px', cursor: 'pointer',
+              boxShadow: '0 1px 5px rgba(15,23,42,0.06)',
+              transition: 'all 0.18s', display: 'flex', flexDirection: 'column', gap: '14px',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 6px 24px ${MODULE_META.dictation.color}22`; e.currentTarget.style.borderColor = `${MODULE_META.dictation.color}66` }}
+            onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 5px rgba(15,23,42,0.06)'; e.currentTarget.style.borderColor = `${MODULE_META.dictation.color}33` }}
+          >
+            <div style={{
+              width: '48px', height: '48px', borderRadius: '12px',
+              background: MODULE_META.dictation.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '22px',
+            }}>✍️</div>
+            <div>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, margin: '0 0 4px' }}>Dictation All</h3>
+              <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', lineHeight: 1.5 }}>Her sorunun sesini dinle, cevabı yaz — ne kadar hatırladığını gör.</p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill={MODULE_META.dictation.color}><path d="M10 17l5-5-5-5v10z" /></svg>
+            </div>
+          </button>
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
@@ -1510,6 +1537,146 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   )
 }
 
+function normalizeAnswer(s: string) {
+  return s
+    .toLowerCase()
+    .replace(/[.,!?;:"'`()\-_/\\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function DictationAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
+  const items = useMemo(
+    () => (unit.questionChain ?? []).filter(q => q.questionAudioUrl && q.answerEn),
+    [unit.questionChain]
+  )
+  const [index, setIndex] = useState(0)
+  const [typed, setTyped] = useState('')
+  const [checked, setChecked] = useState(false)
+  const [correct, setCorrect] = useState(false)
+  const [score, setScore] = useState(0)
+  const [finished, setFinished] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const current = items[index]
+
+  function check() {
+    if (!current || checked || !typed.trim()) return
+    const ok = normalizeAnswer(typed) === normalizeAnswer(current.answerEn || '')
+    setCorrect(ok)
+    setChecked(true)
+    if (ok) setScore(s => s + 1)
+  }
+
+  function next() {
+    if (index + 1 >= items.length) {
+      setFinished(true)
+      return
+    }
+    setIndex(i => i + 1)
+    setTyped('')
+    setChecked(false)
+    setCorrect(false)
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
+  function restart() {
+    setIndex(0)
+    setTyped('')
+    setChecked(false)
+    setCorrect(false)
+    setScore(0)
+    setFinished(false)
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
+  return (
+    <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '560px' }}>
+      <BackBtn onClick={onBack} label={unit.title} />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.dictation.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>✍️</div>
+        <div>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: 0 }}>Dictation All</h2>
+          <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{unit.title} · soruyu dinle, cevabı yaz</p>
+        </div>
+      </div>
+
+      {items.length === 0 ? (
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '24px', textAlign: 'center' }}>
+          <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>Henüz içerik eklenmemiş, sorular Sheet'e girildikçe burada görünecek.</p>
+        </div>
+      ) : finished ? (
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '32px 24px', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center' }}>
+          <p style={{ margin: 0, fontSize: '15px', color: 'var(--muted-foreground)' }}>Tamamlandı</p>
+          <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '40px', fontWeight: 800, color: score === items.length ? 'var(--success)' : 'var(--foreground)' }}>
+            {score} / {items.length}
+          </p>
+          <button onClick={restart} style={{
+            padding: '10px 24px', borderRadius: '10px', border: 'none',
+            background: MODULE_META.dictation.color, color: '#fff', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+          }}>Tekrar başla</button>
+        </div>
+      ) : (
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <p style={{ margin: 0, fontSize: '12px', color: 'var(--muted-foreground)', fontFamily: 'var(--font-mono)' }}>Soru {index + 1} / {items.length}</p>
+            <p style={{ margin: 0, fontSize: '12px', color: 'var(--muted-foreground)' }}>Skor: {score}</p>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', justifyContent: 'center', padding: '12px 0' }}>
+            {current.questionAudioUrl && <AudioIconButton src={current.questionAudioUrl} bg={MODULE_META.dictation.color} />}
+            <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>Soruyu dinle</p>
+          </div>
+
+          <input
+            ref={inputRef}
+            type="text"
+            value={typed}
+            onChange={e => setTyped(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { checked ? next() : check() } }}
+            disabled={checked}
+            placeholder="Cevabı buraya yaz…"
+            style={{
+              width: '100%', boxSizing: 'border-box', padding: '14px 16px', borderRadius: '12px',
+              border: `1.5px solid ${checked ? (correct ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)') : 'var(--border)'}`,
+              background: checked ? (correct ? '#ECFDF5' : '#FEF2F2') : '#fff',
+              fontSize: '15px', color: 'var(--foreground)', outline: 'none',
+            }}
+          />
+
+          {checked && (
+            <div style={{
+              padding: '14px 16px', borderRadius: '12px',
+              background: correct ? '#ECFDF5' : '#FEF2F2',
+              border: `1px solid ${correct ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+            }}>
+              <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: correct ? '#059669' : '#DC2626' }}>
+                {correct ? 'Doğru! ✓' : 'Doğru cevap:'}
+              </p>
+              {!correct && <p style={{ margin: '4px 0 0', fontSize: '14px', color: '#991B1B' }}>{current.answerEn}</p>}
+            </div>
+          )}
+
+          <button
+            onClick={checked ? next : check}
+            disabled={!checked && !typed.trim()}
+            style={{
+              padding: '12px', borderRadius: '10px', border: 'none',
+              background: (!checked && !typed.trim()) ? 'var(--muted)' : MODULE_META.dictation.color,
+              color: (!checked && !typed.trim()) ? 'var(--muted-foreground)' : '#fff',
+              fontSize: '14px', fontWeight: 600,
+              cursor: (!checked && !typed.trim()) ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {checked ? (index + 1 >= items.length ? 'Bitir' : 'Sonraki') : 'Kontrol Et'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const segments = useMemo<DictationSegment[]>(
     () => (unit.dictationSegments && unit.dictationSegments.length > 0)
@@ -1850,6 +2017,7 @@ export default function App() {
   function goUnit(u: Unit) { setSelectedUnit(u); setSelectedQuestionIndex(null); setView('unit') }
   function goModule(m: keyof typeof MODULE_META) { setSelectedQuestionIndex(null); setView(m as View) }
   function goQuestion(i: number) { setSelectedQuestionIndex(i); setView('grammar') }
+  function goDictationAll() { setSelectedQuestionIndex(null); setView('dictationAll') }
   function goBack() {
     if (view === 'dashboard') return
     if (view === 'unit') { setView('dashboard'); setSelectedUnit(null) }
@@ -1859,7 +2027,7 @@ export default function App() {
   const breadcrumbs = [
     { label: LEVEL_META[level].code, onClick: () => { setView('dashboard'); setSelectedUnit(null) } },
     ...(selectedUnitLive ? [{ label: selectedUnitLive.unitLabel ?? `Unit ${selectedUnitLive.id}`, onClick: () => { setView('unit'); setSelectedQuestionIndex(null) } }] : []),
-    ...(view !== 'dashboard' && view !== 'unit' ? [{ label: selectedQuestion?.label ?? MODULE_META[view as keyof typeof MODULE_META]?.label }] : []),
+    ...(view !== 'dashboard' && view !== 'unit' ? [{ label: view === 'dictationAll' ? 'Dictation All' : (selectedQuestion?.label ?? MODULE_META[view as keyof typeof MODULE_META]?.label) }] : []),
   ]
 
   return (
@@ -1963,7 +2131,10 @@ export default function App() {
           <DashboardView level={level} units={units} onSelectUnit={goUnit} />
         )}
         {view === 'unit' && selectedUnitLive && (
-          <UnitDetailView unit={selectedUnitLive} onBack={() => { setView('dashboard'); setSelectedUnit(null) }} onModule={goModule} onQuestion={goQuestion} />
+          <UnitDetailView unit={selectedUnitLive} onBack={() => { setView('dashboard'); setSelectedUnit(null) }} onModule={goModule} onQuestion={goQuestion} onDictationAll={goDictationAll} />
+        )}
+        {view === 'dictationAll' && selectedUnitLive && (
+          <DictationAllView unit={selectedUnitLive} onBack={() => setView('unit')} />
         )}
         {view === 'grammar' && selectedUnitLive && (
           <GrammarView unit={selectedUnitLive} question={selectedQuestion} onBack={() => { setView('unit'); setSelectedQuestionIndex(null) }} />
