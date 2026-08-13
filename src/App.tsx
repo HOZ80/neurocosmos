@@ -1211,6 +1211,11 @@ function GrammarView({ unit, question, onBack }: { unit: Unit; question?: Questi
               )}
               {renderDefinitionCard(question.postDefinitionTitle, question.postDefinitionText)}
               {renderAnalogyCard(question.postAnalogy)}
+              {question.postAnalogy && (
+                <div style={{ background: '#FEF3C7', border: '2px dashed #F59E0B', borderRadius: '8px', padding: '12px', fontFamily: 'monospace', fontSize: '11px', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: '#78350F' }}>
+                  GEÇİCİ DEBUG — postAnalogy ham veri: {JSON.stringify(question.postAnalogy)}
+                </div>
+              )}
             </div>
           )}
         </>
