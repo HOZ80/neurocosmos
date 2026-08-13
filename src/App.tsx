@@ -2211,7 +2211,11 @@ export default function App() {
   const [sheetQuestions, setSheetQuestions] = useState<QuestionItem[] | null>(null)
 
   useEffect(() => {
-    fetch(QUESTIONS_SHEET_CSV_URL)
+    // cache: 'no-store' plus a timestamp query param ensures the browser
+    // never serves a stale cached response — otherwise a visitor can keep
+    // seeing old Sheet content even after Google's own copy has updated.
+    const bustedUrl = `${QUESTIONS_SHEET_CSV_URL}${QUESTIONS_SHEET_CSV_URL.includes('?') ? '&' : '?'}t=${Date.now()}`
+    fetch(bustedUrl, { cache: 'no-store' })
       .then(res => res.text())
       .then(text => {
         const parsed = rowsToQuestionChain(parseCSV(text))
