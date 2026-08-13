@@ -1085,7 +1085,10 @@ function splitSections(text?: string): string[] {
   const sections: string[] = []
   let current: string[] = []
   for (const line of lines) {
-    if (line.trim() === '---') {
+    // Google Sheets' "smart dashes" autocorrect turns --- into a single
+    // en/em dash character, so accept one dash-like char, or 2+ literal
+    // hyphens (avoids false-matching a lone "-" used in normal text).
+    if (/^(-{2,}|[–—]+)$/.test(line.trim())) {
       sections.push(current.join('\n').trim())
       current = []
     } else {
@@ -1195,7 +1198,7 @@ function GrammarView({ unit, question, onBack }: { unit: Unit; question?: Questi
                 <div style={{ background: '#EEF2FF', border: '1px solid #33710F', borderRadius: '14px', padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
                   <div>
                     <p style={{ margin: '0 0 6px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#33710F', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Answer</p>
-                    <p style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1E1B4B' }}>{question.answerEn}</p>
+                    <p style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1E1B4B', whiteSpace: 'pre-wrap' }}>{question.answerEn}</p>
                   </div>
                   {question.answerAudioUrl && <AudioIconButton src={question.answerAudioUrl} bg="#33710F" />}
                 </div>
