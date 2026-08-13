@@ -1099,19 +1099,22 @@ function splitSections(text?: string): string[] {
   return sections.filter(s => s.length > 0)
 }
 
-function renderDefinitionCard(title?: string, text?: string) {
-  if (!title && !text) return null
-  return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '20px 24px' }}>
-      {title && <p style={{ margin: text ? '0 0 6px' : 0, fontSize: '16px', fontWeight: 700, color: 'var(--foreground)' }}>{title}</p>}
-      {text && <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{text}</p>}
-    </div>
-  )
-}
-
-function renderAnalogyCard(text?: string) {
+// Renders one or more stacked cards from a Sheet text field, splitting on
+// --- (or Sheets' autocorrected em/en dash) into separate cards, and turning
+// a leading "#" line within any section into that card's bold title.
+// leadingTitle (from a separate *Title column) becomes the first card's
+// title when that first section doesn't already start with its own #.
+function renderTextCards(text?: string, opts?: { italic?: boolean; leadingTitle?: string }) {
+  const italic = !!opts?.italic
   const sections = splitSections(text)
-  if (sections.length === 0) return null
+  if (sections.length === 0 && !opts?.leadingTitle) return null
+  if (sections.length === 0) {
+    return (
+      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '20px 24px' }}>
+        <p style={{ margin: 0, fontSize: italic ? '15px' : '16px', fontWeight: 700, color: 'var(--foreground)' }}>{opts?.leadingTitle}</p>
+      </div>
+    )
+  }
   return (
     <>
       {sections.map((sec, i) => {
@@ -1121,11 +1124,13 @@ function renderAnalogyCard(text?: string) {
         if (lines[0].trim().startsWith('#')) {
           title = lines[0].trim().replace(/^#+\s*/, '')
           body = lines.slice(1).join('\n').trim()
+        } else if (i === 0 && opts?.leadingTitle) {
+          title = opts.leadingTitle
         }
         return (
           <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '20px 24px' }}>
-            {title && <p style={{ margin: body ? '0 0 6px' : 0, fontSize: '15px', fontWeight: 700, color: 'var(--foreground)' }}>{title}</p>}
-            {body && <p style={{ margin: 0, fontSize: '14px', color: 'var(--foreground)', lineHeight: 1.7, fontStyle: 'italic', whiteSpace: 'pre-wrap' }}>{body}</p>}
+            {title && <p style={{ margin: body ? '0 0 6px' : 0, fontSize: italic ? '15px' : '16px', fontWeight: 700, color: 'var(--foreground)' }}>{title}</p>}
+            {body && <p style={{ margin: 0, fontSize: '14px', color: italic ? 'var(--foreground)' : 'var(--muted-foreground)', lineHeight: 1.7, fontStyle: italic ? 'italic' : 'normal', whiteSpace: 'pre-wrap' }}>{body}</p>}
           </div>
         )
       })}
@@ -1177,8 +1182,8 @@ function GrammarView({ unit, question, onBack }: { unit: Unit; question?: Questi
           )}
 
           {/* Pre-answer definition + analogy */}
-          {renderDefinitionCard(question.preDefinitionTitle, question.preDefinitionText)}
-          {renderAnalogyCard(question.preAnalogy)}
+          {renderTextCards(question.preDefinitionText, { leadingTitle: question.preDefinitionTitle })}
+          {renderTextCards(question.preAnalogy, { italic: true })}
 
           {!showAnswer && (question.answerEn || question.postDefinitionText || question.postAnalogy) && (
             <button
@@ -1209,13 +1214,8 @@ function GrammarView({ unit, question, onBack }: { unit: Unit; question?: Questi
                   <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.7, color: '#1E1B4B', whiteSpace: 'pre-wrap' }}>{question.answerTr}</p>
                 </div>
               )}
-              {renderDefinitionCard(question.postDefinitionTitle, question.postDefinitionText)}
-              {renderAnalogyCard(question.postAnalogy)}
-              {question.postAnalogy && (
-                <div style={{ background: '#FEF3C7', border: '2px dashed #F59E0B', borderRadius: '8px', padding: '12px', fontFamily: 'monospace', fontSize: '11px', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: '#78350F' }}>
-                  GEÇİCİ DEBUG — postAnalogy ham veri: {JSON.stringify(question.postAnalogy)}
-                </div>
-              )}
+              {renderTextCards(question.postDefinitionText, { leadingTitle: question.postDefinitionTitle })}
+              {renderTextCards(question.postAnalogy, { italic: true })}
             </div>
           )}
         </>
