@@ -756,18 +756,25 @@ function EntryScreen({ onPickProfile, onPickOwner }: {
   onPickProfile: (p: 'A1' | 'A2') => void
   onPickOwner: () => void
 }) {
+  // Bu ekran bilinçli olarak sitenin geri kalanından (light tema) bağımsız,
+  // sabit bir koyu palet kullanır — var(--...) yerine düz hex değerler.
+  const dark = {
+    bg: '#0F0B1E', surface: '#1B1533', surfaceHover: '#241D42',
+    accent: '#7C5CFC', accentSoft: '#7C5CFC33', spark: '#4EEAC1',
+    text: '#F2EFFA', textMuted: '#9C93B8', line: '#332C55',
+  }
   const cardBase: React.CSSProperties = {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '18px',
-    padding: '20px 22px', cursor: 'pointer', textAlign: 'left', width: '100%',
-    transition: 'all 0.15s', boxShadow: '0 1px 4px rgba(15,23,42,0.06)',
+    background: dark.surface, border: `1px solid ${dark.line}`, borderRadius: '20px',
+    padding: '22px 22px', cursor: 'pointer', textAlign: 'left', width: '100%',
+    transition: 'all 0.15s',
   }
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', padding: '32px 20px', background: 'var(--secondary)',
+      justifyContent: 'center', padding: '32px 20px', background: dark.bg,
     }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&display=swap');`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=IBM+Plex+Mono:wght@500&display=swap');`}</style>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '28px' }}>
         <div style={{ width: '32px', height: '32px', borderRadius: '9px', background: 'linear-gradient(135deg, #4F46E5, #818CF8)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -781,19 +788,16 @@ function EntryScreen({ onPickProfile, onPickOwner }: {
             <path d="M16 13.2c-.6.4-1.3.6-2 .6" />
           </svg>
         </div>
-        <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--foreground)' }}>
-          Neuro<span style={{ color: 'var(--primary)' }}>cosmos</span>
+        <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 800, letterSpacing: '-0.02em', color: dark.text }}>
+          Neuro<span style={{ color: dark.accent }}>cosmos</span>
         </span>
       </div>
 
       <h1 style={{
         fontFamily: "'Baloo 2', var(--font-display)", fontWeight: 700,
-        fontSize: 'clamp(24px, 5.5vw, 30px)', textAlign: 'center', margin: '0 0 8px',
-        color: 'var(--foreground)', maxWidth: '380px',
+        fontSize: 'clamp(24px, 5.5vw, 30px)', textAlign: 'center', margin: '0 0 32px',
+        color: dark.text, maxWidth: '380px',
       }}>Merhaba! Hadi başlayalım</h1>
-      <p style={{ margin: '0 0 32px', fontSize: '14px', color: 'var(--muted-foreground)', textAlign: 'center' }}>
-        Adına ait kartı seç, dersine devam et.
-      </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', width: '100%', maxWidth: '400px' }}>
 
@@ -802,14 +806,14 @@ function EntryScreen({ onPickProfile, onPickOwner }: {
           style={cardBase}
         >
           <div>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: 'var(--foreground)' }}>Ayşe / Fatma</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: dark.text }}>Ayşe / Fatma</div>
             <span style={{
-              display: 'inline-block', marginTop: '8px', fontFamily: 'var(--font-mono)', fontSize: '11px',
-              letterSpacing: '0.05em', color: '#10B981', background: '#10B98118', border: '1px solid #10B98140',
+              display: 'inline-block', marginTop: '8px', fontFamily: "'IBM Plex Mono', var(--font-mono)", fontSize: '11px',
+              letterSpacing: '0.05em', color: dark.accent, background: dark.accentSoft, border: `1px solid ${dark.accent}`,
               borderRadius: '100px', padding: '3px 10px',
             }}>English Group A</span>
           </div>
-          <span style={{ color: 'var(--muted-foreground)', fontSize: '18px' }}>→</span>
+          <span style={{ color: dark.textMuted, fontSize: '18px' }}>→</span>
         </button>
 
         <button
@@ -817,31 +821,31 @@ function EntryScreen({ onPickProfile, onPickOwner }: {
           style={cardBase}
         >
           <div>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: 'var(--foreground)' }}>Hatice</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: dark.text }}>Hatice</div>
             <span style={{
-              display: 'inline-block', marginTop: '8px', fontFamily: 'var(--font-mono)', fontSize: '11px',
-              letterSpacing: '0.05em', color: '#0EA5E9', background: '#0EA5E918', border: '1px solid #0EA5E940',
+              display: 'inline-block', marginTop: '8px', fontFamily: "'IBM Plex Mono', var(--font-mono)", fontSize: '11px',
+              letterSpacing: '0.05em', color: dark.accent, background: dark.accentSoft, border: `1px solid ${dark.accent}`,
               borderRadius: '100px', padding: '3px 10px',
             }}>English Group B</span>
           </div>
-          <span style={{ color: 'var(--muted-foreground)', fontSize: '18px' }}>→</span>
+          <span style={{ color: dark.textMuted, fontSize: '18px' }}>→</span>
         </button>
 
         <button
           onClick={onPickOwner}
-          style={{ ...cardBase, borderStyle: 'dashed', boxShadow: 'none' }}
+          style={{ ...cardBase, borderStyle: 'dashed' }}
         >
           <div>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: 'var(--foreground)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: dark.text, display: 'flex', alignItems: 'center', gap: '8px' }}>
               🔒 Owner
             </div>
             <span style={{
-              display: 'inline-block', marginTop: '8px', fontFamily: 'var(--font-mono)', fontSize: '11px',
-              letterSpacing: '0.05em', color: 'var(--muted-foreground)', border: '1px solid var(--border)',
+              display: 'inline-block', marginTop: '8px', fontFamily: "'IBM Plex Mono', var(--font-mono)", fontSize: '11px',
+              letterSpacing: '0.05em', color: dark.textMuted, border: `1px solid ${dark.line}`,
               borderRadius: '100px', padding: '3px 10px',
             }}>Private</span>
           </div>
-          <span style={{ color: 'var(--muted-foreground)', fontSize: '18px' }}>→</span>
+          <span style={{ color: dark.textMuted, fontSize: '18px' }}>→</span>
         </button>
 
       </div>
@@ -2333,6 +2337,14 @@ export default function App() {
     setSelectedUnit(null)
   }
 
+  // Grup içinden EntryScreen'e dönüş — profili ve sessionStorage'ı temizler.
+  function handleExitToEntry() {
+    setEntryProfile(null)
+    try { sessionStorage.removeItem(ENTRY_PROFILE_KEY) } catch {}
+    setSelectedUnit(null)
+    setView('dashboard')
+  }
+
   // Sheet-backed 100Q data. Starts null (meaning: "use the hardcoded fallback
   // below until the Sheet has loaded"), then fills in once the fetch succeeds.
   // If the fetch ever fails (offline, Sheet unpublished, etc.), we silently
@@ -2452,6 +2464,10 @@ export default function App() {
 
           {/* User */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button onClick={handleExitToEntry} title="Profili değiştir" style={{
+              background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
+              padding: '5px 10px', fontSize: '12px', fontWeight: 600, color: 'var(--foreground)', cursor: 'pointer',
+            }}>Çıkış</button>
             {level === 'P' && privateUnlocked && (
               <button onClick={handleLockPrivate} style={{
                 background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
