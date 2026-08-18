@@ -752,6 +752,103 @@ function PasswordModal({ onSubmit, onClose, error }: {
   )
 }
 
+function EntryScreen({ onPickProfile, onPickOwner }: {
+  onPickProfile: (p: 'A1' | 'A2') => void
+  onPickOwner: () => void
+}) {
+  const cardBase: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '18px',
+    padding: '20px 22px', cursor: 'pointer', textAlign: 'left', width: '100%',
+    transition: 'all 0.15s', boxShadow: '0 1px 4px rgba(15,23,42,0.06)',
+  }
+  return (
+    <div style={{
+      minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', padding: '32px 20px', background: 'var(--secondary)',
+    }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&display=swap');`}</style>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '28px' }}>
+        <div style={{ width: '32px', height: '32px', borderRadius: '9px', background: 'linear-gradient(135deg, #4F46E5, #818CF8)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9.5 3.5c-1.8 0-3.2 1.3-3.4 3-1.4.4-2.4 1.7-2.4 3.2 0 .7.2 1.3.6 1.9-.5.6-.8 1.4-.8 2.2 0 1.6 1.1 2.9 2.6 3.3.1 1.7 1.5 3 3.2 3 .7 0 1.3-.2 1.8-.5" />
+            <path d="M12 4.3v14.9" />
+            <path d="M14.5 3.5c1.8 0 3.2 1.3 3.4 3 1.4.4 2.4 1.7 2.4 3.2 0 .7-.2 1.3-.6 1.9.5.6.8 1.4.8 2.2 0 1.6-1.1 2.9-2.6 3.3-.1 1.7-1.5 3-3.2 3-.7 0-1.3-.2-1.8-.5" />
+            <path d="M9 8.7c.6.5 1.5.8 2 .8" />
+            <path d="M15 8.7c-.6.5-1.5.8-2 .8" />
+            <path d="M8 13.2c.6.4 1.3.6 2 .6" />
+            <path d="M16 13.2c-.6.4-1.3.6-2 .6" />
+          </svg>
+        </div>
+        <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--foreground)' }}>
+          Neuro<span style={{ color: 'var(--primary)' }}>cosmos</span>
+        </span>
+      </div>
+
+      <h1 style={{
+        fontFamily: "'Baloo 2', var(--font-display)", fontWeight: 700,
+        fontSize: 'clamp(24px, 5.5vw, 30px)', textAlign: 'center', margin: '0 0 8px',
+        color: 'var(--foreground)', maxWidth: '380px',
+      }}>Merhaba! Hadi başlayalım</h1>
+      <p style={{ margin: '0 0 32px', fontSize: '14px', color: 'var(--muted-foreground)', textAlign: 'center' }}>
+        Adına ait kartı seç, dersine devam et.
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', width: '100%', maxWidth: '400px' }}>
+
+        <button
+          onClick={() => onPickProfile('A1')}
+          style={cardBase}
+        >
+          <div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: 'var(--foreground)' }}>Ayşe / Fatma</div>
+            <span style={{
+              display: 'inline-block', marginTop: '8px', fontFamily: 'var(--font-mono)', fontSize: '11px',
+              letterSpacing: '0.05em', color: '#10B981', background: '#10B98118', border: '1px solid #10B98140',
+              borderRadius: '100px', padding: '3px 10px',
+            }}>English Group A</span>
+          </div>
+          <span style={{ color: 'var(--muted-foreground)', fontSize: '18px' }}>→</span>
+        </button>
+
+        <button
+          onClick={() => onPickProfile('A2')}
+          style={cardBase}
+        >
+          <div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: 'var(--foreground)' }}>Hatice</div>
+            <span style={{
+              display: 'inline-block', marginTop: '8px', fontFamily: 'var(--font-mono)', fontSize: '11px',
+              letterSpacing: '0.05em', color: '#0EA5E9', background: '#0EA5E918', border: '1px solid #0EA5E940',
+              borderRadius: '100px', padding: '3px 10px',
+            }}>English Group B</span>
+          </div>
+          <span style={{ color: 'var(--muted-foreground)', fontSize: '18px' }}>→</span>
+        </button>
+
+        <button
+          onClick={onPickOwner}
+          style={{ ...cardBase, borderStyle: 'dashed', boxShadow: 'none' }}
+        >
+          <div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: 'var(--foreground)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              🔒 Owner
+            </div>
+            <span style={{
+              display: 'inline-block', marginTop: '8px', fontFamily: 'var(--font-mono)', fontSize: '11px',
+              letterSpacing: '0.05em', color: 'var(--muted-foreground)', border: '1px solid var(--border)',
+              borderRadius: '100px', padding: '3px 10px',
+            }}>Private</span>
+          </div>
+          <span style={{ color: 'var(--muted-foreground)', fontSize: '18px' }}>→</span>
+        </button>
+
+      </div>
+    </div>
+  )
+}
+
 function DashboardView({ level, units, onSelectUnit }: {
   level: Level
   units: Unit[]
@@ -2112,6 +2209,13 @@ const LEVEL_META: Record<Level, { code: string; label: string; color: string; di
 const PRIVATE_PASSWORD = '87654321'
 const PRIVATE_UNLOCK_KEY = 'nc_private_unlocked'
 
+// ─── Giriş ekranı (EntryScreen) ────────────────────────────────────────────────
+// Dashboard'dan önce gösterilen "kim çalışıyor" ekranı. Seçim sessionStorage'da
+// tutulur — yani sekme kapanmadan tekrar sorulmaz, ama yeni sekme/oturumda
+// (veya tarayıcı tamamen kapatılıp açıldığında) tekrar EntryScreen görünür.
+type EntryProfile = 'A1' | 'A2' | 'owner'
+const ENTRY_PROFILE_KEY = 'nc_entry_profile'
+
 // ─── Sheets-backed content loading (100Q) ──────────────────────────────────────
 // The "Foundations and Rules" (100Q) unit's questions live in a published
 // Google Sheet, not in this file. To add/edit a question, edit the Sheet —
@@ -2185,6 +2289,21 @@ export default function App() {
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null)
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState<number | null>(null)
 
+  // ── Giriş ekranı profili (bkz. EntryScreen) ──
+  const [entryProfile, setEntryProfile] = useState<EntryProfile | null>(() => {
+    try {
+      const v = sessionStorage.getItem(ENTRY_PROFILE_KEY)
+      return (v === 'A1' || v === 'A2' || v === 'owner') ? v : null
+    } catch { return null }
+  })
+
+  function chooseProfile(p: 'A1' | 'A2') {
+    setEntryProfile(p)
+    try { sessionStorage.setItem(ENTRY_PROFILE_KEY, p) } catch {}
+    setLevel(p)
+    setSelectedUnit(null)
+  }
+
   // ── Kişisel alan kilidi ──
   const [privateUnlocked, setPrivateUnlocked] = useState<boolean>(() => {
     try { return localStorage.getItem(PRIVATE_UNLOCK_KEY) === 'true' } catch { return false }
@@ -2198,6 +2317,8 @@ export default function App() {
       try { localStorage.setItem(PRIVATE_UNLOCK_KEY, 'true') } catch {}
       setShowPasswordModal(false)
       setPasswordError(false)
+      setEntryProfile('owner')
+      try { sessionStorage.setItem(ENTRY_PROFILE_KEY, 'owner') } catch {}
       setLevel('P')
       setSelectedUnit(null)
     } else {
@@ -2252,11 +2373,37 @@ export default function App() {
     else { setView('unit'); setSelectedQuestionIndex(null) }
   }
 
+  // Owner → her tab açık. A1/A2 profili → sadece kendi grubu açık, geri kalanı
+  // (diğer grup + B1 + B2 + P) görünür ama kilitli.
+  function isTabAvailable(l: Level): boolean {
+    if (entryProfile === 'owner') return true
+    if (l === 'A1' || l === 'A2') return l === entryProfile
+    return false
+  }
+
   const breadcrumbs = [
     { label: LEVEL_META[level].code, onClick: () => { setView('dashboard'); setSelectedUnit(null) } },
     ...(selectedUnitLive ? [{ label: selectedUnitLive.unitLabel ?? `Unit ${selectedUnitLive.id}`, onClick: () => { setView('unit'); setSelectedQuestionIndex(null) } }] : []),
     ...(view !== 'dashboard' && view !== 'unit' ? [{ label: view === 'dictationAll' ? 'Dictation All' : (selectedQuestion?.label ?? MODULE_META[view as keyof typeof MODULE_META]?.label) }] : []),
   ]
+
+  if (!entryProfile) {
+    return (
+      <>
+        <EntryScreen
+          onPickProfile={chooseProfile}
+          onPickOwner={() => setShowPasswordModal(true)}
+        />
+        {showPasswordModal && (
+          <PasswordModal
+            error={passwordError}
+            onSubmit={handlePasswordSubmit}
+            onClose={() => { setShowPasswordModal(false); setPasswordError(false) }}
+          />
+        )}
+      </>
+    )
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
@@ -2321,30 +2468,26 @@ export default function App() {
           <div style={{ display: 'flex', gap: '0', borderTop: '1px solid var(--border)', padding: '0 28px' }}>
             {LEVELS.map(l => {
               const meta = LEVEL_META[l]
-              const isPrivate = !!meta.private
-              // B1/B2: herkese (senin de dahil) tamamen kilitli, tıklanamaz.
-              // P: her zaman tıklanabilir — açık değilse şifre sorar, açıksa normal sekme gibi davranır.
-              const isHardDisabled = !!meta.disabled && !isPrivate
-              const looksLocked = isHardDisabled || (isPrivate && !privateUnlocked)
+              // Kilit/erişim artık statik meta.disabled yerine giriş profiline göre:
+              // owner → hepsi açık. A1/A2 profili → sadece kendi grubu açık,
+              // geri kalanı (diğer grup + B1 + B2 + P) görünür ama kilitli.
+              const available = isTabAvailable(l)
+              const looksLocked = !available
               return (
                 <button
                   key={l}
                   onClick={() => {
-                    if (isPrivate) {
-                      if (privateUnlocked) { setLevel('P'); setSelectedUnit(null) }
-                      else setShowPasswordModal(true)
-                    } else if (!meta.disabled) {
-                      setLevel(l); setSelectedUnit(null)
-                    }
+                    if (!available) return
+                    setLevel(l); setSelectedUnit(null)
                   }}
-                  disabled={isHardDisabled}
+                  disabled={!available}
                   style={{
                     padding: '10px 24px', background: 'none', border: 'none',
                     borderBottom: `2.5px solid ${level === l && !looksLocked ? 'var(--primary)' : 'transparent'}`,
                     color: looksLocked ? 'var(--muted-foreground)' : (level === l ? 'var(--primary)' : 'var(--muted-foreground)'),
                     opacity: looksLocked ? 0.5 : 1,
                     fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: level === l && !looksLocked ? 700 : 500,
-                    cursor: isHardDisabled ? 'not-allowed' : 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: '8px',
+                    cursor: looksLocked ? 'not-allowed' : 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: '8px',
                     marginBottom: '-1px',
                   }}
                 >
