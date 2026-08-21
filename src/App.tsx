@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useMemo, forwardRef, useImperativeHandle }
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Level = 'A1' | 'A2' | 'B1' | 'B2' | 'P'
-type View = 'dashboard' | 'unit' | 'grammar' | 'audio' | 'dictation' | 'shadowing' | 'dictationAll'
+type View = 'dashboard' | 'unit' | 'grammar' | 'audio' | 'dictation' | 'shadowing' | 'dictationAll' | 'drill'
 
 interface DictationSegment {
   start: number
@@ -63,6 +63,34 @@ interface Unit {
   passiveVideo?: boolean
   customGrammarBlocks?: GrammarBlock[]
   questionChain?: QuestionItem[]
+  drillSheetUrl?: string
+}
+
+// ─── Drill engine types (Private-area retrieval practice) ─────────────────────
+
+interface DrillCueItem {
+  cue: string
+  expected: string | null // null = free production, self-graded only
+}
+
+interface DrillTopic {
+  id: string
+  label: string
+  target: string
+  model: string
+  stages: {
+    substitution: DrillCueItem[]
+    transformation: DrillCueItem[]
+    expansion: DrillCueItem[]
+    cue_response: DrillCueItem[]
+    question: DrillCueItem[]
+  }
+  notes: string
+}
+
+interface DrillProgress {
+  reviewStage: number // -1 = never completed a pass
+  nextReview: number | null
 }
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -958,12 +986,14 @@ function DashboardView({ level, units, onSelectUnit }: {
   )
 }
 
-function UnitDetailView({ unit, onBack, onModule, onQuestion, onDictationAll }: {
+function UnitDetailView({ unit, level, onBack, onModule, onQuestion, onDictationAll, onDrill }: {
   unit: Unit
+  level: Level
   onBack: () => void
   onModule: (m: keyof typeof MODULE_META) => void
   onQuestion: (index: number) => void
   onDictationAll: () => void
+  onDrill: () => void
 }) {
   return (
     <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -1085,6 +1115,34 @@ function UnitDetailView({ unit, onBack, onModule, onQuestion, onDictationAll }: 
               </button>
             )
           })}
+          {level === 'P' && (
+            <button
+              onClick={onDrill}
+              style={{
+                textAlign: 'left', background: 'var(--card)',
+                border: '1px solid var(--border)', borderRadius: '16px',
+                padding: '24px', cursor: 'pointer',
+                boxShadow: '0 1px 5px rgba(15,23,42,0.06)',
+                transition: 'all 0.18s', display: 'flex', flexDirection: 'column', gap: '14px',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 6px 24px #8B5CF622'; e.currentTarget.style.borderColor = '#8B5CF644' }}
+              onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 5px rgba(15,23,42,0.06)'; e.currentTarget.style.borderColor = 'var(--border)' }}
+            >
+              <div style={{
+                width: '48px', height: '48px', borderRadius: '12px',
+                background: '#EDE9FE', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '22px',
+              }}>🎯</div>
+              <div>
+                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, margin: '0 0 4px' }}>Drill</h3>
+                <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', lineHeight: 1.5 }}>Bildiğin yapıyı retrieval pratiğiyle pekiştir, spaced review ile takip et.</p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Chip label="Drill" color="#8B5CF6" bg="#EDE9FE" />
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="#8B5CF6"><path d="M10 17l5-5-5-5v10z" /></svg>
+              </div>
+            </button>
+          )}
         </div>
       )}
 
@@ -2262,6 +2320,42 @@ function parseCSV(text: string): Record<string, string>[] {
     })
 }
 
+// ─── Drill engine — Sheet parsing (Private area only) ─────────────────────────
+// Column names (case-sensitive): topic_id, topic_label, target_structure,
+// model_sentence, substitution_cues, transformation_types, expansion_cues,
+// cue_response_items, question_prompts, notes
+// Cue/expected-answer fields use: cue:expected|cue2:expected2
+// question_prompts has no expected answer: soru1|soru2
+
+function parsePairedField(str: string | undefined): DrillCueItem[] {
+  if (!str) return []
+  return str.split('|').map(s => s.trim()).filter(Boolean).map(item => {
+    const idx = item.indexOf(':')
+    if (idx === -1) return { cue: item, expected: null }
+    return { cue: item.slice(0, idx).trim(), expected: item.slice(idx + 1).trim() }
+  })
+}
+function parsePromptField(str: string | undefined): DrillCueItem[] {
+  if (!str) return []
+  return str.split('|').map(s => s.trim()).filter(Boolean).map(q => ({ cue: q, expected: null }))
+}
+function rowsToDrillTopics(rows: Record<string, string>[]): DrillTopic[] {
+  return rows.map(r => ({
+    id: r.topic_id || `t_${Math.random().toString(36).slice(2, 8)}`,
+    label: r.topic_label || r.target_structure || 'Adsız konu',
+    target: r.target_structure || '',
+    model: r.model_sentence || '',
+    stages: {
+      substitution: parsePairedField(r.substitution_cues),
+      transformation: parsePairedField(r.transformation_types),
+      expansion: parsePairedField(r.expansion_cues),
+      cue_response: parsePairedField(r.cue_response_items),
+      question: parsePromptField(r.question_prompts),
+    },
+    notes: r.notes || '',
+  }))
+}
+
 // Converts parsed Sheet rows into the QuestionItem shape the app already renders.
 // Column names must match the Sheet header exactly (case-sensitive):
 // label, question, questionAudioUrl, questionTranslation, preDefinitionTitle,
@@ -2285,6 +2379,304 @@ function rowsToQuestionChain(rows: Record<string, string>[]): QuestionItem[] {
     postAnalogy: r.postAnalogy || undefined,
     videoUrl: r.videoUrl || undefined,
   }))
+}
+
+// ─── DrillView (Private area only) ─────────────────────────────────────────────
+// Retrieval-practice engine: reads DrillTopics from the unit's Sheet, runs a
+// Substitution → Transformation → Expansion → Cue-Response → Question-Answer
+// chain per topic, and schedules spaced review (8h/1d/2d/1w/2w/1m/3m) in
+// localStorage, keyed per unit so different Private units don't collide.
+
+const DRILL_REVIEW_STAGES = [
+  { label: '8 saat', ms: 8 * 3600 * 1000 },
+  { label: '1 gün', ms: 24 * 3600 * 1000 },
+  { label: '2 gün', ms: 2 * 24 * 3600 * 1000 },
+  { label: '1 hafta', ms: 7 * 24 * 3600 * 1000 },
+  { label: '2 hafta', ms: 14 * 24 * 3600 * 1000 },
+  { label: '1 ay', ms: 30 * 24 * 3600 * 1000 },
+  { label: '3 ay', ms: 90 * 24 * 3600 * 1000 },
+]
+const DRILL_STAGE_ORDER: { key: keyof DrillTopic['stages']; name: string }[] = [
+  { key: 'substitution', name: 'Substitution' },
+  { key: 'transformation', name: 'Transformation' },
+  { key: 'expansion', name: 'Expansion' },
+  { key: 'cue_response', name: 'Cue → Response' },
+  { key: 'question', name: 'Serbest Üretim' },
+]
+const DRILL_STAGE_HINTS: Record<string, string> = {
+  substitution: "Ne yapıyoruz: model cümlede sadece cue'nun işaret ettiği kelimeyi değiştir.",
+  transformation: "Ne yapıyoruz: cümleyi cue'nun istediği biçime çevir (negative / question / short answer).",
+  expansion: "Ne yapıyoruz: cümleye cue'yu ekleyerek büyüt, öncekini koru.",
+  cue_response: 'Ne yapıyoruz: model cümle yok, sadece kısa bir cue var — cümleyi hafızandan kur.',
+  question: 'Ne yapıyoruz: gerçek soru — kendi cevabını üret, tek doğru cevap yok, kendi kendini değerlendireceksin.',
+}
+function drillNormalize(s: string): string {
+  return (s || '').toLowerCase().replace(/[.,!?;:"'""'']/g, '').replace(/\s+/g, ' ').trim()
+}
+function drillWordDiff(expected: string, given: string): { expectedHtml: string; givenHtml: string } {
+  const e = expected.split(/\s+/), g = given.split(/\s+/)
+  const m = e.length, n = g.length
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) {
+    dp[i][j] = drillNormalize(e[i - 1]) === drillNormalize(g[j - 1]) ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1])
+  }
+  let i = m, j = n; const outE: string[] = [], outG: string[] = []
+  while (i > 0 && j > 0) {
+    if (drillNormalize(e[i - 1]) === drillNormalize(g[j - 1])) { outE.unshift(e[i - 1]); outG.unshift(g[j - 1]); i--; j-- }
+    else if (dp[i - 1][j] >= dp[i][j - 1]) { outE.unshift(`<del style="color:#DC2626;text-decoration:line-through;opacity:.7">${e[i - 1]}</del>`); i-- }
+    else { outG.unshift(`<ins style="color:#059669;text-decoration:none;font-weight:600">${g[j - 1]}</ins>`); j-- }
+  }
+  while (i > 0) { outE.unshift(`<del style="color:#DC2626;text-decoration:line-through;opacity:.7">${e[i - 1]}</del>`); i-- }
+  while (j > 0) { outG.unshift(`<ins style="color:#059669;text-decoration:none;font-weight:600">${g[j - 1]}</ins>`); j-- }
+  return { expectedHtml: outE.join(' '), givenHtml: outG.join(' ') }
+}
+
+type DrillQueueItem = { stageKey: keyof DrillTopic['stages']; stageName: string; cue: string; expected: string | null }
+
+function drillProgressKey(unitId: number) { return `nc_drill_progress_u${unitId}` }
+function loadDrillProgress(unitId: number): Record<string, DrillProgress> {
+  try { return JSON.parse(localStorage.getItem(drillProgressKey(unitId)) || '{}') } catch { return {} }
+}
+function saveDrillProgress(unitId: number, data: Record<string, DrillProgress>) {
+  try { localStorage.setItem(drillProgressKey(unitId), JSON.stringify(data)) } catch {}
+}
+
+function DrillView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
+  const [topics, setTopics] = useState<DrillTopic[] | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [progress, setProgress] = useState<Record<string, DrillProgress>>(() => loadDrillProgress(unit.id))
+  const [activeTopicId, setActiveTopicId] = useState<string | null>(null)
+
+  // session state
+  const [queue, setQueue] = useState<DrillQueueItem[] | null>(null)
+  const [idx, setIdx] = useState(0)
+  const [correct, setCorrect] = useState(0)
+  const [wrong, setWrong] = useState(0)
+  const [retryPool, setRetryPool] = useState<DrillQueueItem[]>([])
+  const [usedRetry, setUsedRetry] = useState(false)
+  const [answer, setAnswer] = useState('')
+  const [feedback, setFeedback] = useState<null | { kind: 'good' | 'bad' | 'free'; expectedHtml?: string; givenHtml?: string }>(null)
+  const [quickMode, setQuickMode] = useState<boolean>(() => { try { return localStorage.getItem('nc_drill_quick_mode') === '1' } catch { return false } })
+  const [summary, setSummary] = useState<null | { correct: number; wrong: number; stageLabel: string; nextReview: number }>(null)
+
+  useEffect(() => {
+    if (!unit.drillSheetUrl) { setLoadError('Bu ünite için henüz drill Sheet linki eklenmemiş.'); return }
+    let cancelled = false
+    fetch(`${unit.drillSheetUrl}${unit.drillSheetUrl.includes('?') ? '&' : '?'}t=${Date.now()}`)
+      .then(res => res.text())
+      .then(text => { if (!cancelled) setTopics(rowsToDrillTopics(parseCSV(text))) })
+      .catch(() => { if (!cancelled) setLoadError('Sheet çekilemedi. Linkin "herkes görüntüleyebilir" olarak yayınlandığından emin ol.') })
+    return () => { cancelled = true }
+  }, [unit.drillSheetUrl])
+
+  function toggleQuickMode() {
+    setQuickMode(v => { try { localStorage.setItem('nc_drill_quick_mode', !v ? '1' : '0') } catch {}; return !v })
+  }
+
+  function startSession(topic: DrillTopic) {
+    const q: DrillQueueItem[] = []
+    DRILL_STAGE_ORDER.forEach(s => {
+      (topic.stages[s.key] || []).forEach(item => q.push({ stageKey: s.key, stageName: s.name, cue: item.cue, expected: item.expected }))
+    })
+    if (q.length === 0) return
+    setActiveTopicId(topic.id)
+    setQueue(q); setIdx(0); setCorrect(0); setWrong(0); setRetryPool([]); setUsedRetry(false)
+    setAnswer(''); setFeedback(null); setSummary(null)
+  }
+
+  function exitSession() {
+    setQueue(null); setActiveTopicId(null); setSummary(null)
+  }
+
+  function finishSession(finalCorrect: number, finalWrong: number) {
+    const topic = topics?.find(t => t.id === activeTopicId)
+    if (!topic) return
+    const prev = progress[topic.id] || { reviewStage: -1, nextReview: null }
+    const nextStage = finalWrong === 0 ? Math.min(prev.reviewStage + 1, DRILL_REVIEW_STAGES.length - 1) : 0
+    const nextReview = Date.now() + DRILL_REVIEW_STAGES[nextStage].ms
+    const updated = { ...progress, [topic.id]: { reviewStage: nextStage, nextReview } }
+    setProgress(updated)
+    saveDrillProgress(unit.id, updated)
+    setSummary({ correct: finalCorrect, wrong: finalWrong, stageLabel: DRILL_REVIEW_STAGES[nextStage].label, nextReview })
+    setQueue(null)
+  }
+
+  function advance(isCorrect: boolean, item: DrillQueueItem) {
+    const newCorrect = correct + (isCorrect ? 1 : 0)
+    const newWrong = wrong + (isCorrect ? 0 : 1)
+    const newRetry = isCorrect || usedRetry ? retryPool : [...retryPool, item]
+    setCorrect(newCorrect); setWrong(newWrong); setRetryPool(newRetry)
+    setAnswer(''); setFeedback(null)
+    const nextIdx = idx + 1
+    if (queue && nextIdx < queue.length) { setIdx(nextIdx); return }
+    if (newRetry.length > 0 && !usedRetry) {
+      setQueue(newRetry); setIdx(0); setUsedRetry(true); setRetryPool([])
+      return
+    }
+    finishSession(newCorrect, newWrong)
+  }
+
+  function checkAnswer() {
+    if (!queue) return
+    const item = queue[idx]
+    const given = answer.trim()
+    if (item.expected === null) {
+      setFeedback({ kind: 'free' })
+      return
+    }
+    if (drillNormalize(given) === drillNormalize(item.expected)) {
+      setFeedback({ kind: 'good' })
+      setTimeout(() => advance(true, item), 450)
+    } else {
+      const diff = drillWordDiff(item.expected, given)
+      setFeedback({ kind: 'bad', ...diff })
+    }
+  }
+
+  function fmtDate(ts: number) {
+    return new Date(ts).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' }) + ' ' + new Date(ts).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+  }
+
+  const accent = '#8B5CF6'
+
+  // ── Summary sub-view ──
+  if (summary) {
+    return (
+      <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <BackBtn onClick={onBack} label="Unit" />
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '28px' }}>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '22px', fontWeight: 700, margin: '0 0 14px' }}>Oturum tamam</h2>
+          <div style={{ display: 'flex', gap: '20px', fontSize: '14px', color: 'var(--muted-foreground)' }}>
+            <span>Doğru: <b style={{ color: 'var(--foreground)' }}>{summary.correct}</b></span>
+            <span>Yanlış: <b style={{ color: 'var(--foreground)' }}>{summary.wrong}</b></span>
+          </div>
+          <p style={{ margin: '10px 0 0', fontSize: '13px', color: 'var(--muted-foreground)' }}>
+            Sonraki review: <b style={{ color: accent }}>{summary.stageLabel}</b> sonra ({fmtDate(summary.nextReview)})
+          </p>
+          <button onClick={exitSession} style={{ marginTop: '18px', background: accent, color: '#fff', border: 'none', borderRadius: '9px', padding: '10px 18px', fontSize: '14px', cursor: 'pointer' }}>
+            Konu listesine dön
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Active session sub-view ──
+  if (queue) {
+    const item = queue[idx]
+    return (
+      <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <button onClick={exitSession} style={{ background: 'none', border: 'none', color: 'var(--muted-foreground)', fontSize: '13px', cursor: 'pointer' }}>← Konu listesine dön</button>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--muted-foreground)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={quickMode} onChange={toggleQuickMode} />
+            Hızlı mod (yazmadan kendi kendini değerlendir)
+          </label>
+        </div>
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: accent, fontWeight: 600 }}>{item.stageName}{usedRetry ? ' · tekrar' : ''}</span>
+            <span style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>{idx + 1} / {queue.length}</span>
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--muted-foreground)', background: 'var(--secondary)', borderRadius: '7px', padding: '7px 10px', marginBottom: '14px' }}>
+            {DRILL_STAGE_HINTS[item.stageKey]}
+          </div>
+          <div style={{ background: 'var(--secondary)', borderRadius: '10px', padding: '18px', textAlign: 'center', marginBottom: '16px' }}>
+            <div style={{ fontSize: '10px', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>ipucu</div>
+            <div style={{ fontSize: '18px' }}>{item.cue}</div>
+          </div>
+
+          {quickMode ? (
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={() => advance(true, item)} style={{ flex: 1, background: accent, color: '#fff', border: 'none', borderRadius: '9px', padding: '14px', fontSize: '14px', cursor: 'pointer' }}>Doğru üretebildim</button>
+              <button onClick={() => advance(false, item)} style={{ flex: 1, background: 'var(--secondary)', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: '9px', padding: '14px', fontSize: '14px', cursor: 'pointer' }}>Yanlış / zorlandım</button>
+            </div>
+          ) : feedback?.kind === 'free' ? (
+            <div>
+              <div style={{ fontSize: '13px', marginBottom: '4px' }}><b>Cevabın:</b> {answer || '(boş)'}</div>
+              <div style={{ fontSize: '12px', color: 'var(--muted-foreground)', marginBottom: '10px' }}>Tek doğru cevap yok — kendi kendini değerlendir.</div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => advance(true, item)} style={{ flex: 1, background: accent, color: '#fff', border: 'none', borderRadius: '9px', padding: '10px', fontSize: '13px', cursor: 'pointer' }}>Doğru üretebildim</button>
+                <button onClick={() => advance(false, item)} style={{ flex: 1, background: 'var(--secondary)', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: '9px', padding: '10px', fontSize: '13px', cursor: 'pointer' }}>Zorlandım</button>
+              </div>
+            </div>
+          ) : feedback?.kind === 'bad' ? (
+            <div>
+              <div style={{ fontSize: '13px', color: '#DC2626', marginBottom: '8px' }}>Farklı.</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', lineHeight: 1.7, marginBottom: '10px' }}>
+                Beklenen: <span dangerouslySetInnerHTML={{ __html: feedback.expectedHtml || '' }} /><br />
+                Yazdığın: <span dangerouslySetInnerHTML={{ __html: feedback.givenHtml || '' }} />
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => advance(false, item)} style={{ flex: 1, background: 'var(--secondary)', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: '9px', padding: '10px', fontSize: '13px', cursor: 'pointer' }}>Gerçek hata — tekrar listesine ekle</button>
+                <button onClick={() => advance(true, item)} style={{ flex: 1, background: accent, color: '#fff', border: 'none', borderRadius: '9px', padding: '10px', fontSize: '13px', cursor: 'pointer' }}>Sadece yazım farkı — doğru say</button>
+              </div>
+            </div>
+          ) : feedback?.kind === 'good' ? (
+            <div style={{ fontSize: '13px', color: '#059669' }}>Doğru.</div>
+          ) : (
+            <div>
+              <input
+                type="text" value={answer} autoFocus
+                onChange={e => setAnswer(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') checkAnswer() }}
+                placeholder="Cümleni yaz..."
+                style={{ width: '100%', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', marginBottom: '10px', background: 'var(--background)', color: 'var(--foreground)' }}
+              />
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={checkAnswer} style={{ background: accent, color: '#fff', border: 'none', borderRadius: '9px', padding: '10px 16px', fontSize: '13px', cursor: 'pointer' }}>Kontrol et</button>
+                <button onClick={() => advance(false, item)} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--muted-foreground)', borderRadius: '9px', padding: '10px 16px', fontSize: '13px', cursor: 'pointer' }}>Geç</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ── Topic list sub-view ──
+  return (
+    <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+      <BackBtn onClick={onBack} label="Unit" />
+      <div>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: '0 0 6px' }}>Drill</h2>
+        <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>Bildiğin yapıları örtük belleğe oturtmak için — yeni bilgi öğretmez, üretimi otomatikleştirir.</p>
+      </div>
+
+      {loadError && <div style={{ fontSize: '13px', color: '#DC2626' }}>{loadError}</div>}
+      {!loadError && !topics && <div style={{ fontSize: '13px', color: 'var(--muted-foreground)' }}>Yükleniyor…</div>}
+
+      {topics && topics.length === 0 && (
+        <div style={{ fontSize: '13px', color: 'var(--muted-foreground)' }}>Sheet'te henüz konu yok.</div>
+      )}
+
+      {topics && topics.map(t => {
+        const p = progress[t.id]
+        const now = Date.now()
+        const due = p && p.nextReview !== null && p.nextReview <= now
+        return (
+          <button key={t.id} onClick={() => startSession(t)} style={{
+            textAlign: 'left', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px',
+            padding: '16px 18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          }}>
+            <div>
+              <div style={{ fontSize: '14px', fontWeight: 600 }}>{t.label}</div>
+              <div style={{ fontSize: '12px', color: 'var(--muted-foreground)', marginTop: '2px' }}>
+                {t.target}{p?.nextReview ? ' · sonraki: ' + fmtDate(p.nextReview) : ''}
+              </div>
+            </div>
+            <span style={{
+              fontSize: '11px', padding: '3px 9px', borderRadius: '999px', whiteSpace: 'nowrap',
+              color: due ? '#B45309' : p ? '#047857' : accent,
+              background: due ? '#FEF3C7' : p ? '#D1FAE5' : '#EDE9FE',
+            }}>
+              {due ? 'review zamanı' : p ? DRILL_REVIEW_STAGES[p.reviewStage].label + ' aşamasında' : 'yeni'}
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
 }
 
 export default function App() {
@@ -2378,6 +2770,7 @@ export default function App() {
   function goModule(m: keyof typeof MODULE_META) { setSelectedQuestionIndex(null); setView(m as View) }
   function goQuestion(i: number) { setSelectedQuestionIndex(i); setView('grammar') }
   function goDictationAll() { setSelectedQuestionIndex(null); setView('dictationAll') }
+  function goDrill() { setSelectedQuestionIndex(null); setView('drill') }
   function goHome() { setView('dashboard'); setSelectedUnit(null); setSelectedQuestionIndex(null) }
   function goBack() {
     if (view === 'dashboard') return
@@ -2396,7 +2789,7 @@ export default function App() {
   const breadcrumbs = [
     { label: LEVEL_META[level].code, onClick: () => { setView('dashboard'); setSelectedUnit(null) } },
     ...(selectedUnitLive ? [{ label: selectedUnitLive.unitLabel ?? `Unit ${selectedUnitLive.id}`, onClick: () => { setView('unit'); setSelectedQuestionIndex(null) } }] : []),
-    ...(view !== 'dashboard' && view !== 'unit' ? [{ label: view === 'dictationAll' ? 'Dictation All' : (selectedQuestion?.label ?? MODULE_META[view as keyof typeof MODULE_META]?.label) }] : []),
+    ...(view !== 'dashboard' && view !== 'unit' ? [{ label: view === 'dictationAll' ? 'Dictation All' : view === 'drill' ? 'Drill' : (selectedQuestion?.label ?? MODULE_META[view as keyof typeof MODULE_META]?.label) }] : []),
   ]
 
   if (!entryProfile) {
@@ -2474,7 +2867,6 @@ export default function App() {
                 padding: '5px 10px', fontSize: '12px', fontWeight: 600, color: 'var(--foreground)', cursor: 'pointer',
               }}>🔒 Kilitle</button>
             )}
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--muted-foreground)' }}>🔥 14 days</span>
             <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, #4F46E5, #818CF8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 700, color: '#fff' }}>S</div>
           </div>
         </div>
@@ -2528,7 +2920,7 @@ export default function App() {
           <DashboardView level={level} units={units} onSelectUnit={goUnit} />
         )}
         {view === 'unit' && selectedUnitLive && (
-          <UnitDetailView unit={selectedUnitLive} onBack={() => { setView('dashboard'); setSelectedUnit(null) }} onModule={goModule} onQuestion={goQuestion} onDictationAll={goDictationAll} />
+          <UnitDetailView unit={selectedUnitLive} level={level} onBack={() => { setView('dashboard'); setSelectedUnit(null) }} onModule={goModule} onQuestion={goQuestion} onDictationAll={goDictationAll} onDrill={goDrill} />
         )}
         {view === 'dictationAll' && selectedUnitLive && (
           <DictationAllView unit={selectedUnitLive} onBack={() => setView('unit')} />
@@ -2544,6 +2936,9 @@ export default function App() {
         )}
         {view === 'shadowing' && selectedUnitLive && (
           <ShadowingView unit={selectedUnitLive} onBack={() => setView('unit')} />
+        )}
+        {view === 'drill' && selectedUnitLive && (
+          <DrillView unit={selectedUnitLive} onBack={() => setView('unit')} />
         )}
       </main>
 
