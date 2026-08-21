@@ -63,7 +63,6 @@ interface Unit {
   passiveVideo?: boolean
   customGrammarBlocks?: GrammarBlock[]
   questionChain?: QuestionItem[]
-  drillSheetUrl?: string
 }
 
 // ─── Drill engine types (Private-area retrieval practice) ─────────────────────
@@ -2441,11 +2440,44 @@ function saveDrillProgress(unitId: number, data: Record<string, DrillProgress>) 
   try { localStorage.setItem(drillProgressKey(unitId), JSON.stringify(data)) } catch {}
 }
 
+function drillTopicsKey(unitId: number) { return `nc_drill_topics_u${unitId}` }
+function loadDrillTopics(unitId: number): DrillTopic[] {
+  try { return JSON.parse(localStorage.getItem(drillTopicsKey(unitId)) || '[]') } catch { return [] }
+}
+function saveDrillTopicsToStorage(unitId: number, topics: DrillTopic[]) {
+  try { localStorage.setItem(drillTopicsKey(unitId), JSON.stringify(topics)) } catch {}
+}
+
 function DrillView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
-  const [topics, setTopics] = useState<DrillTopic[] | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const [topics, setTopics] = useState<DrillTopic[]>(() => {
+    const existing = loadDrillTopics(unit.id)
+    if (existing.length > 0) return existing
+    const seeded = rowsToDrillTopics([{
+      topic_id: 'sample_past_simple',
+      topic_label: 'Past Simple – affirmative (örnek)',
+      target_structure: 'Past Simple',
+      model_sentence: 'I went to the cinema yesterday.',
+      substitution_cues: 'museum:I went to the museum yesterday.|park:I went to the park yesterday.|restaurant:I went to the restaurant yesterday.',
+      transformation_types: "negative:I didn't go to the cinema yesterday.|question:Did you go to the cinema yesterday?|short answer:Yes, I did.",
+      expansion_cues: 'with my sister:I went to the cinema yesterday with my sister.|because we wanted to see a new film:I went to the cinema yesterday with my sister because we wanted to see a new film.',
+      cue_response_items: 'last weekend/museum:I went to the museum last weekend.|yesterday/restaurant:I went to the restaurant yesterday.',
+      question_prompts: 'What did you do yesterday?|Tell me about somewhere you went last weekend.',
+      notes: 'Örnek konu — silip kendi konularını ekleyebilirsin.',
+    }])
+    saveDrillTopicsToStorage(unit.id, seeded)
+    return seeded
+  })
   const [progress, setProgress] = useState<Record<string, DrillProgress>>(() => loadDrillProgress(unit.id))
   const [activeTopicId, setActiveTopicId] = useState<string | null>(null)
+
+  // "konu ekle" panel state
+  const [addPanel, setAddPanel] = useState<null | 'import' | 'manual'>(null)
+  const [csvUrl, setCsvUrl] = useState('')
+  const [csvPaste, setCsvPaste] = useState('')
+  const [importStatus, setImportStatus] = useState<null | { kind: 'ok' | 'err'; text: string }>(null)
+  const [mLabel, setMLabel] = useState(''); const [mTarget, setMTarget] = useState(''); const [mModel, setMModel] = useState('')
+  const [mSub, setMSub] = useState(''); const [mTrans, setMTrans] = useState(''); const [mExp, setMExp] = useState('')
+  const [mCr, setMCr] = useState(''); const [mQ, setMQ] = useState('')
 
   // session state
   const [queue, setQueue] = useState<DrillQueueItem[] | null>(null)
@@ -2459,15 +2491,75 @@ function DrillView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const [quickMode, setQuickMode] = useState<boolean>(() => { try { return localStorage.getItem('nc_drill_quick_mode') === '1' } catch { return false } })
   const [summary, setSummary] = useState<null | { correct: number; wrong: number; stageLabel: string; nextReview: number }>(null)
 
-  useEffect(() => {
-    if (!unit.drillSheetUrl) { setLoadError('Bu ünite için henüz drill Sheet linki eklenmemiş.'); return }
-    let cancelled = false
-    fetch(`${unit.drillSheetUrl}${unit.drillSheetUrl.includes('?') ? '&' : '?'}t=${Date.now()}`)
-      .then(res => res.text())
-      .then(text => { if (!cancelled) setTopics(rowsToDrillTopics(parseCSV(text))) })
-      .catch(() => { if (!cancelled) setLoadError('Sheet çekilemedi. Linkin "herkes görüntüleyebilir" olarak yayınlandığından emin ol.') })
-    return () => { cancelled = true }
-  }, [unit.drillSheetUrl])
+  function persistTopics(next: DrillTopic[]) {
+    setTopics(next)
+    saveDrillTopicsToStorage(unit.id, next)
+  }
+
+  function upsertTopics(newTopics: DrillTopic[]): { added: number; updated: number } {
+    let added = 0, updated = 0
+    const byId = new Map(topics.map(t => [t.id, t]))
+    newTopics.forEach(nt => {
+      if (byId.has(nt.id)) updated++
+      else added++
+      byId.set(nt.id, nt)
+    })
+    persistTopics(Array.from(byId.values()))
+    return { added, updated }
+  }
+
+  async function fetchCsv() {
+    const url = csvUrl.trim()
+    if (!url) { setImportStatus({ kind: 'err', text: 'Link boş.' }); return }
+    setImportStatus({ kind: 'ok', text: 'Çekiliyor...' })
+    try {
+      const res = await fetch(`${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`)
+      if (!res.ok) throw new Error('HTTP ' + res.status)
+      const text = await res.text()
+      importCsvText(text)
+    } catch (e) {
+      setImportStatus({ kind: 'err', text: 'Çekilemedi. Sheet\'in "herkes görüntüleyebilir" olarak paylaşıldığından emin ol, veya CSV\'yi yapıştırma kutusuna kopyala.' })
+    }
+  }
+  function importCsvText(text: string) {
+    const rows = parseCSV(text)
+    if (rows.length === 0) { setImportStatus({ kind: 'err', text: 'Satır bulunamadı — başlık satırı ve en az bir veri satırı olmalı.' }); return }
+    const newTopics = rowsToDrillTopics(rows)
+    const { added, updated } = upsertTopics(newTopics)
+    setImportStatus({ kind: 'ok', text: `${added} yeni konu eklendi, ${updated} konu güncellendi.` })
+  }
+  function saveManualTopic() {
+    if (!mLabel.trim()) return
+    const [t] = rowsToDrillTopics([{
+      topic_label: mLabel, target_structure: mTarget, model_sentence: mModel,
+      substitution_cues: mSub, transformation_types: mTrans, expansion_cues: mExp,
+      cue_response_items: mCr, question_prompts: mQ,
+    }])
+    persistTopics([...topics, t])
+    setMLabel(''); setMTarget(''); setMModel(''); setMSub(''); setMTrans(''); setMExp(''); setMCr(''); setMQ('')
+    setAddPanel(null)
+  }
+
+  function exportData() {
+    const blob = new Blob([JSON.stringify(topics, null, 2)], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `drill-data-unit${unit.id}.json`
+    a.click()
+  }
+  function importJsonFile(evt: React.ChangeEvent<HTMLInputElement>) {
+    const file = evt.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result as string)
+        if (Array.isArray(data)) persistTopics(data)
+      } catch { /* ignore malformed file */ }
+    }
+    reader.readAsText(file)
+    evt.target.value = ''
+  }
 
   function toggleQuickMode() {
     setQuickMode(v => { try { localStorage.setItem('nc_drill_quick_mode', !v ? '1' : '0') } catch {}; return !v })
@@ -2635,6 +2727,7 @@ function DrillView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   }
 
   // ── Topic list sub-view ──
+  const accentSoft = '#EDE9FE'
   return (
     <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
       <BackBtn onClick={onBack} label="Unit" />
@@ -2643,38 +2736,138 @@ function DrillView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
         <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>Bildiğin yapıları örtük belleğe oturtmak için — yeni bilgi öğretmez, üretimi otomatikleştirir.</p>
       </div>
 
-      {loadError && <div style={{ fontSize: '13px', color: '#DC2626' }}>{loadError}</div>}
-      {!loadError && !topics && <div style={{ fontSize: '13px', color: 'var(--muted-foreground)' }}>Yükleniyor…</div>}
-
-      {topics && topics.length === 0 && (
-        <div style={{ fontSize: '13px', color: 'var(--muted-foreground)' }}>Sheet'te henüz konu yok.</div>
+      {topics.length === 0 && (
+        <div style={{ fontSize: '13px', color: 'var(--muted-foreground)' }}>Henüz konu yok. Aşağıdan ekleyebilirsin.</div>
       )}
 
-      {topics && topics.map(t => {
-        const p = progress[t.id]
+      {(() => {
         const now = Date.now()
-        const due = p && p.nextReview !== null && p.nextReview <= now
+        const dueTopics = topics.filter(t => { const p = progress[t.id]; return p && p.nextReview !== null && p.nextReview <= now })
+        if (dueTopics.length === 0) return null
         return (
-          <button key={t.id} onClick={() => startSession(t)} style={{
-            textAlign: 'left', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px',
-            padding: '16px 18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          }}>
-            <div>
-              <div style={{ fontSize: '14px', fontWeight: 600 }}>{t.label}</div>
-              <div style={{ fontSize: '12px', color: 'var(--muted-foreground)', marginTop: '2px' }}>
-                {t.target}{p?.nextReview ? ' · sonraki: ' + fmtDate(p.nextReview) : ''}
-              </div>
+          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
+            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: 700, margin: '0 0 10px' }}>Bugün review'u gelenler</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {dueTopics.map(t => (
+                <button key={t.id} onClick={() => startSession(t)} style={{
+                  textAlign: 'left', background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '10px',
+                  padding: '12px 14px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                }}>
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 600 }}>{t.label}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--muted-foreground)', marginTop: '2px' }}>{t.target}</div>
+                  </div>
+                  <span style={{ fontSize: '11px', padding: '3px 9px', borderRadius: '999px', color: '#B45309', background: '#FEF3C7', whiteSpace: 'nowrap' }}>review zamanı</span>
+                </button>
+              ))}
             </div>
-            <span style={{
-              fontSize: '11px', padding: '3px 9px', borderRadius: '999px', whiteSpace: 'nowrap',
-              color: due ? '#B45309' : p ? '#047857' : accent,
-              background: due ? '#FEF3C7' : p ? '#D1FAE5' : '#EDE9FE',
-            }}>
-              {due ? 'review zamanı' : p ? DRILL_REVIEW_STAGES[p.reviewStage].label + ' aşamasında' : 'yeni'}
-            </span>
-          </button>
+          </div>
         )
-      })}
+      })()}
+
+      {topics.length > 0 && (
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
+          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: 700, margin: '0 0 10px' }}>Tüm konular</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {topics.map(t => {
+              const p = progress[t.id]
+              const now = Date.now()
+              const due = p && p.nextReview !== null && p.nextReview <= now
+              return (
+                <button key={t.id} onClick={() => startSession(t)} style={{
+                  textAlign: 'left', background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '10px',
+                  padding: '12px 14px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                }}>
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 600 }}>{t.label}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--muted-foreground)', marginTop: '2px' }}>
+                      {t.target}{p?.nextReview ? ' · sonraki: ' + fmtDate(p.nextReview) : ''}
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: '11px', padding: '3px 9px', borderRadius: '999px', whiteSpace: 'nowrap',
+                    color: due ? '#B45309' : p ? '#047857' : accent,
+                    background: due ? '#FEF3C7' : p ? '#D1FAE5' : accentSoft,
+                  }}>
+                    {due ? 'review zamanı' : p ? DRILL_REVIEW_STAGES[p.reviewStage].label + ' aşamasında' : 'yeni'}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Konu ekle ── */}
+      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px 20px' }}>
+        <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '15px', fontWeight: 700, margin: '0 0 10px' }}>Konu ekle</h3>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button onClick={() => { setAddPanel('import'); setImportStatus(null) }} style={{ background: accent, color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', cursor: 'pointer' }}>Sheets CSV'den içe aktar</button>
+          <button onClick={() => setAddPanel('manual')} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--foreground)', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', cursor: 'pointer' }}>Tek konu elle gir</button>
+        </div>
+
+        {addPanel === 'import' && (
+          <div style={{ marginTop: '14px' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: 'var(--muted-foreground)', margin: '0 0 4px' }}>Google Sheets "web'de yayınla → CSV" linki</label>
+            <input type="url" value={csvUrl} onChange={e => setCsvUrl(e.target.value)} placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv"
+              style={{ width: '100%', border: '1px solid var(--border)', borderRadius: '8px', padding: '9px 10px', fontSize: '13px', background: 'var(--background)', color: 'var(--foreground)' }} />
+            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+              <button onClick={fetchCsv} style={{ background: accent, color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', cursor: 'pointer' }}>Linkten çek</button>
+            </div>
+            <label style={{ display: 'block', fontSize: '12px', color: 'var(--muted-foreground)', margin: '12px 0 4px' }}>veya CSV'yi buraya yapıştır</label>
+            <textarea value={csvPaste} onChange={e => setCsvPaste(e.target.value)} placeholder="topic_id,topic_label,target_structure,model_sentence,..."
+              style={{ width: '100%', minHeight: '80px', border: '1px solid var(--border)', borderRadius: '8px', padding: '9px 10px', fontSize: '13px', background: 'var(--background)', color: 'var(--foreground)', fontFamily: 'inherit' }} />
+            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+              <button onClick={() => importCsvText(csvPaste)} style={{ background: accent, color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', cursor: 'pointer' }}>Yapıştırılanı içe aktar</button>
+              <button onClick={() => setAddPanel(null)} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--muted-foreground)', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', cursor: 'pointer' }}>Vazgeç</button>
+            </div>
+            {importStatus && <div style={{ marginTop: '8px', fontSize: '12px', color: importStatus.kind === 'err' ? '#DC2626' : '#059669' }}>{importStatus.text}</div>}
+            <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--muted-foreground)', lineHeight: 1.6 }}>
+              Sütunlar: topic_id, topic_label, target_structure, model_sentence, substitution_cues, transformation_types, expansion_cues, cue_response_items, question_prompts, notes<br />
+              Cevap gerektiren alanlarda format: <code>cue:beklenen cümle|cue2:beklenen cümle2</code> — question_prompts'ta beklenen cevap yok, sadece <code>soru1|soru2</code>.
+            </div>
+          </div>
+        )}
+
+        {addPanel === 'manual' && (
+          <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {[
+              ['Konu başlığı', mLabel, setMLabel, 'Past Simple – affirmative'],
+              ['Hedef yapı', mTarget, setMTarget, 'Past Simple'],
+              ['Model cümle', mModel, setMModel, 'I went to the cinema yesterday.'],
+            ].map(([lab, val, setter, ph]: any) => (
+              <div key={lab}>
+                <label style={{ display: 'block', fontSize: '12px', color: 'var(--muted-foreground)', margin: '0 0 4px' }}>{lab}</label>
+                <input type="text" value={val} onChange={e => setter(e.target.value)} placeholder={ph}
+                  style={{ width: '100%', border: '1px solid var(--border)', borderRadius: '8px', padding: '9px 10px', fontSize: '13px', background: 'var(--background)', color: 'var(--foreground)' }} />
+              </div>
+            ))}
+            {[
+              ['Substitution cues (cue:beklenen cümle|...)', mSub, setMSub, 'museum:I went to the museum yesterday.|park:I went to the park yesterday.'],
+              ['Transformation (tip:beklenen cümle|...)', mTrans, setMTrans, "negative:I didn't go to the cinema yesterday.|question:Did you go to the cinema yesterday?"],
+              ['Expansion cues (cue:beklenen cümle|...)', mExp, setMExp, 'yesterday:I went to the cinema yesterday.|with my sister:I went to the cinema yesterday with my sister.'],
+              ['Cue-response (cue:beklenen cümle|...)', mCr, setMCr, 'yesterday/cinema:I went to the cinema yesterday.|last weekend/sister:I visited my sister last weekend.'],
+              ['Serbest üretim soruları (soru|soru|...)', mQ, setMQ, 'What did you do yesterday?|Tell me about last weekend.'],
+            ].map(([lab, val, setter, ph]: any) => (
+              <div key={lab}>
+                <label style={{ display: 'block', fontSize: '12px', color: 'var(--muted-foreground)', margin: '0 0 4px' }}>{lab}</label>
+                <textarea value={val} onChange={e => setter(e.target.value)} placeholder={ph}
+                  style={{ width: '100%', minHeight: '54px', border: '1px solid var(--border)', borderRadius: '8px', padding: '9px 10px', fontSize: '13px', background: 'var(--background)', color: 'var(--foreground)', fontFamily: 'inherit' }} />
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+              <button onClick={saveManualTopic} style={{ background: accent, color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', cursor: 'pointer' }}>Kaydet</button>
+              <button onClick={() => setAddPanel(null)} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--muted-foreground)', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', cursor: 'pointer' }}>Vazgeç</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <button onClick={exportData} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--foreground)', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', cursor: 'pointer' }}>Verini JSON olarak dışa aktar</button>
+        <button onClick={() => document.getElementById(`drill-json-import-${unit.id}`)?.click()} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--foreground)', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', cursor: 'pointer' }}>JSON'dan geri yükle</button>
+        <input id={`drill-json-import-${unit.id}`} type="file" accept=".json" style={{ display: 'none' }} onChange={importJsonFile} />
+      </div>
     </div>
   )
 }
