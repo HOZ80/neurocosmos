@@ -2807,6 +2807,73 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
 
   // ── Topic list sub-view ──
   const accentSoft = '#EDE9FE'
+
+  // B2: konu listesi yok, ekle/aktar yok — direkt konu kartları
+  if (sheetTopics !== undefined) {
+    return (
+      <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+        <BackBtn onClick={onBack} label="Unit" />
+        <div>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: '0 0 6px' }}>Drill</h2>
+          <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>Bildiğin yapıları örtük belleğe oturtmak için — yeni bilgi öğretmez, üretimi otomatikleştirir.</p>
+        </div>
+
+        {topics.length === 0 ? (
+          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '24px', textAlign: 'center', color: 'var(--muted-foreground)', fontSize: '13px' }}>
+            İçerik yükleniyor...
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {topics.map(t => {
+              const p = progress[t.id]
+              const now = Date.now()
+              const due = p && p.nextReview !== null && p.nextReview <= now
+              return (
+                <div key={t.id} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+                  <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: '14px', fontWeight: 700, fontFamily: 'var(--font-display)' }}>{t.label}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--muted-foreground)', marginTop: '2px' }}>
+                        {t.target}{p?.nextReview ? ' · sonraki: ' + fmtDate(p.nextReview) : ''}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{
+                        fontSize: '11px', padding: '3px 9px', borderRadius: '999px', whiteSpace: 'nowrap',
+                        color: due ? '#B45309' : p ? '#047857' : accent,
+                        background: due ? '#FEF3C7' : p ? '#D1FAE5' : accentSoft,
+                      }}>
+                        {due ? 'review zamanı' : p ? DRILL_REVIEW_STAGES[p.reviewStage].label + ' aşamasında' : 'yeni'}
+                      </span>
+                      <button onClick={() => startSession(t)} style={{
+                        background: accent, color: '#fff', border: 'none', borderRadius: '8px',
+                        padding: '8px 16px', fontSize: '13px', cursor: 'pointer', fontFamily: 'var(--font-display)', fontWeight: 600,
+                      }}>Başla →</button>
+                    </div>
+                  </div>
+                  <div style={{ padding: '10px 18px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {DRILL_STAGE_ORDER.map(s => {
+                      const hasItems = (t.stages[s.key] || []).length > 0
+                      return (
+                        <span key={s.key} style={{
+                          fontSize: '10px', fontFamily: 'var(--font-mono)', padding: '2px 8px', borderRadius: '4px',
+                          background: hasItems ? accentSoft : 'var(--secondary)',
+                          color: hasItems ? accent : 'var(--muted-foreground)',
+                          fontWeight: 500,
+                        }}>{s.name}</span>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // P alanı: mevcut yapı korunuyor (konu ekle, JSON aktar dahil)
   return (
     <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
       <BackBtn onClick={onBack} label="Unit" />
