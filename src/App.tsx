@@ -2304,7 +2304,7 @@ const QUESTIONS_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-
 // Sheets'te iki tip satır var: unit satırları (unit_id dolu, topic_id boş) ve
 // drill konu satırları (unit_id + topic_id dolu). Parser ikisini ayırır.
 // Sheets URL'ini buraya bir kez yaz — geri kalan her şey Sheets'ten yönetilir.
-const B2_SHEET_CSV_URL: string = '' // ← Sheets'i "web'de yayınla → CSV" ile paylaş, linki buraya yapıştır
+const B2_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRbnmU2iQ4LLXLPV2i1wS3T9GOL3COpluq5XB5ixqSqG7GTOEP4tBnDrDC0QZ-MNa5XWnEf22UO06vk/pub?output=csv'
 
 interface B2UnitRow {
   unit_id: string
