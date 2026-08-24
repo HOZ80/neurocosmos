@@ -1130,7 +1130,7 @@ function UnitDetailView({ unit, level, onBack, onModule, onQuestion, onDictation
               </button>
             )
           })}
-          {level === 'P' && (
+          {(level === 'P' || level === 'B2') && (
             <button
               onClick={onDrill}
               style={{
