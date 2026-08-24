@@ -294,11 +294,37 @@ function buildUnits(level: Level): Unit[] {
       { title: 'Culture & Values', topic: 'Intercultural topics', grammar: 'Simple Present', dictationSentence: 'Different cultures have different approaches to time.', translation: 'Farklı kültürlerin zamana farklı yaklaşımları vardır.', transcript: 'Let us discuss cultural differences. Different cultures have different approaches to time and punctuality.' },
       { title: 'B1 Final Review', topic: 'B1 Complete review', grammar: 'Present Continuous', dictationSentence: 'My English is getting better every single day.', translation: 'İngilizcim her geçen gün daha da iyileşiyor.', transcript: 'You have completed B1! My English is getting better every single day. I am proud of all the progress I have made.' },
     ],
+    // B2 üniteler Sheets'ten yüklenir (bkz. B2_SHEET_CSV_URL sabiti ve useEffect).
+    // Bu dizi, Sheets yüklenene kadar gösterilecek fallback — B2.J müfredatına göre.
+    // Sheets yüklenince buildB2UnitsFromSheet() bu listeyi tamamen ezer.
+    // Fallback'te tüm üniteler locked:true — return'de B2 için daima true atanır.
     B2: [
-      { title: 'Keşke Öyle Yapsaydım', topic: 'Koşullar', grammar: '3. koşul · I wish · Past perfect', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
-      { title: 'Olsaydı Şimdi Şöyle Olurdu', topic: 'Koşullar', grammar: 'Karışık koşullar', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
-      { title: 'Olmuş Olmalı', topic: 'Kiplik', grammar: "must / might / can't have", grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
-      { title: 'Yapmamalıydım', topic: 'Kiplik', grammar: "should have / needn't have", grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Nerede Kaldık',             topic: 'Konsolidasyon', grammar: 'B1 konsolidasyonu + tanılama',                       dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Keşke Öyle Yapsaydım',      topic: 'Koşullar',      grammar: '3. koşul · I wish · Past perfect',                  dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Olsaydı Şimdi Şöyle Olurdu', topic: 'Koşullar',    grammar: 'Karışık koşullar',                                   dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Olmuş Olmalı',              topic: 'Kiplik',        grammar: "must have / might have / can't have",                dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Yapmamalıydım',             topic: 'Kiplik',        grammar: "should have / needn't have ↔ didn't need to",       dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Yapılmış Oldu',             topic: 'Edilgen',       grammar: 'Tüm zamanlarda edilgen',                             dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Deniliyor ki',              topic: 'Edilgen',       grammar: 'Edilgen bildirim (It is said that / He is said to)', dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Yaptırdım',                topic: 'Ettirgen',      grammar: 'have / get something done',                          dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Aslında Ben Söyledim',      topic: 'Vurgu',         grammar: 'do/does/did vurgu + yarma cümleler',                 dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Asıl Mesele Şu',           topic: 'Bilgi yapısı',  grammar: 'What I need is... / It was X who...',                dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Ne O Ne Bu',               topic: 'Bağlaçlar',     grammar: 'neither...nor / not only...but also',                dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Raporu Bitirince',          topic: 'Cümlecikler',   grammar: 'Ortaç cümlecikleri (participle clauses)',            dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Orada Duran Adam',          topic: 'Cümlecikler',   grammar: 'İndirgenmiş sıfat cümlecikleri',                    dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Ki Bu da...',              topic: 'Cümlecikler',   grammar: 'Cümle-geneli which + edatlı sıfat cümlecikleri',    dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Kesin Değil ama',          topic: 'Çekince',       grammar: 'Hedging + kesinlik ölçeği',                         dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Eğilim Gösteriyor',        topic: 'Akademik',      grammar: 'tend to / appear to / be likely to',                dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Ne Dedi, Nasıl Dedi',      topic: 'Aktarım',       grammar: 'Bildirim fiilleri + kalıpları',                     dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Sormak Ayrı Bir İş',      topic: 'Aktarım',       grammar: 'ask rica ↔ dolaylı soru ailesi',                    dictationSentence: '', translation: '', transcript: '' },
+      { title: 'O Zaman Gelecekti',        topic: 'Zamanlar',      grammar: 'future perfect/continuous + was going to / would',   dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Düşünüyorum ve Düşünürüm', topic: 'Zamanlar',     grammar: 'Durum/eylem fiillerinde continuous anlam farkı',     dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Resmî Dille Söylersek',    topic: 'Kayıt',         grammar: 'İsimleştirme + resmî/gayrı resmî eşdeğerlik',       dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Öte Yandan',              topic: 'Bağdaşıklık',   grammar: 'whereas / nonetheless / admittedly + paragraf bağdaşıklığı', dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Bu Kelime mi, Şu mu?',    topic: 'Kelime',        grammar: 'Yakın eşanlamlıların açımlanması (NSM)',             dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Doğal Duran Hangisi',      topic: 'Kelime',        grammar: 'Eşdizim + dilbilgisel eşdizim yoğunlaştırma',       dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Aynı Şeyi Başka Türlü',   topic: 'Dönüşüm',       grammar: 'Anahtar kelime dönüşümü (key word transformation)', dictationSentence: '', translation: '', transcript: '' },
+      { title: 'Tez ve Karşı Tez',        topic: 'Konsolidasyon', grammar: 'Konsolidasyon + B2 First deneme yapısı',            dictationSentence: '', translation: '', transcript: '' },
     ],
     // 'P' (Kişisel) sekmesi — A1/A2 ile birebir aynı ünite yapısını kullanır
     // (Grammar / Audio / Dictation / Shadowing modülleri dahil). Tek fark:
@@ -337,7 +363,13 @@ function buildUnits(level: Level): Unit[] {
     ...u,
     id: i + 1,
     completed: false,
-    locked: level === 'A1' ? i > 0 : level === 'A2' ? i > 1 : level === 'B2' ? i > 0 : level === 'P' ? false : true,
+    // B2 fallback listesinde tüm üniteler kilitli başlar.
+    // Sheets yüklenince buildB2UnitsFromSheet() bu listeyi tamamen ezer.
+    locked: level === 'A1' ? i > 0
+          : level === 'A2' ? i > 1
+          : level === 'P'  ? false
+          : level === 'B2' ? true
+          : true,
     progress: 0,
     freeSourceSelect: level === 'P',
   }))
@@ -895,7 +927,7 @@ function DashboardView({ level, units, onSelectUnit }: {
         gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
         gap: '14px',
       }}>
-        {units.filter(u => !((level === 'A1' || level === 'A2' || level === 'B2') && u.locked)).map(unit => {
+        {units.filter(u => !((level === 'A1' || level === 'A2') && u.locked)).map(unit => {
           const isLocked = unit.locked
           return (
             <button
@@ -1098,7 +1130,7 @@ function UnitDetailView({ unit, level, onBack, onModule, onQuestion, onDictation
               </button>
             )
           })}
-          {(level === 'P' || level === 'B2') && (
+          {level === 'P' && (
             <button
               onClick={onDrill}
               style={{
@@ -2237,7 +2269,7 @@ const LEVEL_META: Record<Level, { code: string; label: string; color: string; di
   A1: { code: 'AF', label: 'English Group A', color: '#10B981' },
   A2: { code: 'H',  label: 'English Group B', color: '#0EA5E9' },
   B1: { code: 'B1', label: 'Others',          color: '#8B5CF6', disabled: true },
-  B2: { code: 'B2', label: 'Bağımsız Kullanıcı', color: '#8B5CF6' },
+  B2: { code: 'B2', label: 'Coming soon',     color: '#94A3B8', disabled: true },
   // 'P': başkalarına her zaman kilitli görünür (🔒). Sadece doğru şifre
   // girilince açılır — bkz. PRIVATE_PASSWORD ve tab bar'daki tıklama mantığı.
   P:  { code: 'P',  label: 'Kişisel',          color: '#F59E0B', disabled: true, private: true },
@@ -2267,6 +2299,64 @@ const ENTRY_PROFILE_KEY = 'nc_entry_profile'
 // no code change needed. This file only knows how to fetch + parse it.
 
 const QUESTIONS_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRAB45RBWdRWxtKNj-qaIZePkgTD4y8HXNkc7h4wb_VnjVRETobN-uSQi8osDEIqusZKiamvu_qL40I/pub?output=csv'
+
+// ─── B2 içeriği Google Sheets'ten besleniyor ──────────────────────────────────
+// Sheets'te iki tip satır var: unit satırları (unit_id dolu, topic_id boş) ve
+// drill konu satırları (unit_id + topic_id dolu). Parser ikisini ayırır.
+// Sheets URL'ini buraya bir kez yaz — geri kalan her şey Sheets'ten yönetilir.
+const B2_SHEET_CSV_URL: string = '' // ← Sheets'i "web'de yayınla → CSV" ile paylaş, linki buraya yapıştır
+
+interface B2UnitRow {
+  unit_id: string
+  unit_title: string
+  unit_topic: string
+  unit_grammar: string
+  unit_locked: string
+  dictation_sentence: string
+  dictation_translation: string
+  dictation_transcript: string
+}
+
+interface B2SheetData {
+  units: B2UnitRow[]
+  drillTopicsByUnit: Record<string, DrillTopic[]>
+}
+
+function parseB2Sheet(rows: Record<string, string>[]): B2SheetData {
+  const unitsMap = new Map<string, B2UnitRow>()
+  const drillTopicsByUnit: Record<string, DrillTopic[]> = {}
+
+  rows.forEach(r => {
+    const uid = r.unit_id?.trim()
+    if (!uid) return
+
+    // Her satır bir ünite kaydı — aynı unit_id'yi birden fazla satırda
+    // tekrar etmek zorunda kalırsın (her drill konusu için). İlk görülen
+    // satırdan ünite bilgisini al, sonrakileri yoksay.
+    if (!unitsMap.has(uid)) {
+      unitsMap.set(uid, {
+        unit_id: uid,
+        unit_title: r.unit_title?.trim() || '',
+        unit_topic: r.unit_topic?.trim() || '',
+        unit_grammar: r.unit_grammar?.trim() || '',
+        unit_locked: r.unit_locked?.trim().toLowerCase() || 'true',
+        dictation_sentence: r.dictation_sentence?.trim() || '',
+        dictation_translation: r.dictation_translation?.trim() || '',
+        dictation_transcript: r.dictation_transcript?.trim() || '',
+      })
+    }
+
+    // Drill topic satırı — topic_id dolu olan satırlar
+    const tid = r.topic_id?.trim()
+    if (tid) {
+      const topic = rowsToDrillTopics([r])[0]
+      if (!drillTopicsByUnit[uid]) drillTopicsByUnit[uid] = []
+      drillTopicsByUnit[uid].push(topic)
+    }
+  })
+
+  return { units: Array.from(unitsMap.values()), drillTopicsByUnit }
+}
 
 // Minimal CSV parser: handles quoted fields, commas/newlines inside quotes, and "" escaped quotes.
 function parseCSV(text: string): Record<string, string>[] {
@@ -2416,25 +2506,30 @@ function drillWordDiff(expected: string, given: string): { expectedHtml: string;
 
 type DrillQueueItem = { stageKey: keyof DrillTopic['stages']; stageName: string; cue: string; expected: string | null }
 
-function drillProgressKey(level: Level, unitId: number) { return `nc_drill_progress_${level}_u${unitId}` }
-function loadDrillProgress(level: Level, unitId: number): Record<string, DrillProgress> {
-  try { return JSON.parse(localStorage.getItem(drillProgressKey(level, unitId)) || '{}') } catch { return {} }
+function drillProgressKey(unitId: number) { return `nc_drill_progress_u${unitId}` }
+function loadDrillProgress(unitId: number): Record<string, DrillProgress> {
+  try { return JSON.parse(localStorage.getItem(drillProgressKey(unitId)) || '{}') } catch { return {} }
 }
-function saveDrillProgress(level: Level, unitId: number, data: Record<string, DrillProgress>) {
-  try { localStorage.setItem(drillProgressKey(level, unitId), JSON.stringify(data)) } catch {}
-}
-
-function drillTopicsKey(level: Level, unitId: number) { return `nc_drill_topics_${level}_u${unitId}` }
-function loadDrillTopics(level: Level, unitId: number): DrillTopic[] {
-  try { return JSON.parse(localStorage.getItem(drillTopicsKey(level, unitId)) || '[]') } catch { return [] }
-}
-function saveDrillTopicsToStorage(level: Level, unitId: number, topics: DrillTopic[]) {
-  try { localStorage.setItem(drillTopicsKey(level, unitId), JSON.stringify(topics)) } catch {}
+function saveDrillProgress(unitId: number, data: Record<string, DrillProgress>) {
+  try { localStorage.setItem(drillProgressKey(unitId), JSON.stringify(data)) } catch {}
 }
 
-function DrillView({ unit, level, onBack }: { unit: Unit; level: Level; onBack: () => void }) {
+function drillTopicsKey(unitId: number) { return `nc_drill_topics_u${unitId}` }
+function loadDrillTopics(unitId: number): DrillTopic[] {
+  try { return JSON.parse(localStorage.getItem(drillTopicsKey(unitId)) || '[]') } catch { return [] }
+}
+function saveDrillTopicsToStorage(unitId: number, topics: DrillTopic[]) {
+  try { localStorage.setItem(drillTopicsKey(unitId), JSON.stringify(topics)) } catch {}
+}
+
+function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => void; sheetTopics?: DrillTopic[] }) {
   const [topics, setTopics] = useState<DrillTopic[]>(() => {
-    const existing = loadDrillTopics(level, unit.id)
+    // Öncelik sırası:
+    // 1. sheetTopics (B2 Sheets'ten canlı gelen konular)
+    // 2. localStorage'da kayıtlı konular (P alanı manuel ekleme)
+    // 3. Örnek konu (P alanı ilk açılış)
+    if (sheetTopics && sheetTopics.length > 0) return sheetTopics
+    const existing = loadDrillTopics(unit.id)
     if (existing.length > 0) return existing
     const seeded = rowsToDrillTopics([{
       topic_id: 'sample_past_simple',
@@ -2448,10 +2543,10 @@ function DrillView({ unit, level, onBack }: { unit: Unit; level: Level; onBack: 
       question_prompts: 'What did you do yesterday?|Tell me about somewhere you went last weekend.',
       notes: 'Örnek konu — silip kendi konularını ekleyebilirsin.',
     }])
-    saveDrillTopicsToStorage(level, unit.id, seeded)
+    saveDrillTopicsToStorage(unit.id, seeded)
     return seeded
   })
-  const [progress, setProgress] = useState<Record<string, DrillProgress>>(() => loadDrillProgress(level, unit.id))
+  const [progress, setProgress] = useState<Record<string, DrillProgress>>(() => loadDrillProgress(unit.id))
   const [activeTopicId, setActiveTopicId] = useState<string | null>(null)
 
   // "konu ekle" panel state
@@ -2477,7 +2572,7 @@ function DrillView({ unit, level, onBack }: { unit: Unit; level: Level; onBack: 
 
   function persistTopics(next: DrillTopic[]) {
     setTopics(next)
-    saveDrillTopicsToStorage(level, unit.id, next)
+    saveDrillTopicsToStorage(unit.id, next)
   }
 
   function upsertTopics(newTopics: DrillTopic[]): { added: number; updated: number } {
@@ -2572,7 +2667,7 @@ function DrillView({ unit, level, onBack }: { unit: Unit; level: Level; onBack: 
     const nextReview = Date.now() + DRILL_REVIEW_STAGES[nextStage].ms
     const updated = { ...progress, [topic.id]: { reviewStage: nextStage, nextReview } }
     setProgress(updated)
-    saveDrillProgress(level, unit.id, updated)
+    saveDrillProgress(unit.id, updated)
     setSummary({ correct: finalCorrect, wrong: finalWrong, stageLabel: DRILL_REVIEW_STAGES[nextStage].label, nextReview })
     setQueue(null)
   }
@@ -2934,9 +3029,57 @@ export default function App() {
       .catch(() => { /* keep hardcoded fallback on any error */ })
   }, [])
 
-  const units = buildUnits(level).map(u =>
-    (u.unitLabel === '100Q' && sheetQuestions) ? { ...u, questionChain: sheetQuestions } : u
-  )
+  // ── B2 Sheet: ünite listesi + drill konuları ─────────────────────────────────
+  // B2_SHEET_CSV_URL boşsa fetch atılmaz — fallback hardcode liste kullanılır.
+  // URL doldurulduğunda her şey otomatik olarak Sheets'ten gelir.
+  const [b2SheetData, setB2SheetData] = useState<B2SheetData | null>(null)
+
+  useEffect(() => {
+    if (!B2_SHEET_CSV_URL) return
+    const bustedUrl = `${B2_SHEET_CSV_URL}${B2_SHEET_CSV_URL.includes('?') ? '&' : '?'}t=${Date.now()}`
+    fetch(bustedUrl, { cache: 'no-store' })
+      .then(res => res.text())
+      .then(text => {
+        const rows = parseCSV(text)
+        if (rows.length > 0) setB2SheetData(parseB2Sheet(rows))
+      })
+      .catch(() => { /* keep hardcoded fallback on any error */ })
+  }, [])
+
+  // Sheets'ten gelen B2 verisi varsa buildUnits'in hardcode listesini eziyoruz.
+  // Yoksa (URL boş veya fetch başarısız) fallback liste görünür — site hiç kırılmaz.
+  function buildB2UnitsFromSheet(data: B2SheetData): ReturnType<typeof buildUnits> {
+    return data.units.map((u, i) => ({
+      id: i + 1,
+      title: u.unit_title,
+      topic: u.unit_topic,
+      grammar: u.unit_grammar,
+      completed: false,
+      locked: u.unit_locked === 'true',
+      progress: 0,
+      dictationSentence: u.dictation_sentence,
+      translation: u.dictation_translation,
+      transcript: u.dictation_transcript,
+      unitLabel: `Unit ${i + 1}`,
+      moduleLocks: {
+        dictation: !u.dictation_sentence,
+        shadowing: !u.dictation_transcript,
+      },
+      freeSourceSelect: false,
+    }))
+  }
+
+  const units = (() => {
+    const base = buildUnits(level)
+    if (level === 'B2' && b2SheetData) {
+      return buildB2UnitsFromSheet(b2SheetData).map(u =>
+        (u.unitLabel === '100Q' && sheetQuestions) ? { ...u, questionChain: sheetQuestions } : u
+      )
+    }
+    return base.map(u =>
+      (u.unitLabel === '100Q' && sheetQuestions) ? { ...u, questionChain: sheetQuestions } : u
+    )
+  })()
 
   const selectedUnitLive = selectedUnit ? units.find(u => u.id === selectedUnit.id) ?? selectedUnit : null
   const selectedQuestion = selectedUnitLive?.questionChain && selectedQuestionIndex !== null
@@ -3115,7 +3258,15 @@ export default function App() {
           <ShadowingView unit={selectedUnitLive} onBack={() => setView('unit')} />
         )}
         {view === 'drill' && selectedUnitLive && (
-          <DrillView unit={selectedUnitLive} level={level} onBack={() => setView('unit')} />
+          <DrillView
+            unit={selectedUnitLive}
+            onBack={() => setView('unit')}
+            sheetTopics={
+              level === 'B2' && b2SheetData
+                ? (b2SheetData.drillTopicsByUnit[`B2-U${String(selectedUnitLive.id).padStart(2, '0')}`] ?? [])
+                : undefined
+            }
+          />
         )}
       </main>
 
