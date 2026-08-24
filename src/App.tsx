@@ -295,26 +295,10 @@ function buildUnits(level: Level): Unit[] {
       { title: 'B1 Final Review', topic: 'B1 Complete review', grammar: 'Present Continuous', dictationSentence: 'My English is getting better every single day.', translation: 'İngilizcim her geçen gün daha da iyileşiyor.', transcript: 'You have completed B1! My English is getting better every single day. I am proud of all the progress I have made.' },
     ],
     B2: [
-      { title: 'Advanced Conditionals', topic: 'Mixed conditionals', grammar: 'Future Plans', dictationSentence: 'Had she known, she would not have agreed to it.', translation: 'Bilseydi buna razı olmayacaktı.', transcript: 'What do you think she would have done? Had she known, she would not have agreed to it under any circumstances.' },
-      { title: 'Inversion & Emphasis', topic: 'Fronting structures', grammar: 'Simple Present', dictationSentence: 'Never have I seen such a remarkable performance.', translation: 'Bu kadar olağanüstü bir performans hiç görmedim.', transcript: 'How did you find the concert? Never have I seen such a remarkable performance. The soloist was extraordinary.' },
-      { title: 'Discourse & Cohesion', topic: 'Coherent writing', grammar: 'Simple Present', dictationSentence: 'Nevertheless, the evidence strongly supports this view.', translation: 'Bununla birlikte, kanıtlar bu görüşü güçlü biçimde desteklemektedir.', transcript: 'Continue your argument. Nevertheless, the evidence strongly supports this view, despite the initial scepticism.' },
-      { title: 'Idiomatic Language', topic: 'Phrasal verbs', grammar: 'Present Continuous', dictationSentence: 'She put off the meeting until further notice.', translation: 'Toplantıyı bir sonraki duyuruya kadar erteledi.', transcript: 'Was the meeting cancelled? She put off the meeting until further notice due to unforeseen circumstances.' },
-      { title: 'Academic Writing', topic: 'Essay structure', grammar: 'Simple Present', dictationSentence: 'This essay will critically examine three key arguments.', translation: 'Bu deneme üç temel argümanı eleştirel biçimde inceleyecektir.', transcript: 'Introduce your essay. This essay will critically examine three key arguments relating to climate change policy.' },
-      { title: 'Stance & Hedging', topic: 'Academic register', grammar: 'Simple Present', dictationSentence: 'It could be argued that this approach is insufficient.', translation: 'Bu yaklaşımın yetersiz olduğu ileri sürülebilir.', transcript: 'State your position carefully. It could be argued that this approach is insufficient to address the core problem.' },
-      { title: 'Nominalisation', topic: 'Formal style', grammar: 'Simple Present', dictationSentence: 'The implementation of the policy caused significant debate.', translation: 'Politikanın uygulanması önemli bir tartışmaya yol açtı.', transcript: 'Describe the reaction. The implementation of the policy caused significant debate among senior stakeholders.' },
-      { title: 'Complex Sentences', topic: 'Subordination', grammar: 'Present Continuous', dictationSentence: 'Provided that you submit on time, marks will not be deducted.', translation: 'Zamanında teslim etmeniz koşuluyla puan indirilmeyecektir.', transcript: 'What are the conditions? Provided that you submit on time, marks will not be deducted for minor errors.' },
-      { title: 'Critical Thinking', topic: 'Evaluating arguments', grammar: 'Simple Present', dictationSentence: 'While this argument has merit, it overlooks key factors.', translation: 'Bu argüman değer taşısa da temel faktörleri göz ardı ediyor.', transcript: 'Evaluate this argument. While this argument has merit, it overlooks key factors such as economic inequality.' },
-      { title: 'Collocations', topic: 'High-frequency pairs', grammar: 'Simple Present', dictationSentence: 'The company made a significant breakthrough in research.', translation: 'Şirket araştırmada önemli bir atılım gerçekleştirdi.', transcript: 'What did the company achieve? The company made a significant breakthrough in research that changed the industry.' },
-      { title: 'Media & Journalism', topic: 'News vocabulary', grammar: 'Past Simple', dictationSentence: 'Officials confirmed that negotiations are still ongoing.', translation: 'Yetkililer müzakerelerin hâlâ sürdüğünü doğruladı.', transcript: 'What was announced? Officials confirmed that negotiations are still ongoing and no agreement has been reached.' },
-      { title: 'Environmental Issues', topic: 'Ecology language', grammar: 'Present Continuous', dictationSentence: 'Deforestation is threatening biodiversity across the globe.', translation: 'Ormansızlaşma küresel ölçekte biyolojik çeşitliliği tehdit ediyor.', transcript: 'Describe the environmental concern. Deforestation is threatening biodiversity across the globe at an alarming rate.' },
-      { title: 'Global Economy', topic: 'Economics register', grammar: 'Simple Present', dictationSentence: 'Inflation remains a persistent challenge for policymakers.', translation: 'Enflasyon politika yapıcılar için kalıcı bir sorun olmaya devam ediyor.', transcript: 'Describe the economic situation. Inflation remains a persistent challenge for policymakers in most developed nations.' },
-      { title: 'Social Justice', topic: 'Sociological terms', grammar: 'Simple Present', dictationSentence: 'Systemic inequality affects access to quality education.', translation: 'Sistemik eşitsizlik kaliteli eğitime erişimi etkiliyor.', transcript: 'Discuss the issue. Systemic inequality affects access to quality education, particularly in low-income communities.' },
-      { title: 'Rhetoric & Persuasion', topic: 'Debate techniques', grammar: 'Simple Present', dictationSentence: 'It is undeniable that action must be taken immediately.', translation: 'Derhal harekete geçilmesi gerektiği inkâr edilemez.', transcript: 'Make your case. It is undeniable that action must be taken immediately to prevent further damage to the environment.' },
-      { title: 'Technology & Ethics', topic: 'Digital society', grammar: 'Present Continuous', dictationSentence: 'Artificial intelligence is reshaping the labour market.', translation: 'Yapay zeka iş piyasasını yeniden şekillendiriyor.', transcript: 'Discuss AI\'s impact. Artificial intelligence is reshaping the labour market at a pace few had anticipated.' },
-      { title: 'Intercultural Competence', topic: 'Global citizenship', grammar: 'Simple Present', dictationSentence: 'Cultural sensitivity is essential in international business.', translation: 'Kültürel duyarlılık uluslararası iş dünyasında vazgeçilmezdir.', transcript: 'Why does culture matter? Cultural sensitivity is essential in international business to avoid misunderstandings.' },
-      { title: 'Research & Evidence', topic: 'Academic citation', grammar: 'Simple Present', dictationSentence: 'According to recent studies, sleep improves memory retention.', translation: 'Son çalışmalara göre uyku hafıza tutmayı iyileştiriyor.', transcript: 'Cite the research. According to recent studies, sleep improves memory retention significantly in adolescents.' },
-      { title: 'Innovation & Change', topic: 'Future language', grammar: 'Future Plans', dictationSentence: 'This technology is set to revolutionise healthcare.', translation: 'Bu teknoloji sağlık hizmetlerinde devrim yaratmaya hazırlanıyor.', transcript: 'What is predicted? This technology is set to revolutionise healthcare by making diagnostics faster and cheaper.' },
-      { title: 'B2 Final Review', topic: 'B2 Complete review', grammar: 'Simple Present', dictationSentence: 'Proficiency in English is an invaluable asset worldwide.', translation: 'İngilizce yeterliliği dünya genelinde paha biçilmez bir varlıktır.', transcript: 'Celebrate your achievement! Proficiency in English is an invaluable asset worldwide. You should be very proud.' },
+      { title: 'Keşke Öyle Yapsaydım', topic: 'Koşullar', grammar: '3. koşul · I wish · Past perfect', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Olsaydı Şimdi Şöyle Olurdu', topic: 'Koşullar', grammar: 'Karışık koşullar', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Olmuş Olmalı', topic: 'Kiplik', grammar: "must / might / can't have", grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
+      { title: 'Yapmamalıydım', topic: 'Kiplik', grammar: "should have / needn't have", grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
     ],
     // 'P' (Kişisel) sekmesi — A1/A2 ile birebir aynı ünite yapısını kullanır
     // (Grammar / Audio / Dictation / Shadowing modülleri dahil). Tek fark:
@@ -353,7 +337,7 @@ function buildUnits(level: Level): Unit[] {
     ...u,
     id: i + 1,
     completed: false,
-    locked: level === 'A1' ? i > 0 : level === 'A2' ? i > 1 : level === 'P' ? false : true,
+    locked: level === 'A1' ? i > 0 : level === 'A2' ? i > 1 : level === 'B2' ? i > 0 : level === 'P' ? false : true,
     progress: 0,
     freeSourceSelect: level === 'P',
   }))
@@ -911,7 +895,7 @@ function DashboardView({ level, units, onSelectUnit }: {
         gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
         gap: '14px',
       }}>
-        {units.filter(u => !((level === 'A1' || level === 'A2') && u.locked)).map(unit => {
+        {units.filter(u => !((level === 'A1' || level === 'A2' || level === 'B2') && u.locked)).map(unit => {
           const isLocked = unit.locked
           return (
             <button
@@ -1114,7 +1098,7 @@ function UnitDetailView({ unit, level, onBack, onModule, onQuestion, onDictation
               </button>
             )
           })}
-          {level === 'P' && (
+          {(level === 'P' || level === 'B2') && (
             <button
               onClick={onDrill}
               style={{
@@ -2253,7 +2237,7 @@ const LEVEL_META: Record<Level, { code: string; label: string; color: string; di
   A1: { code: 'AF', label: 'English Group A', color: '#10B981' },
   A2: { code: 'H',  label: 'English Group B', color: '#0EA5E9' },
   B1: { code: 'B1', label: 'Others',          color: '#8B5CF6', disabled: true },
-  B2: { code: 'B2', label: 'Coming soon',     color: '#94A3B8', disabled: true },
+  B2: { code: 'B2', label: 'Bağımsız Kullanıcı', color: '#8B5CF6' },
   // 'P': başkalarına her zaman kilitli görünür (🔒). Sadece doğru şifre
   // girilince açılır — bkz. PRIVATE_PASSWORD ve tab bar'daki tıklama mantığı.
   P:  { code: 'P',  label: 'Kişisel',          color: '#F59E0B', disabled: true, private: true },
@@ -2432,25 +2416,25 @@ function drillWordDiff(expected: string, given: string): { expectedHtml: string;
 
 type DrillQueueItem = { stageKey: keyof DrillTopic['stages']; stageName: string; cue: string; expected: string | null }
 
-function drillProgressKey(unitId: number) { return `nc_drill_progress_u${unitId}` }
-function loadDrillProgress(unitId: number): Record<string, DrillProgress> {
-  try { return JSON.parse(localStorage.getItem(drillProgressKey(unitId)) || '{}') } catch { return {} }
+function drillProgressKey(level: Level, unitId: number) { return `nc_drill_progress_${level}_u${unitId}` }
+function loadDrillProgress(level: Level, unitId: number): Record<string, DrillProgress> {
+  try { return JSON.parse(localStorage.getItem(drillProgressKey(level, unitId)) || '{}') } catch { return {} }
 }
-function saveDrillProgress(unitId: number, data: Record<string, DrillProgress>) {
-  try { localStorage.setItem(drillProgressKey(unitId), JSON.stringify(data)) } catch {}
-}
-
-function drillTopicsKey(unitId: number) { return `nc_drill_topics_u${unitId}` }
-function loadDrillTopics(unitId: number): DrillTopic[] {
-  try { return JSON.parse(localStorage.getItem(drillTopicsKey(unitId)) || '[]') } catch { return [] }
-}
-function saveDrillTopicsToStorage(unitId: number, topics: DrillTopic[]) {
-  try { localStorage.setItem(drillTopicsKey(unitId), JSON.stringify(topics)) } catch {}
+function saveDrillProgress(level: Level, unitId: number, data: Record<string, DrillProgress>) {
+  try { localStorage.setItem(drillProgressKey(level, unitId), JSON.stringify(data)) } catch {}
 }
 
-function DrillView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
+function drillTopicsKey(level: Level, unitId: number) { return `nc_drill_topics_${level}_u${unitId}` }
+function loadDrillTopics(level: Level, unitId: number): DrillTopic[] {
+  try { return JSON.parse(localStorage.getItem(drillTopicsKey(level, unitId)) || '[]') } catch { return [] }
+}
+function saveDrillTopicsToStorage(level: Level, unitId: number, topics: DrillTopic[]) {
+  try { localStorage.setItem(drillTopicsKey(level, unitId), JSON.stringify(topics)) } catch {}
+}
+
+function DrillView({ unit, level, onBack }: { unit: Unit; level: Level; onBack: () => void }) {
   const [topics, setTopics] = useState<DrillTopic[]>(() => {
-    const existing = loadDrillTopics(unit.id)
+    const existing = loadDrillTopics(level, unit.id)
     if (existing.length > 0) return existing
     const seeded = rowsToDrillTopics([{
       topic_id: 'sample_past_simple',
@@ -2464,10 +2448,10 @@ function DrillView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
       question_prompts: 'What did you do yesterday?|Tell me about somewhere you went last weekend.',
       notes: 'Örnek konu — silip kendi konularını ekleyebilirsin.',
     }])
-    saveDrillTopicsToStorage(unit.id, seeded)
+    saveDrillTopicsToStorage(level, unit.id, seeded)
     return seeded
   })
-  const [progress, setProgress] = useState<Record<string, DrillProgress>>(() => loadDrillProgress(unit.id))
+  const [progress, setProgress] = useState<Record<string, DrillProgress>>(() => loadDrillProgress(level, unit.id))
   const [activeTopicId, setActiveTopicId] = useState<string | null>(null)
 
   // "konu ekle" panel state
@@ -2493,7 +2477,7 @@ function DrillView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
 
   function persistTopics(next: DrillTopic[]) {
     setTopics(next)
-    saveDrillTopicsToStorage(unit.id, next)
+    saveDrillTopicsToStorage(level, unit.id, next)
   }
 
   function upsertTopics(newTopics: DrillTopic[]): { added: number; updated: number } {
@@ -2588,7 +2572,7 @@ function DrillView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
     const nextReview = Date.now() + DRILL_REVIEW_STAGES[nextStage].ms
     const updated = { ...progress, [topic.id]: { reviewStage: nextStage, nextReview } }
     setProgress(updated)
-    saveDrillProgress(unit.id, updated)
+    saveDrillProgress(level, unit.id, updated)
     setSummary({ correct: finalCorrect, wrong: finalWrong, stageLabel: DRILL_REVIEW_STAGES[nextStage].label, nextReview })
     setQueue(null)
   }
@@ -3131,7 +3115,7 @@ export default function App() {
           <ShadowingView unit={selectedUnitLive} onBack={() => setView('unit')} />
         )}
         {view === 'drill' && selectedUnitLive && (
-          <DrillView unit={selectedUnitLive} onBack={() => setView('unit')} />
+          <DrillView unit={selectedUnitLive} level={level} onBack={() => setView('unit')} />
         )}
       </main>
 
