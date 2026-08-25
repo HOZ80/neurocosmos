@@ -1312,7 +1312,7 @@ function renderTextCards(text?: string, opts?: { italic?: boolean; leadingTitle?
   )
 }
 
-function GrammarView({ unit, question, onBack }: { unit: Unit; question?: QuestionItem; onBack: () => void }) {
+function GrammarView({ unit, question, onBack, grammarBlocks }: { unit: Unit; question?: QuestionItem; onBack: () => void; grammarBlocks?: GrammarSheetBlock[] | null }) {
   const [showAnswer, setShowAnswer] = useState(false)
   const rule = unit.grammarPlaceholder ? PLACEHOLDER_RULE : (GRAMMAR_RULES[unit.grammar] ?? GRAMMAR_RULES['Simple Present'])
   return (
@@ -1329,7 +1329,13 @@ function GrammarView({ unit, question, onBack }: { unit: Unit; question?: Questi
         </div>
       </div>
 
-      {question ? (
+      {grammarBlocks && grammarBlocks.length > 0 && !question ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {grammarBlocks.map((block, i) => (
+            <GrammarSheetBlockView key={i} block={block} />
+          ))}
+        </div>
+      ) : question ? (
         <>
           {/* Question box, with listen icon */}
           <div style={{ background: '#EEF2FF', border: '1px solid #B20909', borderRadius: '14px', padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
@@ -2304,7 +2310,91 @@ const QUESTIONS_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-
 // Sheets'te iki tip satır var: unit satırları (unit_id dolu, topic_id boş) ve
 // drill konu satırları (unit_id + topic_id dolu). Parser ikisini ayırır.
 // Sheets URL'ini buraya bir kez yaz — geri kalan her şey Sheets'ten yönetilir.
-const B2_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSv3MoLyAe0-NNNRyTB5roJYgQ1p0jBt1RTc50HEUp-pSMGMqK8Ljr13rRonh_XxTvrAIIlT9a3aV_S/pub?output=csv'
+const B2_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRbnmU2iQ4LLXLPV2i1wS3T9GOL3COpluq5XB5ixqSqG7GTOEP4tBnDrDC0QZ-MNa5XWnEf22UO06vk/pub?output=csv'
+const GRAMMAR_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQs8nSbxvuXAVcTFobf4sY-wjZzpE-VhGAyggHDcnG6ZXTubCYWw7cH6ApyhiZzBccuFFIPup-MHaXX/pub?output=csv'
+
+// ─── Grammar Sheet types & parser ────────────────────────────────────────────
+
+interface GrammarSheetBlock {
+  type: 'HEADER' | 'BLOCK' | 'NOTE'
+  content: string
+}
+
+function parseGrammarSheet(rows: Record<string, string>[]): Record<string, GrammarSheetBlock[]> {
+  const result: Record<string, GrammarSheetBlock[]> = {}
+  rows.forEach(r => {
+    const level = r.level?.trim()
+    const unitId = r.unit_id?.trim()
+    const blockType = r.block_type?.trim() as GrammarSheetBlock['type']
+    const content = r.content?.trim()
+    if (!level || !unitId || !blockType || !content) return
+    const key = `${level}-${unitId}`
+    if (!result[key]) result[key] = []
+    result[key].push({ type: blockType, content })
+  })
+  return result
+}
+
+// Renders inline markup: **bold**, *italic*, ~~accent~~, ^small^
+function renderInlineMarkup(text: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = []
+  const re = /(\*\*.*?\*\*|\*.*?\*|~~.*?~~|\^.*?\^)/g
+  let last = 0
+  let m: RegExpExecArray | null
+  let key = 0
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index))
+    const token = m[0]
+    if (token.startsWith('**') && token.endsWith('**')) {
+      const inner = token.slice(2, -2)
+      // inner may contain ~~...~~
+      parts.push(<strong key={key++}>{renderInlineMarkup(inner)}</strong>)
+    } else if (token.startsWith('~~') && token.endsWith('~~')) {
+      parts.push(<span key={key++} style={{ color: '#4F46E5', fontWeight: 600 }}>{token.slice(2, -2)}</span>)
+    } else if (token.startsWith('^') && token.endsWith('^')) {
+      parts.push(<span key={key++} style={{ fontSize: '11px', color: 'var(--muted-foreground)' }}>{token.slice(1, -1)}</span>)
+    } else if (token.startsWith('*') && token.endsWith('*')) {
+      parts.push(<em key={key++}>{token.slice(1, -1)}</em>)
+    } else {
+      parts.push(token)
+    }
+    last = m.index + token.length
+  }
+  if (last < text.length) parts.push(text.slice(last))
+  return parts
+}
+
+function GrammarSheetBlockView({ block }: { block: GrammarSheetBlock }) {
+  const isHeader = block.type === 'HEADER'
+  const isNote = block.type === 'NOTE'
+  const bg = isHeader ? '#EEF2FF' : isNote ? 'var(--secondary)' : 'var(--card)'
+  const border = isHeader ? '1px solid rgba(99,102,241,0.3)' : '1px solid var(--border)'
+
+  const sections = block.content.split('\n---\n')
+
+  return (
+    <div style={{ background: bg, border, borderRadius: '14px', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {sections.map((section, si) => (
+        <div key={si} style={{ borderTop: si > 0 ? '1px solid var(--border)' : 'none', paddingTop: si > 0 ? '10px' : '0' }}>
+          {section.split('\n').map((line, li) => {
+            if (!line.trim()) return <br key={li} />
+            return (
+              <p key={li} style={{
+                margin: '0 0 4px',
+                fontSize: isNote ? '12px' : '14px',
+                lineHeight: 1.75,
+                color: isNote ? 'var(--muted-foreground)' : 'var(--foreground)',
+                fontStyle: isNote ? 'italic' : 'normal',
+              }}>
+                {renderInlineMarkup(line)}
+              </p>
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
+}
 
 interface B2UnitRow {
   unit_id: string
@@ -3096,6 +3186,21 @@ export default function App() {
       .catch(() => { /* keep hardcoded fallback on any error */ })
   }, [])
 
+  // ── Grammar Sheet ────────────────────────────────────────────────────────────
+  const [grammarSheetData, setGrammarSheetData] = useState<Record<string, GrammarSheetBlock[]> | null>(null)
+
+  useEffect(() => {
+    if (!GRAMMAR_SHEET_CSV_URL) return
+    const bustedUrl = `${GRAMMAR_SHEET_CSV_URL}${GRAMMAR_SHEET_CSV_URL.includes('?') ? '&' : '?'}t=${Date.now()}`
+    fetch(bustedUrl, { cache: 'no-store' })
+      .then(res => res.text())
+      .then(text => {
+        const rows = parseCSV(text)
+        if (rows.length > 0) setGrammarSheetData(parseGrammarSheet(rows))
+      })
+      .catch(() => { /* keep existing fallback */ })
+  }, [])
+
   // ── B2 Sheet: ünite listesi + drill konuları ─────────────────────────────────
   // B2_SHEET_CSV_URL boşsa fetch atılmaz — fallback hardcode liste kullanılır.
   // URL doldurulduğunda her şey otomatik olarak Sheets'ten gelir.
@@ -3313,7 +3418,17 @@ export default function App() {
           <DictationAllView unit={selectedUnitLive} onBack={() => setView('unit')} />
         )}
         {view === 'grammar' && selectedUnitLive && (
-          <GrammarView unit={selectedUnitLive} question={selectedQuestion} onBack={() => { setView('unit'); setSelectedQuestionIndex(null) }} />
+          <GrammarView
+            unit={selectedUnitLive}
+            question={selectedQuestion}
+            onBack={() => { setView('unit'); setSelectedQuestionIndex(null) }}
+            grammarBlocks={(() => {
+              if (!grammarSheetData) return null
+              const unitKey = `${level}-U${String(selectedUnitLive.id).padStart(2, '0')}`
+              const sheetKey = `${level}-${unitKey}`
+              return grammarSheetData[sheetKey] ?? null
+            })()}
+          />
         )}
         {view === 'audio' && selectedUnitLive && (
           <AudioView unit={selectedUnitLive} onBack={() => setView('unit')} />
