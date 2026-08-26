@@ -2468,12 +2468,11 @@ const ENTRY_PROFILE_KEY = 'nc_entry_profile'
 
 const QUESTIONS_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRAB45RBWdRWxtKNj-qaIZePkgTD4y8HXNkc7h4wb_VnjVRETobN-uSQi8osDEIqusZKiamvu_qL40I/pub?output=csv'
 
-// ─── Tüm seviyeler Google Sheets'ten besleniyor ───────────────────────────────
+// ─── B2 içeriği Google Sheets'ten besleniyor ──────────────────────────────────
 // Sheets'te iki tip satır var: unit satırları (unit_id dolu, topic_id boş) ve
 // drill konu satırları (unit_id + topic_id dolu). Parser ikisini ayırır.
-// level kolonu hangi seviyeye ait olduğunu belirler (A1/A2/B1/B2/P).
 // Sheets URL'ini buraya bir kez yaz — geri kalan her şey Sheets'ten yönetilir.
-const UNITS_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSqjbIPf0_33AXc_2qxpVVsL75IRGWAnLaAy6hNym7_GtQcVz4YIhcy6aUHYYw0soHRFDWvFqhULLPZ/pub?output=csv'
+const B2_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRbnmU2iQ4LLXLPV2i1wS3T9GOL3COpluq5XB5ixqSqG7GTOEP4tBnDrDC0QZ-MNa5XWnEf22UO06vk/pub?output=csv'
 const GRAMMAR_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQs8nSbxvuXAVcTFobf4sY-wjZzpE-VhGAyggHDcnG6ZXTubCYWw7cH6ApyhiZzBccuFFIPup-MHaXX/pub?output=csv'
 
 // ─── Grammar Sheet types & parser ────────────────────────────────────────────
@@ -2559,9 +2558,8 @@ function GrammarSheetBlockView({ block }: { block: GrammarSheetBlock }) {
   )
 }
 
-interface UnitRow {
+interface B2UnitRow {
   unit_id: string
-  level: string
   unit_title: string
   unit_topic: string
   unit_grammar: string
@@ -2569,16 +2567,15 @@ interface UnitRow {
   dictation_sentence: string
   dictation_translation: string
   dictation_transcript: string
-  audio_url: string
 }
 
-interface UnitsSheetData {
-  unitsByLevel: Record<string, UnitRow[]>
+interface B2SheetData {
+  units: B2UnitRow[]
   drillTopicsByUnit: Record<string, DrillTopic[]>
 }
 
-function parseUnitsSheet(rows: Record<string, string>[]): UnitsSheetData {
-  const unitsMap = new Map<string, UnitRow>()
+function parseB2Sheet(rows: Record<string, string>[]): B2SheetData {
+  const unitsMap = new Map<string, B2UnitRow>()
   const drillTopicsByUnit: Record<string, DrillTopic[]> = {}
 
   rows.forEach(r => {
@@ -2591,15 +2588,13 @@ function parseUnitsSheet(rows: Record<string, string>[]): UnitsSheetData {
     if (!unitsMap.has(uid)) {
       unitsMap.set(uid, {
         unit_id: uid,
-        level: r.level?.trim() || '',
-        unit_title: r.title?.trim() || '',
-        unit_topic: r.topic?.trim() || '',
-        unit_grammar: r.grammar?.trim() || '',
-        unit_locked: r.locked?.trim().toLowerCase() || 'true',
+        unit_title: r.unit_title?.trim() || '',
+        unit_topic: r.unit_topic?.trim() || '',
+        unit_grammar: r.unit_grammar?.trim() || '',
+        unit_locked: r.unit_locked?.trim().toLowerCase() || 'true',
         dictation_sentence: r.dictation_sentence?.trim() || '',
         dictation_translation: r.dictation_translation?.trim() || '',
         dictation_transcript: r.dictation_transcript?.trim() || '',
-        audio_url: r.audio_url?.trim() || '',
       })
     }
 
@@ -2612,14 +2607,7 @@ function parseUnitsSheet(rows: Record<string, string>[]): UnitsSheetData {
     }
   })
 
-  // level bazında grupla
-  const unitsByLevel: Record<string, UnitRow[]> = {}
-  unitsMap.forEach(u => {
-    if (!unitsByLevel[u.level]) unitsByLevel[u.level] = []
-    unitsByLevel[u.level].push(u)
-  })
-
-  return { unitsByLevel, drillTopicsByUnit }
+  return { units: Array.from(unitsMap.values()), drillTopicsByUnit }
 }
 
 // Minimal CSV parser: handles quoted fields, commas/newlines inside quotes, and "" escaped quotes.
@@ -3375,30 +3363,27 @@ export default function App() {
       .catch(() => { /* keep existing fallback */ })
   }, [])
 
-  // ── Units Sheet: tüm seviyeler ünite listesi + drill konuları ────────────────
-  // UNITS_SHEET_CSV_URL boşsa fetch atılmaz — fallback hardcode liste kullanılır.
-  // URL doldurulduğunda tüm seviyeler Sheets'ten gelir; site hiç kırılmaz.
-  const [unitsSheetData, setUnitsSheetData] = useState<UnitsSheetData | null>(null)
+  // ── B2 Sheet: ünite listesi + drill konuları ─────────────────────────────────
+  // B2_SHEET_CSV_URL boşsa fetch atılmaz — fallback hardcode liste kullanılır.
+  // URL doldurulduğunda her şey otomatik olarak Sheets'ten gelir.
+  const [b2SheetData, setB2SheetData] = useState<B2SheetData | null>(null)
 
   useEffect(() => {
-    if (!UNITS_SHEET_CSV_URL) return
-    const bustedUrl = `${UNITS_SHEET_CSV_URL}${UNITS_SHEET_CSV_URL.includes('?') ? '&' : '?'}t=${Date.now()}`
+    if (!B2_SHEET_CSV_URL) return
+    const bustedUrl = `${B2_SHEET_CSV_URL}${B2_SHEET_CSV_URL.includes('?') ? '&' : '?'}t=${Date.now()}`
     fetch(bustedUrl, { cache: 'no-store' })
       .then(res => res.text())
       .then(text => {
         const rows = parseCSV(text)
-        if (rows.length > 0) setUnitsSheetData(parseUnitsSheet(rows))
+        if (rows.length > 0) setB2SheetData(parseB2Sheet(rows))
       })
       .catch(() => { /* keep hardcoded fallback on any error */ })
   }, [])
 
-  // Sheets'ten gelen veri varsa buildUnits'in hardcode listesini eziyoruz.
+  // Sheets'ten gelen B2 verisi varsa buildUnits'in hardcode listesini eziyoruz.
   // Yoksa (URL boş veya fetch başarısız) fallback liste görünür — site hiç kırılmaz.
-  // A2 için özel durum: 100Q kartı her zaman hardcode'dan gelir, sheet'e dahil edilmez.
-  // Sheet'ten gelen A2 listesi oluşturulduktan sonra 100Q kartı 2. pozisyona eklenir.
-  function buildUnitsFromSheet(lv: Level, data: UnitsSheetData): ReturnType<typeof buildUnits> {
-    const levelUnits = data.unitsByLevel[lv] ?? []
-    const sheetUnits = levelUnits.map((u, i) => ({
+  function buildB2UnitsFromSheet(data: B2SheetData): ReturnType<typeof buildUnits> {
+    return data.units.map((u, i) => ({
       id: i + 1,
       title: u.unit_title,
       topic: u.unit_topic,
@@ -3409,40 +3394,22 @@ export default function App() {
       dictationSentence: u.dictation_sentence,
       translation: u.dictation_translation,
       transcript: u.dictation_transcript,
-      audioUrl: u.audio_url || undefined,
       unitLabel: `Unit ${i + 1}`,
       moduleLocks: {
         dictation: !u.dictation_sentence,
         shadowing: !u.dictation_transcript,
       },
-      freeSourceSelect: lv === 'P',
+      freeSourceSelect: false,
     }))
-
-    // A2: 100Q kartını hardcode'dan al, 2. pozisyona (index 1) yerleştir,
-    // sonraki kartların id'lerini kaydır.
-    if (lv === 'A2') {
-      const hardcoded100Q = buildUnits('A2').find(u => u.unitLabel === '100Q')
-      if (hardcoded100Q) {
-        const card100Q = { ...hardcoded100Q, id: 2 }
-        return [
-          sheetUnits[0],                                    // id:1 — ilk kart
-          card100Q,                                         // id:2 — 100Q (hardcode)
-          ...sheetUnits.slice(1).map(u => ({ ...u, id: u.id + 1 })), // id:3+ — geri kalanlar
-        ]
-      }
-    }
-
-    return sheetUnits
   }
 
   const units = (() => {
-    const sheetLevelUnits = unitsSheetData?.unitsByLevel[level]
-    if (unitsSheetData && sheetLevelUnits && sheetLevelUnits.length > 0) {
-      return buildUnitsFromSheet(level, unitsSheetData).map(u =>
+    const base = buildUnits(level)
+    if (level === 'B2' && b2SheetData) {
+      return buildB2UnitsFromSheet(b2SheetData).map(u =>
         (u.unitLabel === '100Q' && sheetQuestions) ? { ...u, questionChain: sheetQuestions } : u
       )
     }
-    const base = buildUnits(level)
     return base.map(u =>
       (u.unitLabel === '100Q' && sheetQuestions) ? { ...u, questionChain: sheetQuestions } : u
     )
@@ -3643,8 +3610,8 @@ export default function App() {
             unit={selectedUnitLive}
             onBack={() => setView('unit')}
             sheetTopics={
-              level === 'B2' && unitsSheetData
-                ? (unitsSheetData.drillTopicsByUnit[`B2-U${String(selectedUnitLive.id).padStart(2, '0')}`] ?? [])
+              level === 'B2' && b2SheetData
+                ? (b2SheetData.drillTopicsByUnit[`B2-U${String(selectedUnitLive.id).padStart(2, '0')}`] ?? [])
                 : undefined
             }
           />
