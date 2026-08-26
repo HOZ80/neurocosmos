@@ -2122,9 +2122,12 @@ function ShadowingAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
           </div>
 
           {/* Soruyu dinle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', justifyContent: 'center', padding: '12px 0' }}>
-            {current.questionAudioUrl && <AudioIconButton src={current.questionAudioUrl} bg={MODULE_META.shadowing.color} />}
-            <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>Soruyu dinle, yüksek sesle tekrar et</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              {current.questionAudioUrl && <AudioIconButton src={current.questionAudioUrl} bg={MODULE_META.shadowing.color} />}
+              <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>Soruyu dinle, yüksek sesle tekrar et</p>
+            </div>
+            <p style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: 'var(--foreground)', lineHeight: 1.5 }}>{current.question}</p>
           </div>
 
           {/* Cevabı gör */}
