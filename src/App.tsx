@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useMemo, forwardRef, useImperativeHandle }
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Level = 'A1' | 'A2' | 'B1' | 'B2' | 'P'
-type View = 'dashboard' | 'unit' | 'grammar' | 'audio' | 'dictation' | 'shadowing' | 'dictationAll' | 'drill'
+type View = 'dashboard' | 'unit' | 'grammar' | 'audio' | 'dictation' | 'shadowing' | 'dictationAll' | 'shadowingAll' | 'drill'
 
 interface DictationSegment {
   start: number
@@ -1001,13 +1001,14 @@ function DashboardView({ level, units, onSelectUnit }: {
   )
 }
 
-function UnitDetailView({ unit, level, onBack, onModule, onQuestion, onDictationAll, onDrill }: {
+function UnitDetailView({ unit, level, onBack, onModule, onQuestion, onDictationAll, onShadowingAll, onDrill }: {
   unit: Unit
   level: Level
   onBack: () => void
   onModule: (m: keyof typeof MODULE_META) => void
   onQuestion: (index: number) => void
   onDictationAll: () => void
+  onShadowingAll: () => void
   onDrill: () => void
 }) {
   return (
@@ -1080,6 +1081,32 @@ function UnitDetailView({ unit, level, onBack, onModule, onQuestion, onDictation
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill={MODULE_META.dictation.color}><path d="M10 17l5-5-5-5v10z" /></svg>
+            </div>
+          </button>
+
+          <button
+            onClick={onShadowingAll}
+            style={{
+              textAlign: 'left', background: 'var(--card)',
+              border: `1.5px solid ${MODULE_META.shadowing.color}33`, borderRadius: '16px',
+              padding: '24px', cursor: 'pointer',
+              boxShadow: '0 1px 5px rgba(15,23,42,0.06)',
+              transition: 'all 0.18s', display: 'flex', flexDirection: 'column', gap: '14px',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 6px 24px ${MODULE_META.shadowing.color}22`; e.currentTarget.style.borderColor = `${MODULE_META.shadowing.color}66` }}
+            onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 5px rgba(15,23,42,0.06)'; e.currentTarget.style.borderColor = `${MODULE_META.shadowing.color}33` }}
+          >
+            <div style={{
+              width: '48px', height: '48px', borderRadius: '12px',
+              background: MODULE_META.shadowing.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '22px',
+            }}>🎙️</div>
+            <div>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, margin: '0 0 4px' }}>Shadowing All</h3>
+              <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', lineHeight: 1.5 }}>Soruyu sesli dinle, yüksek sesle tekrar et — cevabı istediğinde gör.</p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill={MODULE_META.shadowing.color}><path d="M10 17l5-5-5-5v10z" /></svg>
             </div>
           </button>
         </div>
@@ -1312,7 +1339,7 @@ function renderTextCards(text?: string, opts?: { italic?: boolean; leadingTitle?
   )
 }
 
-function GrammarView({ unit, question, onBack }: { unit: Unit; question?: QuestionItem; onBack: () => void }) {
+function GrammarView({ unit, question, onBack, grammarBlocks }: { unit: Unit; question?: QuestionItem; onBack: () => void; grammarBlocks?: GrammarSheetBlock[] | null }) {
   const [showAnswer, setShowAnswer] = useState(false)
   const rule = unit.grammarPlaceholder ? PLACEHOLDER_RULE : (GRAMMAR_RULES[unit.grammar] ?? GRAMMAR_RULES['Simple Present'])
   return (
@@ -1329,7 +1356,13 @@ function GrammarView({ unit, question, onBack }: { unit: Unit; question?: Questi
         </div>
       </div>
 
-      {question ? (
+      {grammarBlocks && grammarBlocks.length > 0 && !question ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {grammarBlocks.map((block, i) => (
+            <GrammarSheetBlockView key={i} block={block} />
+          ))}
+        </div>
+      ) : question ? (
         <>
           {/* Question box, with listen icon */}
           <div style={{ background: '#EEF2FF', border: '1px solid #B20909', borderRadius: '14px', padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
@@ -2038,6 +2071,141 @@ function DictationAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
   )
 }
 
+function ShadowingAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
+  const items = useMemo(
+    () => (unit.questionChain ?? []).filter(q => q.questionAudioUrl && q.answerEn),
+    [unit.questionChain]
+  )
+  const [index, setIndex] = useState(0)
+  const [revealed, setRevealed] = useState(false)
+
+  const current = items[index]
+  const isLast = index + 1 >= items.length
+
+  function next() {
+    if (isLast) return
+    setIndex(i => i + 1)
+    setRevealed(false)
+  }
+
+  function prev() {
+    if (index === 0) return
+    setIndex(i => i - 1)
+    setRevealed(false)
+  }
+
+  function restart() {
+    setIndex(0)
+    setRevealed(false)
+  }
+
+  return (
+    <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '560px' }}>
+      <BackBtn onClick={onBack} label={unit.title} />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.shadowing.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🎙️</div>
+        <div>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: 0 }}>Shadowing All</h2>
+          <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{unit.title} · soruyu dinle, yüksek sesle tekrar et</p>
+        </div>
+      </div>
+
+      {items.length === 0 ? (
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '24px', textAlign: 'center' }}>
+          <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>Henüz içerik eklenmemiş, sorular Sheet'e girildikçe burada görünecek.</p>
+        </div>
+      ) : (
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <p style={{ margin: 0, fontSize: '12px', color: 'var(--muted-foreground)', fontFamily: 'var(--font-mono)' }}>Soru {index + 1} / {items.length}</p>
+          </div>
+
+          {/* Soruyu dinle */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              {current.questionAudioUrl && <AudioIconButton src={current.questionAudioUrl} bg={MODULE_META.shadowing.color} />}
+              <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>Soruyu dinle, yüksek sesle tekrar et</p>
+            </div>
+            <p style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: 'var(--foreground)', lineHeight: 1.5 }}>{current.question}</p>
+          </div>
+
+          {/* Cevabı gör */}
+          {!revealed ? (
+            <button
+              onClick={() => setRevealed(true)}
+              style={{
+                padding: '12px', borderRadius: '10px', border: `1.5px solid ${MODULE_META.shadowing.color}55`,
+                background: `${MODULE_META.shadowing.color}0d`,
+                color: MODULE_META.shadowing.color, fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              👁 Cevabı Gör
+            </button>
+          ) : (
+            <div style={{
+              padding: '14px 16px', borderRadius: '12px',
+              background: '#ECFDF5', border: '1px solid rgba(16,185,129,0.3)',
+              display: 'flex', flexDirection: 'column', gap: '6px',
+            }}>
+              <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#059669' }}>Cevap</p>
+              <p style={{ margin: 0, fontSize: '15px', color: 'var(--foreground)' }}>{current.answerEn}</p>
+              {current.answerAudioUrl && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
+                  <AudioIconButton src={current.answerAudioUrl} bg={MODULE_META.shadowing.color} />
+                  <p style={{ margin: 0, fontSize: '12px', color: 'var(--muted-foreground)' }}>Cevabı da dinle</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Önceki / Sonraki / Tekrar başla */}
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button
+              onClick={prev}
+              disabled={index === 0}
+              style={{
+                flex: 1, padding: '12px', borderRadius: '10px',
+                border: `1.5px solid ${MODULE_META.shadowing.color}55`,
+                background: 'transparent',
+                color: index === 0 ? 'var(--muted-foreground)' : MODULE_META.shadowing.color,
+                borderColor: index === 0 ? 'var(--border)' : `${MODULE_META.shadowing.color}55`,
+                fontSize: '14px', fontWeight: 600,
+                cursor: index === 0 ? 'not-allowed' : 'pointer',
+              }}
+            >
+              ← Önceki
+            </button>
+            {isLast ? (
+              <button
+                onClick={restart}
+                style={{
+                  flex: 1, padding: '12px', borderRadius: '10px', border: 'none',
+                  background: MODULE_META.shadowing.color, color: '#fff',
+                  fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                Tekrar başla
+              </button>
+            ) : (
+              <button
+                onClick={next}
+                style={{
+                  flex: 1, padding: '12px', borderRadius: '10px', border: 'none',
+                  background: MODULE_META.shadowing.color, color: '#fff',
+                  fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                Sonraki →
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const [pickedAudioUrl, setPickedAudioUrl] = useState<string | null>(null)
   const [pickedSegments, setPickedSegments] = useState<DictationSegment[] | null>(null)
@@ -2305,6 +2473,90 @@ const QUESTIONS_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-
 // drill konu satırları (unit_id + topic_id dolu). Parser ikisini ayırır.
 // Sheets URL'ini buraya bir kez yaz — geri kalan her şey Sheets'ten yönetilir.
 const B2_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRbnmU2iQ4LLXLPV2i1wS3T9GOL3COpluq5XB5ixqSqG7GTOEP4tBnDrDC0QZ-MNa5XWnEf22UO06vk/pub?output=csv'
+const GRAMMAR_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQs8nSbxvuXAVcTFobf4sY-wjZzpE-VhGAyggHDcnG6ZXTubCYWw7cH6ApyhiZzBccuFFIPup-MHaXX/pub?output=csv'
+
+// ─── Grammar Sheet types & parser ────────────────────────────────────────────
+
+interface GrammarSheetBlock {
+  type: 'HEADER' | 'BLOCK' | 'NOTE'
+  content: string
+}
+
+function parseGrammarSheet(rows: Record<string, string>[]): Record<string, GrammarSheetBlock[]> {
+  const result: Record<string, GrammarSheetBlock[]> = {}
+  rows.forEach(r => {
+    const level = r.level?.trim()
+    const unitId = r.unit_id?.trim()
+    const blockType = r.block_type?.trim() as GrammarSheetBlock['type']
+    const content = r.content?.trim()
+    if (!level || !unitId || !blockType || !content) return
+    const key = `${level}-${unitId}`
+    if (!result[key]) result[key] = []
+    result[key].push({ type: blockType, content })
+  })
+  return result
+}
+
+// Renders inline markup: **bold**, *italic*, ~~accent~~, ^small^
+function renderInlineMarkup(text: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = []
+  const re = /(\*\*.*?\*\*|\*.*?\*|~~.*?~~|\^.*?\^)/g
+  let last = 0
+  let m: RegExpExecArray | null
+  let key = 0
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index))
+    const token = m[0]
+    if (token.startsWith('**') && token.endsWith('**')) {
+      const inner = token.slice(2, -2)
+      // inner may contain ~~...~~
+      parts.push(<strong key={key++}>{renderInlineMarkup(inner)}</strong>)
+    } else if (token.startsWith('~~') && token.endsWith('~~')) {
+      parts.push(<span key={key++} style={{ color: '#4F46E5', fontWeight: 600 }}>{token.slice(2, -2)}</span>)
+    } else if (token.startsWith('^') && token.endsWith('^')) {
+      parts.push(<span key={key++} style={{ fontSize: '11px', color: 'var(--muted-foreground)' }}>{token.slice(1, -1)}</span>)
+    } else if (token.startsWith('*') && token.endsWith('*')) {
+      parts.push(<em key={key++}>{token.slice(1, -1)}</em>)
+    } else {
+      parts.push(token)
+    }
+    last = m.index + token.length
+  }
+  if (last < text.length) parts.push(text.slice(last))
+  return parts
+}
+
+function GrammarSheetBlockView({ block }: { block: GrammarSheetBlock }) {
+  const isHeader = block.type === 'HEADER'
+  const isNote = block.type === 'NOTE'
+  const bg = isHeader ? '#EEF2FF' : isNote ? 'var(--secondary)' : 'var(--card)'
+  const border = isHeader ? '1px solid rgba(99,102,241,0.3)' : '1px solid var(--border)'
+
+  const sections = block.content.split('\n---\n')
+
+  return (
+    <div style={{ background: bg, border, borderRadius: '14px', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {sections.map((section, si) => (
+        <div key={si} style={{ borderTop: si > 0 ? '1px solid var(--border)' : 'none', paddingTop: si > 0 ? '10px' : '0' }}>
+          {section.split('\n').map((line, li) => {
+            if (!line.trim()) return <br key={li} />
+            return (
+              <p key={li} style={{
+                margin: '0 0 4px',
+                fontSize: isNote ? '12px' : '14px',
+                lineHeight: 1.75,
+                color: isNote ? 'var(--muted-foreground)' : 'var(--foreground)',
+                fontStyle: isNote ? 'italic' : 'normal',
+              }}>
+                {renderInlineMarkup(line)}
+              </p>
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
+}
 
 interface B2UnitRow {
   unit_id: string
@@ -3096,6 +3348,21 @@ export default function App() {
       .catch(() => { /* keep hardcoded fallback on any error */ })
   }, [])
 
+  // ── Grammar Sheet ────────────────────────────────────────────────────────────
+  const [grammarSheetData, setGrammarSheetData] = useState<Record<string, GrammarSheetBlock[]> | null>(null)
+
+  useEffect(() => {
+    if (!GRAMMAR_SHEET_CSV_URL) return
+    const bustedUrl = `${GRAMMAR_SHEET_CSV_URL}${GRAMMAR_SHEET_CSV_URL.includes('?') ? '&' : '?'}t=${Date.now()}`
+    fetch(bustedUrl, { cache: 'no-store' })
+      .then(res => res.text())
+      .then(text => {
+        const rows = parseCSV(text)
+        if (rows.length > 0) setGrammarSheetData(parseGrammarSheet(rows))
+      })
+      .catch(() => { /* keep existing fallback */ })
+  }, [])
+
   // ── B2 Sheet: ünite listesi + drill konuları ─────────────────────────────────
   // B2_SHEET_CSV_URL boşsa fetch atılmaz — fallback hardcode liste kullanılır.
   // URL doldurulduğunda her şey otomatik olarak Sheets'ten gelir.
@@ -3157,6 +3424,7 @@ export default function App() {
   function goModule(m: keyof typeof MODULE_META) { setSelectedQuestionIndex(null); setView(m as View) }
   function goQuestion(i: number) { setSelectedQuestionIndex(i); setView('grammar') }
   function goDictationAll() { setSelectedQuestionIndex(null); setView('dictationAll') }
+  function goShadowingAll() { setSelectedQuestionIndex(null); setView('shadowingAll') }
   function goDrill() { setSelectedQuestionIndex(null); setView('drill') }
   function goHome() { setView('dashboard'); setSelectedUnit(null); setSelectedQuestionIndex(null) }
   function goBack() {
@@ -3176,7 +3444,7 @@ export default function App() {
   const breadcrumbs = [
     { label: LEVEL_META[level].code, onClick: () => { setView('dashboard'); setSelectedUnit(null) } },
     ...(selectedUnitLive ? [{ label: selectedUnitLive.unitLabel ?? `Unit ${selectedUnitLive.id}`, onClick: () => { setView('unit'); setSelectedQuestionIndex(null) } }] : []),
-    ...(view !== 'dashboard' && view !== 'unit' ? [{ label: view === 'dictationAll' ? 'Dictation All' : view === 'drill' ? 'Drill' : (selectedQuestion?.label ?? MODULE_META[view as keyof typeof MODULE_META]?.label) }] : []),
+    ...(view !== 'dashboard' && view !== 'unit' ? [{ label: view === 'dictationAll' ? 'Dictation All' : view === 'shadowingAll' ? 'Shadowing All' : view === 'drill' ? 'Drill' : (selectedQuestion?.label ?? MODULE_META[view as keyof typeof MODULE_META]?.label) }] : []),
   ]
 
   if (!entryProfile) {
@@ -3307,13 +3575,26 @@ export default function App() {
           <DashboardView level={level} units={units} onSelectUnit={goUnit} />
         )}
         {view === 'unit' && selectedUnitLive && (
-          <UnitDetailView unit={selectedUnitLive} level={level} onBack={() => { setView('dashboard'); setSelectedUnit(null) }} onModule={goModule} onQuestion={goQuestion} onDictationAll={goDictationAll} onDrill={goDrill} />
+          <UnitDetailView unit={selectedUnitLive} level={level} onBack={() => { setView('dashboard'); setSelectedUnit(null) }} onModule={goModule} onQuestion={goQuestion} onDictationAll={goDictationAll} onShadowingAll={goShadowingAll} onDrill={goDrill} />
         )}
         {view === 'dictationAll' && selectedUnitLive && (
           <DictationAllView unit={selectedUnitLive} onBack={() => setView('unit')} />
         )}
+        {view === 'shadowingAll' && selectedUnitLive && (
+          <ShadowingAllView unit={selectedUnitLive} onBack={() => setView('unit')} />
+        )}
         {view === 'grammar' && selectedUnitLive && (
-          <GrammarView unit={selectedUnitLive} question={selectedQuestion} onBack={() => { setView('unit'); setSelectedQuestionIndex(null) }} />
+          <GrammarView
+            unit={selectedUnitLive}
+            question={selectedQuestion}
+            onBack={() => { setView('unit'); setSelectedQuestionIndex(null) }}
+            grammarBlocks={(() => {
+              if (!grammarSheetData) return null
+              const unitKey = `${level}-U${String(selectedUnitLive.id).padStart(2, '0')}`
+              const sheetKey = `${level}-${unitKey}`
+              return grammarSheetData[sheetKey] ?? null
+            })()}
+          />
         )}
         {view === 'audio' && selectedUnitLive && (
           <AudioView unit={selectedUnitLive} onBack={() => setView('unit')} />
