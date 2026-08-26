@@ -2088,6 +2088,12 @@ function ShadowingAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
     setRevealed(false)
   }
 
+  function prev() {
+    if (index === 0) return
+    setIndex(i => i - 1)
+    setRevealed(false)
+  }
+
   function restart() {
     setIndex(0)
     setRevealed(false)
@@ -2150,30 +2156,47 @@ function ShadowingAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
             </div>
           )}
 
-          {/* Next / Bitir / Tekrar */}
-          {isLast ? (
+          {/* Önceki / Sonraki / Tekrar başla */}
+          <div style={{ display: 'flex', gap: '10px' }}>
             <button
-              onClick={restart}
+              onClick={prev}
+              disabled={index === 0}
               style={{
-                padding: '12px', borderRadius: '10px', border: 'none',
-                background: MODULE_META.shadowing.color, color: '#fff',
-                fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+                flex: 1, padding: '12px', borderRadius: '10px',
+                border: `1.5px solid ${MODULE_META.shadowing.color}55`,
+                background: 'transparent',
+                color: index === 0 ? 'var(--muted-foreground)' : MODULE_META.shadowing.color,
+                borderColor: index === 0 ? 'var(--border)' : `${MODULE_META.shadowing.color}55`,
+                fontSize: '14px', fontWeight: 600,
+                cursor: index === 0 ? 'not-allowed' : 'pointer',
               }}
             >
-              Tekrar başla
+              ← Önceki
             </button>
-          ) : (
-            <button
-              onClick={next}
-              style={{
-                padding: '12px', borderRadius: '10px', border: 'none',
-                background: MODULE_META.shadowing.color, color: '#fff',
-                fontSize: '14px', fontWeight: 600, cursor: 'pointer',
-              }}
-            >
-              Sonraki →
-            </button>
-          )}
+            {isLast ? (
+              <button
+                onClick={restart}
+                style={{
+                  flex: 1, padding: '12px', borderRadius: '10px', border: 'none',
+                  background: MODULE_META.shadowing.color, color: '#fff',
+                  fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                Tekrar başla
+              </button>
+            ) : (
+              <button
+                onClick={next}
+                style={{
+                  flex: 1, padding: '12px', borderRadius: '10px', border: 'none',
+                  background: MODULE_META.shadowing.color, color: '#fff',
+                  fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                Sonraki →
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>
