@@ -70,6 +70,7 @@ interface Unit {
 interface DrillCueItem {
   cue: string
   expected: string | null // null = free production, self-graded only
+  audioUrl?: string       // ses desteği için — şimdilik boş, ilerisi için hazır
 }
 
 interface DrillTopic {
@@ -77,6 +78,7 @@ interface DrillTopic {
   label: string
   target: string
   model: string
+  modelAudioUrl?: string  // ses desteği için — şimdilik boş, ilerisi için hazır
   stages: {
     substitution: DrillCueItem[]
     transformation: DrillCueItem[]
@@ -2664,12 +2666,14 @@ function parseCSV(text: string): Record<string, string>[] {
 // Cue/expected-answer fields use: cue:expected|cue2:expected2
 // question_prompts has no expected answer: soru1|soru2
 
-function parsePairedField(str: string | undefined): DrillCueItem[] {
+function parsePairedField(str: string | undefined, audioUrlStr?: string): DrillCueItem[] {
   if (!str) return []
-  return str.split('|').map(s => s.trim()).filter(Boolean).map(item => {
+  const audioUrls = audioUrlStr ? audioUrlStr.split('|').map(s => s.trim()) : []
+  return str.split('|').map(s => s.trim()).filter(Boolean).map((item, i) => {
     const idx = item.indexOf(':')
-    if (idx === -1) return { cue: item, expected: null }
-    return { cue: item.slice(0, idx).trim(), expected: item.slice(idx + 1).trim() }
+    const audioUrl = audioUrls[i] || undefined
+    if (idx === -1) return { cue: item, expected: null, audioUrl }
+    return { cue: item.slice(0, idx).trim(), expected: item.slice(idx + 1).trim(), audioUrl }
   })
 }
 function parsePromptField(str: string | undefined): DrillCueItem[] {
@@ -2682,11 +2686,13 @@ function rowsToDrillTopics(rows: Record<string, string>[]): DrillTopic[] {
     label: r.topic_label || r.target_structure || 'Adsız konu',
     target: r.target_structure || '',
     model: r.model_sentence || '',
+    modelAudioUrl: r.model_audio_url?.trim() || undefined,
     stages: {
-      substitution: parsePairedField(r.substitution_cues),
-      transformation: parsePairedField(r.transformation_types),
-      expansion: parsePairedField(r.expansion_cues),
-      cue_response: parsePairedField(r.cue_response_items),
+      // cue_audio_url kolonları cue'larla aynı sırada, pipe ile ayrılmış URL'ler
+      substitution: parsePairedField(r.substitution_cues, r.substitution_audio_urls),
+      transformation: parsePairedField(r.transformation_types, r.transformation_audio_urls),
+      expansion: parsePairedField(r.expansion_cues, r.expansion_audio_urls),
+      cue_response: parsePairedField(r.cue_response_items, r.cue_response_audio_urls),
       question: parsePromptField(r.question_prompts),
     },
     notes: r.notes || '',
@@ -2716,6 +2722,137 @@ function rowsToQuestionChain(rows: Record<string, string>[]): QuestionItem[] {
     postAnalogy: r.postAnalogy || undefined,
     videoUrl: r.videoUrl || undefined,
   }))
+}
+
+// ─── Drill yardımcı bileşenleri ──────────────────────────────────────────────
+
+// Yazma modu: giriş alanı + Kontrol et + Cevabı gör
+function DrillInputArea({ answer, onAnswerChange, onCheck, onSkip, expected }: {
+  answer: string
+  onAnswerChange: (v: string) => void
+  onCheck: () => void
+  onSkip: () => void
+  expected: string | null
+}) {
+  const [revealed, setRevealed] = useState(false)
+
+  // Cue değişince reveal'ı sıfırla
+  useEffect(() => { setRevealed(false) }, [expected])
+
+  return (
+    <div>
+      <input
+        type="text" value={answer} autoFocus
+        onChange={e => { onAnswerChange(e.target.value); setRevealed(false) }}
+        onKeyDown={e => { if (e.key === 'Enter') onCheck() }}
+        placeholder="Cümleni yaz..."
+        style={{ width: '100%', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', marginBottom: '10px', background: 'var(--background)', color: 'var(--foreground)' }}
+      />
+      <div style={{ display: 'flex', gap: '10px', marginBottom: expected ? '10px' : '0' }}>
+        <button onClick={onCheck} style={{ background: '#8B5CF6', color: '#fff', border: 'none', borderRadius: '9px', padding: '10px 16px', fontSize: '13px', cursor: 'pointer' }}>Kontrol et</button>
+        <button onClick={onSkip} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--muted-foreground)', borderRadius: '9px', padding: '10px 16px', fontSize: '13px', cursor: 'pointer' }}>Geç</button>
+      </div>
+      {/* Cevabı gör — sadece beklenen cevap varsa */}
+      {expected && (
+        <div style={{ marginTop: '4px' }}>
+          {!revealed ? (
+            <button
+              onClick={() => setRevealed(true)}
+              style={{
+                background: 'none', border: '1px dashed var(--muted-foreground)',
+                color: 'var(--muted-foreground)', borderRadius: '8px',
+                padding: '7px 14px', fontSize: '12px', cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+            >▸ Beklenen cevabı gör</button>
+          ) : (
+            <div style={{
+              background: '#F5F3FF', border: '1px solid rgba(139,92,246,0.3)',
+              borderRadius: '8px', padding: '10px 14px',
+            }}>
+              <div style={{ fontSize: '10px', color: '#8B5CF6', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, marginBottom: '4px' }}>Beklenen</div>
+              <div style={{ fontSize: '14px', color: '#1E1B4B', lineHeight: 1.5 }}>{expected}</div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Quick mod: önce cevabı gör, sonra değerlendir
+function DrillRevealBlock({ expected, onCorrect, onWrong, accent }: {
+  expected: string | null
+  onCorrect: () => void
+  onWrong: () => void
+  accent: string
+}) {
+  const [revealed, setRevealed] = useState(false)
+
+  useEffect(() => { setRevealed(false) }, [expected])
+
+  if (!revealed) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <button
+          onClick={() => setRevealed(true)}
+          style={{
+            background: 'none', border: `1.5px dashed ${accent}88`,
+            color: accent, borderRadius: '9px',
+            padding: '12px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+        >▸ Beklenen cevabı gör</button>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {expected ? (
+        <div style={{
+          background: '#F5F3FF', border: '1px solid rgba(139,92,246,0.3)',
+          borderRadius: '9px', padding: '12px 16px',
+        }}>
+          <div style={{ fontSize: '10px', color: accent, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, marginBottom: '5px' }}>Beklenen</div>
+          <div style={{ fontSize: '15px', color: '#1E1B4B', lineHeight: 1.5 }}>{expected}</div>
+        </div>
+      ) : (
+        <div style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>Tek doğru cevap yok — kendi kendini değerlendir.</div>
+      )}
+      <div style={{ display: 'flex', gap: '10px' }}>
+        <button onClick={onCorrect} style={{ flex: 1, background: accent, color: '#fff', border: 'none', borderRadius: '9px', padding: '12px', fontSize: '13px', cursor: 'pointer', fontWeight: 600 }}>Doğru üretebildim</button>
+        <button onClick={onWrong} style={{ flex: 1, background: 'var(--secondary)', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: '9px', padding: '12px', fontSize: '13px', cursor: 'pointer' }}>Yanlış / zorlandım</button>
+      </div>
+    </div>
+  )
+}
+
+// Free production sonrası: beklenen cevap varsa satır içi gör butonu
+function DrillRevealInline({ expected, accent }: { expected: string; accent: string }) {
+  const [revealed, setRevealed] = useState(false)
+  return (
+    <div style={{ marginBottom: '4px' }}>
+      {!revealed ? (
+        <button
+          onClick={() => setRevealed(true)}
+          style={{
+            background: 'none', border: '1px dashed var(--muted-foreground)',
+            color: 'var(--muted-foreground)', borderRadius: '7px',
+            padding: '6px 12px', fontSize: '12px', cursor: 'pointer',
+          }}
+        >▸ Örnek cevabı gör</button>
+      ) : (
+        <div style={{
+          background: '#F5F3FF', border: `1px solid ${accent}44`,
+          borderRadius: '8px', padding: '10px 14px',
+        }}>
+          <div style={{ fontSize: '10px', color: accent, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, marginBottom: '4px' }}>Örnek</div>
+          <div style={{ fontSize: '14px', color: '#1E1B4B', lineHeight: 1.5 }}>{expected}</div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ─── DrillView (Private area only) ─────────────────────────────────────────────
@@ -2999,6 +3136,8 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
   // ── Active session sub-view ──
   if (queue) {
     const item = queue[idx]
+    // Aktif konuyu bul (model cümlesini göstermek için)
+    const activeTopic = topics.find(t => t.id === activeTopicId)
     return (
       <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -3009,33 +3148,73 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
           </label>
         </div>
         <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px' }}>
+          {/* Aşama başlığı + sayaç */}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
             <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: accent, fontWeight: 600 }}>{item.stageName}{usedRetry ? ' · tekrar' : ''}</span>
             <span style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>{idx + 1} / {queue.length}</span>
           </div>
-          <div style={{ fontSize: '11px', color: 'var(--muted-foreground)', background: 'var(--secondary)', borderRadius: '7px', padding: '7px 10px', marginBottom: '14px' }}>
+
+          {/* Aşama açıklaması */}
+          <div style={{ fontSize: '11px', color: 'var(--muted-foreground)', background: 'var(--secondary)', borderRadius: '7px', padding: '7px 10px', marginBottom: '12px' }}>
             {DRILL_STAGE_HINTS[item.stageKey]}
           </div>
+
+          {/* Model cümle — her zaman görünür */}
+          {activeTopic?.model && (
+            <div style={{
+              background: '#EEF2FF', border: '1px solid rgba(99,102,241,0.25)',
+              borderRadius: '10px', padding: '12px 16px', marginBottom: '12px',
+            }}>
+              <div style={{ fontSize: '10px', color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, marginBottom: '5px' }}>Model</div>
+              <div style={{ fontSize: '15px', color: '#1E1B4B', fontWeight: 500, lineHeight: 1.5 }}>{activeTopic.model}</div>
+            </div>
+          )}
+
+          {/* Cue (ipucu) kutusu */}
           <div style={{ background: 'var(--secondary)', borderRadius: '10px', padding: '18px', textAlign: 'center', marginBottom: '16px' }}>
-            <div style={{ fontSize: '10px', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>ipucu</div>
+            <div style={{ fontSize: '10px', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>İpucu</div>
             <div style={{ fontSize: '18px' }}>{item.cue}</div>
           </div>
 
-          {quickMode ? (
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={() => advance(true, item)} style={{ flex: 1, background: accent, color: '#fff', border: 'none', borderRadius: '9px', padding: '14px', fontSize: '14px', cursor: 'pointer' }}>Doğru üretebildim</button>
-              <button onClick={() => advance(false, item)} style={{ flex: 1, background: 'var(--secondary)', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: '9px', padding: '14px', fontSize: '14px', cursor: 'pointer' }}>Yanlış / zorlandım</button>
-            </div>
-          ) : feedback?.kind === 'free' ? (
+          {/* ── Yazma modu: giriş alanı + Kontrol et + Cevabı gör ── */}
+          {!quickMode && !feedback && (
+            <DrillInputArea
+              answer={answer}
+              onAnswerChange={setAnswer}
+              onCheck={checkAnswer}
+              onSkip={() => advance(false, item)}
+              expected={item.expected}
+            />
+          )}
+
+          {/* ── Quick mod: Cevabı gör → self-grade ── */}
+          {quickMode && !feedback && (
+            <DrillRevealBlock
+              expected={item.expected}
+              onCorrect={() => advance(true, item)}
+              onWrong={() => advance(false, item)}
+              accent={accent}
+            />
+          )}
+
+          {/* ── Feedback: free production ── */}
+          {feedback?.kind === 'free' && (
             <div>
               <div style={{ fontSize: '13px', marginBottom: '4px' }}><b>Cevabın:</b> {answer || '(boş)'}</div>
               <div style={{ fontSize: '12px', color: 'var(--muted-foreground)', marginBottom: '10px' }}>Tek doğru cevap yok — kendi kendini değerlendir.</div>
-              <div style={{ display: 'flex', gap: '10px' }}>
+              {/* Cevabı gör — free production'da da göster */}
+              {item.expected && (
+                <DrillRevealInline expected={item.expected} accent={accent} />
+              )}
+              <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
                 <button onClick={() => advance(true, item)} style={{ flex: 1, background: accent, color: '#fff', border: 'none', borderRadius: '9px', padding: '10px', fontSize: '13px', cursor: 'pointer' }}>Doğru üretebildim</button>
                 <button onClick={() => advance(false, item)} style={{ flex: 1, background: 'var(--secondary)', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: '9px', padding: '10px', fontSize: '13px', cursor: 'pointer' }}>Zorlandım</button>
               </div>
             </div>
-          ) : feedback?.kind === 'bad' ? (
+          )}
+
+          {/* ── Feedback: yanlış ── */}
+          {feedback?.kind === 'bad' && (
             <div>
               <div style={{ fontSize: '13px', color: '#DC2626', marginBottom: '8px' }}>Farklı.</div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', lineHeight: 1.7, marginBottom: '10px' }}>
@@ -3047,22 +3226,11 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
                 <button onClick={() => advance(true, item)} style={{ flex: 1, background: accent, color: '#fff', border: 'none', borderRadius: '9px', padding: '10px', fontSize: '13px', cursor: 'pointer' }}>Sadece yazım farkı — doğru say</button>
               </div>
             </div>
-          ) : feedback?.kind === 'good' ? (
+          )}
+
+          {/* ── Feedback: doğru ── */}
+          {feedback?.kind === 'good' && (
             <div style={{ fontSize: '13px', color: '#059669' }}>Doğru.</div>
-          ) : (
-            <div>
-              <input
-                type="text" value={answer} autoFocus
-                onChange={e => setAnswer(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') checkAnswer() }}
-                placeholder="Cümleni yaz..."
-                style={{ width: '100%', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', marginBottom: '10px', background: 'var(--background)', color: 'var(--foreground)' }}
-              />
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button onClick={checkAnswer} style={{ background: accent, color: '#fff', border: 'none', borderRadius: '9px', padding: '10px 16px', fontSize: '13px', cursor: 'pointer' }}>Kontrol et</button>
-                <button onClick={() => advance(false, item)} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--muted-foreground)', borderRadius: '9px', padding: '10px 16px', fontSize: '13px', cursor: 'pointer' }}>Geç</button>
-              </div>
-            </div>
           )}
         </div>
       </div>
