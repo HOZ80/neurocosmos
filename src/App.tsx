@@ -3612,10 +3612,11 @@ export default function App() {
         audioUrl: u.audio_url || undefined,
         unitLabel: `Unit ${i + 1}`,
         unitId,  // sheet'ten gelen gerçek unit_id — drillTopicsByUnit lookup için
+        hiddenModules: [],  // 5 kart her zaman görünür; drill verisi yoksa moduleLocks kilitler
         moduleLocks: {
           dictation: !u.dictation_sentence,
           shadowing: !u.dictation_transcript,
-          drill: !hasDrill,  // sheet'te drill verisi yoksa kilitli
+          drill: !hasDrill,  // sheet'te drill verisi yoksa kilitli, gelince açılır
         },
         freeSourceSelect: lv === 'P',
       }
