@@ -55,8 +55,9 @@ interface Unit {
   readingTitle?: string
   grammarPlaceholder?: boolean
   unitLabel?: string
-  moduleLocks?: Partial<Record<'grammar' | 'audio' | 'dictation' | 'shadowing', boolean>>
-  hiddenModules?: Array<'grammar' | 'audio' | 'dictation' | 'shadowing'>
+  unitId?: string  // sheet'ten gelen gerçek unit_id (örn. 'B2-U01') — drillTopics lookup için
+  moduleLocks?: Partial<Record<'grammar' | 'audio' | 'dictation' | 'shadowing' | 'drill', boolean>>
+  hiddenModules?: Array<'grammar' | 'audio' | 'dictation' | 'shadowing' | 'drill'>
   freeSourceSelect?: boolean
   hidePracticeSentence?: boolean
   videoUrl?: string
@@ -424,6 +425,7 @@ const MODULE_META = {
   audio:     { label: 'Audio/Video', icon: '🎧', color: '#0EA5E9', bg: '#E0F2FE' },
   dictation: { label: 'Dictation',   icon: '✍️',  color: '#F59E0B', bg: '#FEF3C7' },
   shadowing: { label: 'Shadowing',   icon: '🎙️', color: '#10B981', bg: '#D1FAE5' },
+  drill:     { label: 'Drill',       icon: '🎯', color: '#8B5CF6', bg: '#F5F3FF' },
 }
 
 function Chip({ label, color, bg }: { label: string; color: string; bg: string }) {
@@ -748,10 +750,11 @@ const iconBtn: React.CSSProperties = {
 
 // ─── Views ────────────────────────────────────────────────────────────────────
 
-function PasswordModal({ onSubmit, onClose, error }: {
+function PasswordModal({ onSubmit, onClose, error, title }: {
   onSubmit: (pw: string) => void
   onClose: () => void
   error: boolean
+  title?: string  // başlık — belirtilmezse varsayılan gösterilir
 }) {
   const [value, setValue] = useState('')
   return (
@@ -768,7 +771,7 @@ function PasswordModal({ onSubmit, onClose, error }: {
         display: 'flex', flexDirection: 'column', gap: '12px',
       }}>
         <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: 700, color: 'var(--foreground)' }}>
-          🔒 Kişisel alan
+          🔒 {title ?? 'Kişisel alan'}
         </h3>
         <input
           type="password"
@@ -801,6 +804,20 @@ function EntryScreen({ onPickProfile, onPickOwner }: {
   onPickProfile: (p: 'A1' | 'A2') => void
   onPickOwner: () => void
 }) {
+  // Hangi profil için şifre modalı açık — null ise kapalı
+  const [pendingProfile, setPendingProfile] = useState<'A1' | 'A2' | null>(null)
+  const [profilePwError, setProfilePwError] = useState(false)
+
+  function handleProfilePw(pw: string) {
+    if (!pendingProfile) return
+    if (pw === PROFILE_PASSWORDS[pendingProfile]) {
+      setProfilePwError(false)
+      setPendingProfile(null)
+      onPickProfile(pendingProfile)
+    } else {
+      setProfilePwError(true)
+    }
+  }
   // Bu ekran bilinçli olarak sitenin geri kalanından (light tema) bağımsız,
   // sabit bir koyu palet kullanır — var(--...) yerine düz hex değerler.
   const dark = {
@@ -814,7 +831,7 @@ function EntryScreen({ onPickProfile, onPickOwner }: {
     padding: '22px 22px', cursor: 'pointer', textAlign: 'left', width: '100%',
     transition: 'all 0.15s',
   }
-  return (
+  const screen = (
     <div style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center',
       justifyContent: 'center', padding: '32px 20px', background: dark.bg,
@@ -847,7 +864,7 @@ function EntryScreen({ onPickProfile, onPickOwner }: {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', width: '100%', maxWidth: '400px' }}>
 
         <button
-          onClick={() => onPickProfile('A1')}
+          onClick={() => { setProfilePwError(false); setPendingProfile('A1') }}
           style={cardBase}
         >
           <div>
@@ -862,7 +879,7 @@ function EntryScreen({ onPickProfile, onPickOwner }: {
         </button>
 
         <button
-          onClick={() => onPickProfile('A2')}
+          onClick={() => { setProfilePwError(false); setPendingProfile('A2') }}
           style={cardBase}
         >
           <div>
@@ -895,6 +912,21 @@ function EntryScreen({ onPickProfile, onPickOwner }: {
 
       </div>
     </div>
+  )
+
+  return (
+    <>
+      {screen}
+      {/* Profil şifre modalı — A1/A2 kartına basılınca açılır */}
+      {pendingProfile && (
+        <PasswordModal
+          title={pendingProfile === 'A1' ? 'English Group A' : 'English Group B'}
+          error={profilePwError}
+          onSubmit={handleProfilePw}
+          onClose={() => { setPendingProfile(null); setProfilePwError(false) }}
+        />
+      )}
+    </>
   )
 }
 
@@ -1121,7 +1153,7 @@ function UnitDetailView({ unit, level, onBack, onModule, onQuestion, onDictation
             return (
               <button
                 key={key}
-                onClick={() => !isModuleLocked && onModule(key)}
+                onClick={() => { if (isModuleLocked) return; if (key === 'drill') onDrill(); else onModule(key) }}
                 disabled={isModuleLocked}
                 style={{
                   textAlign: 'left', background: isModuleLocked ? 'var(--secondary)' : 'var(--card)',
@@ -1150,6 +1182,7 @@ function UnitDetailView({ unit, level, onBack, onModule, onQuestion, onDictation
                     {key === 'audio' && (unit.passiveVideo ? 'Watch the video.' : 'Listen to native speakers with speed control.')}
                     {key === 'dictation' && (isModuleLocked ? 'Content coming later for this unit.' : 'Type what you hear and check your accuracy.')}
                     {key === 'shadowing' && (isModuleLocked ? 'Content coming later for this unit.' : 'Record yourself and compare with the original.')}
+                    {key === 'drill' && (isModuleLocked ? 'Drill content will be added after this lesson is taught.' : 'Retrieval practice — produce, check, repeat.')}
                   </p>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1159,34 +1192,7 @@ function UnitDetailView({ unit, level, onBack, onModule, onQuestion, onDictation
               </button>
             )
           })}
-          {(level === 'P' || level === 'B2') && (
-            <button
-              onClick={onDrill}
-              style={{
-                textAlign: 'left', background: 'var(--card)',
-                border: '1px solid var(--border)', borderRadius: '16px',
-                padding: '24px', cursor: 'pointer',
-                boxShadow: '0 1px 5px rgba(15,23,42,0.06)',
-                transition: 'all 0.18s', display: 'flex', flexDirection: 'column', gap: '14px',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 6px 24px #8B5CF622'; e.currentTarget.style.borderColor = '#8B5CF644' }}
-              onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 5px rgba(15,23,42,0.06)'; e.currentTarget.style.borderColor = 'var(--border)' }}
-            >
-              <div style={{
-                width: '48px', height: '48px', borderRadius: '12px',
-                background: '#EDE9FE', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '22px',
-              }}>🎯</div>
-              <div>
-                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, margin: '0 0 4px' }}>Drill</h3>
-                <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', lineHeight: 1.5 }}>Bildiğin yapıyı retrieval pratiğiyle pekiştir, spaced review ile takip et.</p>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Chip label="Drill" color="#8B5CF6" bg="#EDE9FE" />
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="#8B5CF6"><path d="M10 17l5-5-5-5v10z" /></svg>
-              </div>
-            </button>
-          )}
+
         </div>
       )}
 
@@ -2456,6 +2462,13 @@ const LEVEL_META: Record<Level, { code: string; label: string; color: string; di
 const PRIVATE_PASSWORD = '87654321'
 const PRIVATE_UNLOCK_KEY = 'nc_private_unlocked'
 
+// Her profil için şifre — ileride kullanıcı eklenirse buraya satır eklenir.
+// EntryProfile tipi ve PROFILE_PASSWORDS senkronize tutulmalı.
+const PROFILE_PASSWORDS: Record<string, string> = {
+  A1: '1234',
+  A2: '1234',
+}
+
 // ─── Giriş ekranı (EntryScreen) ────────────────────────────────────────────────
 // Dashboard'dan önce gösterilen "kim çalışıyor" ekranı. Seçim sessionStorage'da
 // tutulur — yani sekme kapanmadan tekrar sorulmaz, ama yeni sekme/oturumda
@@ -2471,11 +2484,9 @@ const ENTRY_PROFILE_KEY = 'nc_entry_profile'
 const QUESTIONS_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRAB45RBWdRWxtKNj-qaIZePkgTD4y8HXNkc7h4wb_VnjVRETobN-uSQi8osDEIqusZKiamvu_qL40I/pub?output=csv'
 
 // ─── Tüm seviyeler Google Sheets'ten besleniyor ───────────────────────────────
-// Sheets'te iki tip satır var: unit satırları (unit_id dolu, topic_id boş) ve
-// drill konu satırları (unit_id + topic_id dolu). Parser ikisini ayırır.
-// level kolonu hangi seviyeye ait olduğunu belirler (A1/A2/B1/B2/P).
-// Sheets URL'ini buraya bir kez yaz — geri kalan her şey Sheets'ten yönetilir.
+// Her sheet ayrı bir Google Sheets CSV publish URL'i — birbirinden bağımsız.
 const UNITS_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSqjbIPf0_33AXc_2qxpVVsL75IRGWAnLaAy6hNym7_GtQcVz4YIhcy6aUHYYw0soHRFDWvFqhULLPZ/pub?output=csv'
+const DRILL_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSv3MoLyAe0-NNNRyTB5roJYgQ1p0jBt1RTc50HEUp-pSMGMqK8Ljr13rRonh_XxTvrAIIlT9a3aV_S/pub?output=csv'
 const GRAMMAR_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQs8nSbxvuXAVcTFobf4sY-wjZzpE-VhGAyggHDcnG6ZXTubCYWw7cH6ApyhiZzBccuFFIPup-MHaXX/pub?output=csv'
 
 // ─── Grammar Sheet types & parser ────────────────────────────────────────────
@@ -2576,20 +2587,21 @@ interface UnitRow {
 
 interface UnitsSheetData {
   unitsByLevel: Record<string, UnitRow[]>
-  drillTopicsByUnit: Record<string, DrillTopic[]>
 }
+
+// Drill sheet ayrı — level | unit_id | topic_id | topic_label | target_structure |
+// model_sentence | substitution_cues | transformation_types | expansion_cues |
+// cue_response_items | question_prompts | notes |
+// model_audio_url | substitution_audio_urls | transformation_audio_urls |
+// expansion_audio_urls | cue_response_audio_urls
+type DrillSheetData = Record<string, DrillTopic[]>  // unit_id → DrillTopic[]
 
 function parseUnitsSheet(rows: Record<string, string>[]): UnitsSheetData {
   const unitsMap = new Map<string, UnitRow>()
-  const drillTopicsByUnit: Record<string, DrillTopic[]> = {}
 
   rows.forEach(r => {
     const uid = r.unit_id?.trim()
     if (!uid) return
-
-    // Her satır bir ünite kaydı — aynı unit_id'yi birden fazla satırda
-    // tekrar etmek zorunda kalırsın (her drill konusu için). İlk görülen
-    // satırdan ünite bilgisini al, sonrakileri yoksay.
     if (!unitsMap.has(uid)) {
       unitsMap.set(uid, {
         unit_id: uid,
@@ -2597,31 +2609,35 @@ function parseUnitsSheet(rows: Record<string, string>[]): UnitsSheetData {
         unit_title: r.title?.trim() || '',
         unit_topic: r.topic?.trim() || '',
         unit_grammar: r.grammar?.trim() || '',
-        unit_locked: r.locked?.trim().toLowerCase() || 'true',
+        unit_locked: ['false','0','hayır','yanlış'].includes(r.locked?.trim().toLowerCase() ?? '') ? 'false' : 'true',
         dictation_sentence: r.dictation_sentence?.trim() || '',
         dictation_translation: r.dictation_translation?.trim() || '',
         dictation_transcript: r.dictation_transcript?.trim() || '',
         audio_url: r.audio_url?.trim() || '',
       })
     }
-
-    // Drill topic satırı — topic_id dolu olan satırlar
-    const tid = r.topic_id?.trim()
-    if (tid) {
-      const topic = rowsToDrillTopics([r])[0]
-      if (!drillTopicsByUnit[uid]) drillTopicsByUnit[uid] = []
-      drillTopicsByUnit[uid].push(topic)
-    }
   })
 
-  // level bazında grupla
   const unitsByLevel: Record<string, UnitRow[]> = {}
   unitsMap.forEach(u => {
     if (!unitsByLevel[u.level]) unitsByLevel[u.level] = []
     unitsByLevel[u.level].push(u)
   })
 
-  return { unitsByLevel, drillTopicsByUnit }
+  return { unitsByLevel }
+}
+
+function parseDrillSheet(rows: Record<string, string>[]): DrillSheetData {
+  const drillTopicsByUnit: DrillSheetData = {}
+  rows.forEach(r => {
+    const uid = r.unit_id?.trim()
+    const tid = r.topic_id?.trim()
+    if (!uid || !tid) return
+    const topic = rowsToDrillTopics([r])[0]
+    if (!drillTopicsByUnit[uid]) drillTopicsByUnit[uid] = []
+    drillTopicsByUnit[uid].push(topic)
+  })
+  return drillTopicsByUnit
 }
 
 // Minimal CSV parser: handles quoted fields, commas/newlines inside quotes, and "" escaped quotes.
@@ -3543,9 +3559,7 @@ export default function App() {
       .catch(() => { /* keep existing fallback */ })
   }, [])
 
-  // ── Units Sheet: tüm seviyeler ünite listesi + drill konuları ────────────────
-  // UNITS_SHEET_CSV_URL boşsa fetch atılmaz — fallback hardcode liste kullanılır.
-  // URL doldurulduğunda tüm seviyeler Sheets'ten gelir; site hiç kırılmaz.
+  // ── Units Sheet: tüm seviyeler ünite listesi ────────────────────────────────
   const [unitsSheetData, setUnitsSheetData] = useState<UnitsSheetData | null>(null)
 
   useEffect(() => {
@@ -3557,7 +3571,22 @@ export default function App() {
         const rows = parseCSV(text)
         if (rows.length > 0) setUnitsSheetData(parseUnitsSheet(rows))
       })
-      .catch(() => { /* keep hardcoded fallback on any error */ })
+      .catch(() => { /* fallback: hardcode liste görünür */ })
+  }, [])
+
+  // ── Drill Sheet: tüm seviyeler drill konuları ─────────────────────────────
+  const [drillSheetData, setDrillSheetData] = useState<DrillSheetData | null>(null)
+
+  useEffect(() => {
+    if (!DRILL_SHEET_CSV_URL) return
+    const bustedUrl = `${DRILL_SHEET_CSV_URL}${DRILL_SHEET_CSV_URL.includes('?') ? '&' : '?'}t=${Date.now()}`
+    fetch(bustedUrl, { cache: 'no-store' })
+      .then(res => res.text())
+      .then(text => {
+        const rows = parseCSV(text)
+        if (rows.length > 0) setDrillSheetData(parseDrillSheet(rows))
+      })
+      .catch(() => { /* fallback: drill kartları kilitli görünür */ })
   }, [])
 
   // Sheets'ten gelen veri varsa buildUnits'in hardcode listesini eziyoruz.
@@ -3566,25 +3595,31 @@ export default function App() {
   // Sheet'ten gelen A2 listesi oluşturulduktan sonra 100Q kartı 2. pozisyona eklenir.
   function buildUnitsFromSheet(lv: Level, data: UnitsSheetData): ReturnType<typeof buildUnits> {
     const levelUnits = data.unitsByLevel[lv] ?? []
-    const sheetUnits = levelUnits.map((u, i) => ({
-      id: i + 1,
-      title: u.unit_title,
-      topic: u.unit_topic,
-      grammar: u.unit_grammar,
-      completed: false,
-      locked: u.unit_locked === 'true',
-      progress: 0,
-      dictationSentence: u.dictation_sentence,
-      translation: u.dictation_translation,
-      transcript: u.dictation_transcript,
-      audioUrl: u.audio_url || undefined,
-      unitLabel: `Unit ${i + 1}`,
-      moduleLocks: {
-        dictation: !u.dictation_sentence,
-        shadowing: !u.dictation_transcript,
-      },
-      freeSourceSelect: lv === 'P',
-    }))
+    const sheetUnits = levelUnits.map((u, i) => {
+      const unitId = u.unit_id || `${lv}-U${String(i + 1).padStart(2, '0')}`
+      const hasDrill = (drillSheetData?.[unitId] ?? []).length > 0
+      return {
+        id: i + 1,
+        title: u.unit_title,
+        topic: u.unit_topic,
+        grammar: u.unit_grammar,
+        completed: false,
+        locked: u.unit_locked === 'true',
+        progress: 0,
+        dictationSentence: u.dictation_sentence,
+        translation: u.dictation_translation,
+        transcript: u.dictation_transcript,
+        audioUrl: u.audio_url || undefined,
+        unitLabel: `Unit ${i + 1}`,
+        unitId,  // sheet'ten gelen gerçek unit_id — drillTopicsByUnit lookup için
+        moduleLocks: {
+          dictation: !u.dictation_sentence,
+          shadowing: !u.dictation_transcript,
+          drill: !hasDrill,  // sheet'te drill verisi yoksa kilitli
+        },
+        freeSourceSelect: lv === 'P',
+      }
+    })
 
     // A2: 100Q kartını hardcode'dan al, 2. pozisyona (index 1) yerleştir,
     // sonraki kartların id'lerini kaydır.
@@ -3634,12 +3669,19 @@ export default function App() {
     else { setView('unit'); setSelectedQuestionIndex(null) }
   }
 
-  // Owner → her tab açık. A1/A2 profili → sadece kendi grubu açık, geri kalanı
-  // (diğer grup + B1 + B2 + P) görünür ama kilitli.
+  // Owner → her tab açık.
+  // Diğer profiller → sadece kendi level'ları açık, geri kalanı kilitli görünür.
+  // Yeni kullanıcı/level eklenince bu map'e satır eklenir — yapı hazır.
+  const PROFILE_ALLOWED_LEVELS: Record<string, Level[]> = {
+    A1:    ['A1'],
+    A2:    ['A2'],
+    // İleride: B1: ['B1'], B2: ['B2'] gibi genişletilir
+  }
   function isTabAvailable(l: Level): boolean {
     if (entryProfile === 'owner') return true
-    if (l === 'A1' || l === 'A2') return l === entryProfile
-    return false
+    if (!entryProfile) return false
+    const allowed = PROFILE_ALLOWED_LEVELS[entryProfile]
+    return allowed ? allowed.includes(l) : false
   }
 
   const breadcrumbs = [
@@ -3811,8 +3853,11 @@ export default function App() {
             unit={selectedUnitLive}
             onBack={() => setView('unit')}
             sheetTopics={
-              level === 'B2' && unitsSheetData
-                ? (unitsSheetData.drillTopicsByUnit[`B2-U${String(selectedUnitLive.id).padStart(2, '0')}`] ?? [])
+              drillSheetData
+                ? (drillSheetData[
+                    selectedUnitLive.unitId ??
+                    `${level}-U${String(selectedUnitLive.id).padStart(2, '0')}`
+                  ] ?? [])
                 : undefined
             }
           />
