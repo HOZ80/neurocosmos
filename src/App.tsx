@@ -1035,15 +1035,17 @@ function DashboardView({ level, units, onSelectUnit }: {
   )
 }
 
-function UnitDetailView({ unit, level, onBack, onModule, onQuestion, onDictationAll, onShadowingAll, onDrill }: {
+function UnitDetailView({ unit, level, onBack, onModule, onGrammar, onQuestion, onDictationAll, onShadowingAll, onDrill, grammarSlots }: {
   unit: Unit
   level: Level
   onBack: () => void
   onModule: (m: keyof typeof MODULE_META) => void
+  onGrammar: (slot: number) => void
   onQuestion: (index: number) => void
   onDictationAll: () => void
   onShadowingAll: () => void
   onDrill: () => void
+  grammarSlots: GrammarSlotMeta[] | null  // null = sheet yok, tek kart fallback
 }) {
   return (
     <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -1148,50 +1150,98 @@ function UnitDetailView({ unit, level, onBack, onModule, onQuestion, onDictation
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
           {(Object.entries(MODULE_META) as [keyof typeof MODULE_META, typeof MODULE_META[keyof typeof MODULE_META]][])
             .filter(([key]) => !unit.hiddenModules?.includes(key))
-            .map(([key, meta]) => {
-            const isModuleLocked = !!unit.moduleLocks?.[key]
-            return (
-              <button
-                key={key}
-                onClick={() => { if (isModuleLocked) return; if (key === 'drill') onDrill(); else onModule(key) }}
-                disabled={isModuleLocked}
-                style={{
-                  textAlign: 'left', background: isModuleLocked ? 'var(--secondary)' : 'var(--card)',
-                  border: '1px solid var(--border)', borderRadius: '16px',
-                  padding: '24px', cursor: isModuleLocked ? 'not-allowed' : 'pointer',
-                  boxShadow: isModuleLocked ? 'none' : '0 1px 5px rgba(15,23,42,0.06)',
-                  opacity: isModuleLocked ? 0.55 : 1,
-                  transition: 'all 0.18s', display: 'flex', flexDirection: 'column', gap: '14px',
-                  position: 'relative',
-                }}
-                onMouseEnter={e => { if (!isModuleLocked) { e.currentTarget.style.boxShadow = `0 6px 24px ${meta.color}22`; e.currentTarget.style.borderColor = `${meta.color}44` } }}
-                onMouseLeave={e => { e.currentTarget.style.boxShadow = isModuleLocked ? 'none' : '0 1px 5px rgba(15,23,42,0.06)'; e.currentTarget.style.borderColor = 'var(--border)' }}
-              >
-                {isModuleLocked && (
-                  <div style={{ position: 'absolute', top: '14px', right: '14px', color: 'var(--muted-foreground)', fontSize: '14px' }}>🔒</div>
-                )}
-                <div style={{
-                  width: '48px', height: '48px', borderRadius: '12px',
-                  background: meta.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '22px',
-                }}>{meta.icon}</div>
-                <div>
-                  <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, margin: '0 0 4px', color: isModuleLocked ? 'var(--muted-foreground)' : 'var(--foreground)' }}>{meta.label}</h3>
-                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', lineHeight: 1.5 }}>
-                    {key === 'grammar' && 'Rules, patterns, and examples explained clearly.'}
-                    {key === 'audio' && (unit.passiveVideo ? 'Watch the video.' : 'Listen to native speakers with speed control.')}
-                    {key === 'dictation' && (isModuleLocked ? 'Content coming later for this unit.' : 'Type what you hear and check your accuracy.')}
-                    {key === 'shadowing' && (isModuleLocked ? 'Content coming later for this unit.' : 'Record yourself and compare with the original.')}
-                    {key === 'drill' && (isModuleLocked ? 'Drill content will be added after this lesson is taught.' : 'Retrieval practice — produce, check, repeat.')}
-                  </p>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Chip label={meta.label} color={meta.color} bg={meta.bg} />
-                  {!isModuleLocked && <svg width="18" height="18" viewBox="0 0 24 24" fill={meta.color}><path d="M10 17l5-5-5-5v10z" /></svg>}
-                </div>
-              </button>
-            )
-          })}
+            .flatMap(([key, meta]) => {
+              const isModuleLocked = !!unit.moduleLocks?.[key]
+
+              // Grammar kartı: sheet'te slot varsa her slot ayrı kart
+              if (key === 'grammar') {
+                const slots = (!isModuleLocked && grammarSlots && grammarSlots.length > 0)
+                  ? grammarSlots
+                  : [{ slot: 1, label: 'Grammar', description: 'Rules, patterns, and examples explained clearly.', blocks: [] }]
+
+                return slots.map(slotMeta => (
+                  <button
+                    key={`grammar-slot-${slotMeta.slot}`}
+                    onClick={() => { if (isModuleLocked) return; onGrammar(slotMeta.slot) }}
+                    disabled={isModuleLocked}
+                    style={{
+                      textAlign: 'left', background: isModuleLocked ? 'var(--secondary)' : 'var(--card)',
+                      border: '1px solid var(--border)', borderRadius: '16px',
+                      padding: '24px', cursor: isModuleLocked ? 'not-allowed' : 'pointer',
+                      boxShadow: isModuleLocked ? 'none' : '0 1px 5px rgba(15,23,42,0.06)',
+                      opacity: isModuleLocked ? 0.55 : 1,
+                      transition: 'all 0.18s', display: 'flex', flexDirection: 'column', gap: '14px',
+                      position: 'relative',
+                    }}
+                    onMouseEnter={e => { if (!isModuleLocked) { e.currentTarget.style.boxShadow = `0 6px 24px ${meta.color}22`; e.currentTarget.style.borderColor = `${meta.color}44` } }}
+                    onMouseLeave={e => { e.currentTarget.style.boxShadow = isModuleLocked ? 'none' : '0 1px 5px rgba(15,23,42,0.06)'; e.currentTarget.style.borderColor = 'var(--border)' }}
+                  >
+                    {isModuleLocked && (
+                      <div style={{ position: 'absolute', top: '14px', right: '14px', color: 'var(--muted-foreground)', fontSize: '14px' }}>🔒</div>
+                    )}
+                    <div style={{
+                      width: '48px', height: '48px', borderRadius: '12px',
+                      background: meta.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '22px',
+                    }}>{meta.icon}</div>
+                    <div>
+                      <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, margin: '0 0 4px', color: isModuleLocked ? 'var(--muted-foreground)' : 'var(--foreground)' }}>
+                        {slotMeta.label}
+                      </h3>
+                      <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', lineHeight: 1.5 }}>
+                        {slotMeta.description}
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Chip label={meta.label} color={meta.color} bg={meta.bg} />
+                      {!isModuleLocked && <svg width="18" height="18" viewBox="0 0 24 24" fill={meta.color}><path d="M10 17l5-5-5-5v10z" /></svg>}
+                    </div>
+                  </button>
+                ))
+              }
+
+              // Diğer modüller: tek kart, eskisi gibi
+              return [(
+                <button
+                  key={key}
+                  onClick={() => { if (isModuleLocked) return; if (key === 'drill') onDrill(); else onModule(key) }}
+                  disabled={isModuleLocked}
+                  style={{
+                    textAlign: 'left', background: isModuleLocked ? 'var(--secondary)' : 'var(--card)',
+                    border: '1px solid var(--border)', borderRadius: '16px',
+                    padding: '24px', cursor: isModuleLocked ? 'not-allowed' : 'pointer',
+                    boxShadow: isModuleLocked ? 'none' : '0 1px 5px rgba(15,23,42,0.06)',
+                    opacity: isModuleLocked ? 0.55 : 1,
+                    transition: 'all 0.18s', display: 'flex', flexDirection: 'column', gap: '14px',
+                    position: 'relative',
+                  }}
+                  onMouseEnter={e => { if (!isModuleLocked) { e.currentTarget.style.boxShadow = `0 6px 24px ${meta.color}22`; e.currentTarget.style.borderColor = `${meta.color}44` } }}
+                  onMouseLeave={e => { e.currentTarget.style.boxShadow = isModuleLocked ? 'none' : '0 1px 5px rgba(15,23,42,0.06)'; e.currentTarget.style.borderColor = 'var(--border)' }}
+                >
+                  {isModuleLocked && (
+                    <div style={{ position: 'absolute', top: '14px', right: '14px', color: 'var(--muted-foreground)', fontSize: '14px' }}>🔒</div>
+                  )}
+                  <div style={{
+                    width: '48px', height: '48px', borderRadius: '12px',
+                    background: meta.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '22px',
+                  }}>{meta.icon}</div>
+                  <div>
+                    <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, margin: '0 0 4px', color: isModuleLocked ? 'var(--muted-foreground)' : 'var(--foreground)' }}>{meta.label}</h3>
+                    <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', lineHeight: 1.5 }}>
+                      {key === 'audio' && (unit.passiveVideo ? 'Watch the video.' : 'Listen to native speakers with speed control.')}
+                      {key === 'dictation' && (isModuleLocked ? 'Content coming later for this unit.' : 'Type what you hear and check your accuracy.')}
+                      {key === 'shadowing' && (isModuleLocked ? 'Content coming later for this unit.' : 'Record yourself and compare with the original.')}
+                      {key === 'drill' && (isModuleLocked ? 'Drill content will be added after this lesson is taught.' : 'Retrieval practice — produce, check, repeat.')}
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Chip label={meta.label} color={meta.color} bg={meta.bg} />
+                    {!isModuleLocked && <svg width="18" height="18" viewBox="0 0 24 24" fill={meta.color}><path d="M10 17l5-5-5-5v10z" /></svg>}
+                  </div>
+                </button>
+              )]
+            })}
 
         </div>
       )}
@@ -1347,7 +1397,7 @@ function renderTextCards(text?: string, opts?: { italic?: boolean; leadingTitle?
   )
 }
 
-function GrammarView({ unit, question, onBack, grammarBlocks }: { unit: Unit; question?: QuestionItem; onBack: () => void; grammarBlocks?: GrammarSheetBlock[] | null }) {
+function GrammarView({ unit, question, onBack, grammarBlocks, grammarSlotLabel }: { unit: Unit; question?: QuestionItem; onBack: () => void; grammarBlocks?: GrammarSheetBlock[] | null; grammarSlotLabel?: string }) {
   const [showAnswer, setShowAnswer] = useState(false)
   const rule = unit.grammarPlaceholder ? PLACEHOLDER_RULE : (GRAMMAR_RULES[unit.grammar] ?? GRAMMAR_RULES['Simple Present'])
   return (
@@ -1358,7 +1408,7 @@ function GrammarView({ unit, question, onBack, grammarBlocks }: { unit: Unit; qu
         <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.grammar.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>📖</div>
         <div>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: 0 }}>
-            {question ? `${question.sectionTitle || unit.grammar.split(' / ')[0]} / ${question.label}` : unit.grammar}
+            {question ? `${question.sectionTitle || unit.grammar.split(' / ')[0]} / ${question.label}` : (grammarSlotLabel ?? unit.grammar)}
           </h2>
           <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>Grammar · {unit.title}</p>
         </div>
@@ -2496,17 +2546,59 @@ interface GrammarSheetBlock {
   content: string
 }
 
-function parseGrammarSheet(rows: Record<string, string>[]): Record<string, GrammarSheetBlock[]> {
-  const result: Record<string, GrammarSheetBlock[]> = {}
+// Bir slot'un kart başlığı ve açıklaması — sheet'teki ilk satırdan okunur
+interface GrammarSlotMeta {
+  slot: number
+  label: string        // slot_label sütunu — boşsa fallback üretilir
+  description: string  // slot_description sütunu — boşsa varsayılan
+  blocks: GrammarSheetBlock[]
+}
+
+// Dönen yapı: unitKey → GrammarSlotMeta[]
+// unitKey formatı: "${level}-${unitId}"  (örn. "A1-A1-U01")
+// Her slot kendi meta'sı + block listesiyle gelir.
+// grammar_slot sütunu yoksa veya boşsa → slot 1 sayılır (geriye uyumlu).
+function parseGrammarSheet(rows: Record<string, string>[]): Record<string, GrammarSlotMeta[]> {
+  // Önce ham veriyi topla: unitKey → slot → { meta alanları, blocks }
+  const raw: Record<string, Record<number, { label: string; description: string; blocks: GrammarSheetBlock[] }>> = {}
+
   rows.forEach(r => {
     const level = r.level?.trim()
     const unitId = r.unit_id?.trim()
     const blockType = r.block_type?.trim() as GrammarSheetBlock['type']
     const content = r.content?.trim()
     if (!level || !unitId || !blockType || !content) return
-    const key = `${level}-${unitId}`
-    if (!result[key]) result[key] = []
-    result[key].push({ type: blockType, content })
+
+    const slot = parseInt(r.grammar_slot?.trim() || '1', 10) || 1
+    const unitKey = `${level}-${unitId}`
+
+    if (!raw[unitKey]) raw[unitKey] = {}
+    if (!raw[unitKey][slot]) {
+      raw[unitKey][slot] = { label: '', description: '', blocks: [] }
+    }
+
+    // slot_label ve slot_description sadece ilk satırda dolu gelir
+    if (r.slot_label?.trim()) raw[unitKey][slot].label = r.slot_label.trim()
+    if (r.slot_description?.trim()) raw[unitKey][slot].description = r.slot_description.trim()
+
+    raw[unitKey][slot].blocks.push({ type: blockType, content })
+  })
+
+  // Slot numaralarına göre sıralı GrammarSlotMeta dizisine çevir
+  const result: Record<string, GrammarSlotMeta[]> = {}
+  Object.entries(raw).forEach(([unitKey, slotMap]) => {
+    const totalSlots = Object.keys(slotMap).length
+    result[unitKey] = Object.entries(slotMap)
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .map(([slotStr, data]) => {
+        const slot = Number(slotStr)
+        return {
+          slot,
+          label: data.label || (totalSlots === 1 ? 'Grammar' : `Grammar ${slot}`),
+          description: data.description || 'Rules, patterns, and examples explained clearly.',
+          blocks: data.blocks,
+        }
+      })
   })
   return result
 }
@@ -3471,6 +3563,7 @@ export default function App() {
   const [view, setView] = useState<View>('dashboard')
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null)
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState<number | null>(null)
+  const [selectedGrammarSlot, setSelectedGrammarSlot] = useState<number>(1)
 
   // ── Giriş ekranı profili (bkz. EntryScreen) ──
   const [entryProfile, setEntryProfile] = useState<EntryProfile | null>(() => {
@@ -3545,7 +3638,7 @@ export default function App() {
   }, [])
 
   // ── Grammar Sheet ────────────────────────────────────────────────────────────
-  const [grammarSheetData, setGrammarSheetData] = useState<Record<string, GrammarSheetBlock[]> | null>(null)
+  const [grammarSheetData, setGrammarSheetData] = useState<Record<string, GrammarSlotMeta[]> | null>(null)
 
   useEffect(() => {
     if (!GRAMMAR_SHEET_CSV_URL) return
@@ -3659,6 +3752,7 @@ export default function App() {
 
   function goUnit(u: Unit) { setSelectedUnit(u); setSelectedQuestionIndex(null); setView('unit') }
   function goModule(m: keyof typeof MODULE_META) { setSelectedQuestionIndex(null); setView(m as View) }
+  function goGrammar(slot: number) { setSelectedGrammarSlot(slot); setSelectedQuestionIndex(null); setView('grammar') }
   function goQuestion(i: number) { setSelectedQuestionIndex(i); setView('grammar') }
   function goDictationAll() { setSelectedQuestionIndex(null); setView('dictationAll') }
   function goShadowingAll() { setSelectedQuestionIndex(null); setView('shadowingAll') }
@@ -3819,7 +3913,23 @@ export default function App() {
           <DashboardView level={level} units={units} onSelectUnit={goUnit} />
         )}
         {view === 'unit' && selectedUnitLive && (
-          <UnitDetailView unit={selectedUnitLive} level={level} onBack={() => { setView('dashboard'); setSelectedUnit(null) }} onModule={goModule} onQuestion={goQuestion} onDictationAll={goDictationAll} onShadowingAll={goShadowingAll} onDrill={goDrill} />
+          <UnitDetailView
+            unit={selectedUnitLive}
+            level={level}
+            onBack={() => { setView('dashboard'); setSelectedUnit(null) }}
+            onModule={goModule}
+            onGrammar={goGrammar}
+            onQuestion={goQuestion}
+            onDictationAll={goDictationAll}
+            onShadowingAll={goShadowingAll}
+            onDrill={goDrill}
+            grammarSlots={(() => {
+              if (!grammarSheetData) return null
+              const unitId = selectedUnitLive.unitId ?? `${level}-U${String(selectedUnitLive.id).padStart(2, '0')}`
+              const unitKey = `${level}-${unitId}`
+              return grammarSheetData[unitKey] ?? null
+            })()}
+          />
         )}
         {view === 'dictationAll' && selectedUnitLive && (
           <DictationAllView unit={selectedUnitLive} onBack={() => setView('unit')} />
@@ -3832,11 +3942,23 @@ export default function App() {
             unit={selectedUnitLive}
             question={selectedQuestion}
             onBack={() => { setView('unit'); setSelectedQuestionIndex(null) }}
+            grammarSlotLabel={(() => {
+              if (!grammarSheetData) return undefined
+              const unitId = selectedUnitLive.unitId ?? `${level}-U${String(selectedUnitLive.id).padStart(2, '0')}`
+              const unitKey = `${level}-${unitId}`
+              const slots = grammarSheetData[unitKey]
+              if (!slots) return undefined
+              const slot = slots.find(s => s.slot === selectedGrammarSlot)
+              return slot?.label
+            })()}
             grammarBlocks={(() => {
               if (!grammarSheetData) return null
-              const unitKey = `${level}-U${String(selectedUnitLive.id).padStart(2, '0')}`
-              const sheetKey = `${level}-${unitKey}`
-              return grammarSheetData[sheetKey] ?? null
+              const unitId = selectedUnitLive.unitId ?? `${level}-U${String(selectedUnitLive.id).padStart(2, '0')}`
+              const unitKey = `${level}-${unitId}`
+              const slots = grammarSheetData[unitKey]
+              if (!slots) return null
+              const slot = slots.find(s => s.slot === selectedGrammarSlot)
+              return slot?.blocks ?? null
             })()}
           />
         )}
