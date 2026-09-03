@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react'
+import PrivateShadowing from './PrivateShadowing'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -3969,7 +3970,9 @@ export default function App() {
           <DictationView unit={selectedUnitLive} onBack={() => setView('unit')} />
         )}
         {view === 'shadowing' && selectedUnitLive && (
-          <ShadowingView unit={selectedUnitLive} onBack={() => setView('unit')} />
+          selectedUnitLive.freeSourceSelect
+            ? <PrivateShadowing unitTitle={selectedUnitLive.title} onBack={() => setView('unit')} />
+            : <ShadowingView unit={selectedUnitLive} onBack={() => setView('unit')} />
         )}
         {view === 'drill' && selectedUnitLive && (
           <DrillView
