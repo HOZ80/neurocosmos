@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react'
 import PrivateShadowing from './PrivateShadowing'
+import PrivateDictation from './PrivateDictation'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -3967,7 +3968,9 @@ export default function App() {
           <AudioView unit={selectedUnitLive} onBack={() => setView('unit')} />
         )}
         {view === 'dictation' && selectedUnitLive && (
-          <DictationView unit={selectedUnitLive} onBack={() => setView('unit')} />
+          selectedUnitLive.freeSourceSelect
+            ? <PrivateDictation unitTitle={selectedUnitLive.title} onBack={() => setView('unit')} />
+            : <DictationView unit={selectedUnitLive} onBack={() => setView('unit')} />
         )}
         {view === 'shadowing' && selectedUnitLive && (
           selectedUnitLive.freeSourceSelect
