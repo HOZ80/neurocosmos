@@ -115,7 +115,10 @@ async function karakterCevabiUret(scene, character, gecmis, ogrenciMesaji, apiKe
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: sistemTalimatiKur(scene, character) }] },
-      contents: contents
+      contents: contents,
+      generationConfig: {
+        thinkingConfig: { thinkingBudget: 0 }
+      }
     })
   });
 
@@ -154,7 +157,10 @@ async function yapiTespitiYap(scene, ogrenciMesaji, apiKey) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: kontrolPromptu }] }]
+      contents: [{ role: 'user', parts: [{ text: kontrolPromptu }] }],
+      generationConfig: {
+        thinkingConfig: { thinkingBudget: 0 }
+      }
     })
   });
 
