@@ -244,6 +244,8 @@ function SceneButton({ children, onClick, primary = false, disabled = false }: {
 
 type Stage = 'intro' | 'greeting' | 'reaction' | 'drill' | 'production' | 'closing' | 'record'
 
+type ChatTurn = { from: 'ogrenci' | 'karakter'; text: string }
+
 export default function SceneView({ scenes, characters, onBack }: {
   scenes: Scene[]
   characters: Record<string, SceneCharacter>
@@ -259,6 +261,11 @@ export default function SceneView({ scenes, characters, onBack }: {
   const [productionLog, setProductionLog] = useState('')
   const [fadedRevealed, setFadedRevealed] = useState(false)
   const [error, setError] = useState('')
+
+  // Canlı konuşma (desteksiz üretim aşaması)
+  const [chatLog, setChatLog] = useState<ChatTurn[]>([])
+  const [verdicts, setVerdicts] = useState<{ sentence: string; ok: boolean; note: string }[]>([])
+  const [sending, setSending] = useState(false)
 
   const { enabled, setEnabled, speak, stop, supported } = useSpeech()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -303,6 +310,47 @@ export default function SceneView({ scenes, characters, onBack }: {
     }
   }
 
+  async function sendProduction() {
+    const mesaj = productionText.trim()
+    if (!mesaj) { setError('Önce bir cümle yaz.'); return }
+    if (sending) return
+
+    setSending(true)
+    setError('')
+    const gecmis = chatLog
+    setChatLog(log => [...log, { from: 'ogrenci', text: mesaj }])
+    setProductionText('')
+    if (!productionLog) setProductionLog(mesaj)
+
+    try {
+      const res = await fetch('/.netlify/functions/scene-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scene, character, gecmis, ogrenciMesaji: mesaj }),
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        setError(data.detay || data.error || 'Cevap alınamadı. Tekrar dener misin?')
+      } else {
+        const reply: string = data.karakterCevabi || ''
+        if (reply) {
+          setChatLog(log => [...log, { from: 'karakter', text: reply }])
+          speak(reply)
+        }
+        setVerdicts(v => [...v, {
+          sentence: mesaj,
+          ok: !!data.yapiTespitEdildi,
+          note: data.yapiNotu || '',
+        }])
+      }
+    } catch {
+      setError('Bağlantı kurulamadı. Tekrar dener misin?')
+    } finally {
+      setSending(false)
+    }
+  }
+
   function restart() {
     stop()
     setStage('intro')
@@ -314,6 +362,9 @@ export default function SceneView({ scenes, characters, onBack }: {
     setProductionLog('')
     setFadedRevealed(false)
     setError('')
+    setChatLog([])
+    setVerdicts([])
+    setSending(false)
   }
 
   const dialogueStyle: React.CSSProperties = {
@@ -447,6 +498,28 @@ export default function SceneView({ scenes, characters, onBack }: {
           {stage === 'production' && (
             <div>
               <p style={{ ...dialogueStyle, fontSize: '17px' }}>{scene.productionQuestion}</p>
+
+              {chatLog.map((turn, i) => (
+                <p
+                  key={i}
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: turn.from === 'karakter' ? '17px' : '15px',
+                    lineHeight: 1.6,
+                    color: turn.from === 'karakter' ? 'var(--foreground)' : 'var(--muted-foreground)',
+                    borderLeft: turn.from === 'karakter' ? `3px solid ${ACCENT}` : '3px solid var(--border)',
+                    paddingLeft: '14px',
+                    margin: '0 0 14px',
+                  }}
+                >{turn.text}</p>
+              ))}
+
+              {sending && (
+                <p style={{ fontSize: '13px', color: 'var(--muted-foreground)', margin: '0 0 14px' }}>
+                  {characterName} düşünüyor…
+                </p>
+              )}
+
               <textarea
                 value={productionText}
                 onChange={e => { setProductionText(e.target.value); if (error) setError('') }}
@@ -461,11 +534,13 @@ export default function SceneView({ scenes, characters, onBack }: {
                 }}
               />
               {error && <p style={{ fontSize: '13px', color: '#DC2626', margin: '0 0 10px' }}>{error}</p>}
-              <SceneButton primary onClick={() => {
-                if (!productionText.trim()) { setError('Önce bir cümle yaz.'); return }
-                setProductionLog(productionText)
-                go('closing', scene.closingReaction)
-              }}>Söyle</SceneButton>
+
+              <SceneButton primary onClick={sendProduction} disabled={sending}>
+                {sending ? 'Gönderiliyor…' : 'Söyle'}
+              </SceneButton>
+              {chatLog.length > 0 && !sending && (
+                <SceneButton onClick={() => go('closing', scene.closingReaction)}>Sahneyi bitir</SceneButton>
+              )}
             </div>
           )}
 
@@ -491,8 +566,18 @@ export default function SceneView({ scenes, characters, onBack }: {
               ))}
 
               <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', marginTop: '4px', marginBottom: '18px' }}>
-                <p style={{ fontSize: '13px', color: 'var(--muted-foreground)', margin: 0 }}>Desteksiz üretim</p>
-                <p style={{ fontFamily: 'var(--font-display)', fontSize: '16px', color: ACCENT, margin: 0 }}>{productionLog || '—'}</p>
+                <p style={{ fontSize: '13px', color: 'var(--muted-foreground)', margin: '0 0 8px' }}>Desteksiz üretim</p>
+                {verdicts.length === 0 && (
+                  <p style={{ fontFamily: 'var(--font-display)', fontSize: '16px', color: ACCENT, margin: 0 }}>{productionLog || '—'}</p>
+                )}
+                {verdicts.map((v, i) => (
+                  <div key={i} style={{ marginBottom: '10px' }}>
+                    <p style={{ fontFamily: 'var(--font-display)', fontSize: '16px', color: ACCENT, margin: 0 }}>{v.sentence}</p>
+                    <p style={{ fontSize: '13px', color: 'var(--muted-foreground)', margin: 0 }}>
+                      {v.ok ? '✓ hedef yapı üretildi' : '○ hedef yapı görülmedi'}{v.note ? ' — ' + v.note : ''}
+                    </p>
+                  </div>
+                ))}
               </div>
 
               <SceneButton onClick={restart}>Baştan oyna</SceneButton>
