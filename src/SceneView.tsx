@@ -22,6 +22,13 @@ export interface Scene {
   locked: boolean
   place: string
   bgImage: string
+  bgImageGiris: string
+  bgImageSelamlama: string
+  bgImageTepki: string
+  bgImageAlistirma: string
+  bgImageUretim: string
+  bgImageKapanis: string
+  bgImageKayit: string
   situation: string
   studentReason: string
   characterExpectation: string
@@ -55,7 +62,12 @@ export type SceneSheetData = {
 // cikis_gerekcesi, acilis_replik, silik_cevap, tekrar_tepkisi, drill_gerekce,
 // drill_tipi, uyaranlar, beklenen_cevaplar, ara_tepkiler, uretim_sorusu,
 // yapi_tanimi, ornek_cevaplar, kapanis_tepkisi, cikis_bicimi, cikis_replik,
-// sonraki_sahne, karakter_kodu
+// sonraki_sahne, karakter_kodu, arkaplan_gorsel_giris, arkaplan_gorsel_selamlama,
+// arkaplan_gorsel_tepki, arkaplan_gorsel_alistirma, arkaplan_gorsel_uretim,
+// arkaplan_gorsel_kapanis, arkaplan_gorsel_kayit
+//
+// Aşama başına arka plan sütunları boş bırakılabilir — boşsa, o aşama kendinden
+// önceki dolu aşamanın görselini kullanmaya devam eder (bkz. resolveBgImage).
 
 function splitPipe(str: string | undefined): string[] {
   if (!str) return []
@@ -73,6 +85,13 @@ export function parseSceneRows(rows: Record<string, string>[]): Scene[] {
       locked: (r.kilit || '').toLowerCase().startsWith('kapal'),
       place: r.mekan || '',
       bgImage: r.arkaplan_gorsel || '',
+      bgImageGiris: r.arkaplan_gorsel_giris || '',
+      bgImageSelamlama: r.arkaplan_gorsel_selamlama || '',
+      bgImageTepki: r.arkaplan_gorsel_tepki || '',
+      bgImageAlistirma: r.arkaplan_gorsel_alistirma || '',
+      bgImageUretim: r.arkaplan_gorsel_uretim || '',
+      bgImageKapanis: r.arkaplan_gorsel_kapanis || '',
+      bgImageKayit: r.arkaplan_gorsel_kayit || '',
       situation: r.durum || '',
       studentReason: r.ogrenci_gerekcesi || '',
       characterExpectation: r.karakter_beklentisi || '',
@@ -128,6 +147,13 @@ export const FALLBACK_SCENE_DATA: SceneSheetData = {
     locked: false,
     place: 'kütüphane',
     bgImage: '',
+    bgImageGiris: '',
+    bgImageSelamlama: '',
+    bgImageTepki: '',
+    bgImageAlistirma: '',
+    bgImageUretim: '',
+    bgImageKapanis: '',
+    bgImageKayit: '',
     situation: 'Tesla kalenin kütüphanesinde, gece geç saatte, masasında dağınık kâğıtlarla oturuyor.',
     studentReason: 'Öğrenci kalede konaklıyor ve uyuyamıyor. Koridorda tek yanan ışık burası.',
     characterExpectation: 'Tesla kendi kararı hakkında dışarıdan bir yargı istiyor.',
@@ -212,6 +238,76 @@ function useSpeech() {
 
 const ACCENT = '#B45309'
 const ACCENT_BG = '#FEF3C7'
+
+// ─── Tam sayfa görsel panel: sabit okunurluk renkleri ──────────────────────
+// Panelin arkası her zaman koyu bir gradyan olduğu için (hangi görsel gelirse
+// gelsin), buradaki metin renkleri siteye göre değişen var(--foreground) gibi
+// değişkenlere değil, sabit açık renklere bağlanıyor.
+const PANEL_TEXT = '#F5F0E6'
+const PANEL_MUTED = 'rgba(245, 240, 230, 0.68)'
+const PANEL_ACCENT = '#F0B457'
+const PANEL_BORDER = 'rgba(245, 240, 230, 0.22)'
+
+// ─── Atmosfer efektleri: ışık titremesi + yavaş sis ─────────────────────────
+// Ekstra dosya veya kütüphane gerektirmez, sadece CSS animasyonu. Hareket
+// hassasiyeti olan kullanıcılar için prefers-reduced-motion'da kapanır.
+const ATMOSPHERE_CSS = `
+.ncsm-scene-flicker {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: radial-gradient(60% 50% at 30% 25%, rgba(255,200,120,0.20) 0%, rgba(255,200,120,0) 70%);
+  animation: ncsmFlicker 5.5s ease-in-out infinite;
+  mix-blend-mode: screen;
+}
+@keyframes ncsmFlicker {
+  0%, 100% { opacity: 0.55; }
+  20% { opacity: 0.85; }
+  35% { opacity: 0.40; }
+  50% { opacity: 0.70; }
+  65% { opacity: 0.50; }
+  80% { opacity: 0.90; }
+}
+.ncsm-scene-fog {
+  position: absolute; left: -20%; right: -20%; bottom: 0; height: 45%;
+  z-index: 1; pointer-events: none;
+  background: linear-gradient(90deg, transparent 0%, rgba(230,230,235,0.10) 25%, rgba(230,230,235,0.16) 50%, rgba(230,230,235,0.10) 75%, transparent 100%);
+  filter: blur(6px);
+  animation: ncsmFog 22s linear infinite;
+}
+@keyframes ncsmFog {
+  0% { transform: translateX(-10%); }
+  100% { transform: translateX(10%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ncsm-scene-flicker, .ncsm-scene-fog { animation: none; }
+}
+`
+
+// ─── Aşama başına arka plan görseli çözümü ──────────────────────────────────
+// Boş bırakılan aşamalar, kendinden önceki dolu aşamanın görselini kullanır.
+// Hiçbiri doluysa eski tekil arkaplan_gorsel'e, o da boşsa varsayılan gradyana düşer.
+
+const STAGE_ORDER = ['intro', 'greeting', 'reaction', 'drill', 'production', 'closing', 'record'] as const
+
+function stageBgField(scene: Scene, stage: typeof STAGE_ORDER[number]): string {
+  switch (stage) {
+    case 'intro': return scene.bgImageGiris
+    case 'greeting': return scene.bgImageSelamlama
+    case 'reaction': return scene.bgImageTepki
+    case 'drill': return scene.bgImageAlistirma
+    case 'production': return scene.bgImageUretim
+    case 'closing': return scene.bgImageKapanis
+    case 'record': return scene.bgImageKayit
+  }
+}
+
+function resolveBgImage(scene: Scene, stage: typeof STAGE_ORDER[number]): string {
+  const idx = STAGE_ORDER.indexOf(stage)
+  for (let i = idx; i >= 0; i--) {
+    const val = stageBgField(scene, STAGE_ORDER[i])
+    if (val) return val
+  }
+  return scene.bgImage || ''
+}
 
 function SceneButton({ children, onClick, primary = false, disabled = false }: {
   children: React.ReactNode
@@ -367,68 +463,96 @@ export default function SceneView({ scenes, characters, onBack }: {
     setSending(false)
   }
 
+  const bgImage = resolveBgImage(scene, stage)
+
   const dialogueStyle: React.CSSProperties = {
     fontFamily: 'var(--font-display)',
     fontSize: '18px',
     lineHeight: 1.65,
-    color: 'var(--foreground)',
+    color: PANEL_TEXT,
     margin: '0 0 20px',
   }
+  const mutedStyle: React.CSSProperties = { color: PANEL_MUTED }
 
   return (
     <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted-foreground)', fontSize: '13px', padding: 0, textAlign: 'left' }}>← Back</button>
+      <style>{ATMOSPHERE_CSS}</style>
 
       <div>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: '0 0 6px' }}>{scene.title}</h2>
         <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{scene.target}</p>
       </div>
 
-      {scenes.length > 1 && (
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {scenes.map((s, i) => (
-            <button
-              key={s.code}
-              onClick={() => { restart(); setSceneIndex(i) }}
-              style={{
-                background: i === sceneIndex ? ACCENT_BG : 'var(--card)',
-                color: i === sceneIndex ? ACCENT : 'var(--muted-foreground)',
-                border: '1px solid var(--border)', borderRadius: '7px',
-                padding: '5px 12px', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
-              }}
-            >{s.title}</button>
-          ))}
-        </div>
-      )}
+      {/* Tam sayfa, atmosferik sahne alanı — kart çerçevesi yok, kenar yuvarlaması yok */}
+      <div style={{
+        position: 'relative',
+        overflow: 'hidden',
+        minHeight: 'min(640px, 78vh)',
+        display: 'flex',
+        flexDirection: 'column',
+        background: bgImage
+          ? `center/cover no-repeat url(${bgImage})`
+          : 'radial-gradient(120% 90% at 70% 40%, #6b4b18 0%, #2a2416 28%, #131a20 62%, #080c11 100%)',
+      }}>
+        <div className="ncsm-scene-flicker" />
+        <div className="ncsm-scene-fog" />
 
-      <div style={{ border: '1px solid var(--border)', borderRadius: '16px', overflow: 'hidden', background: 'var(--card)' }}>
-        {/* Arka plan alanı */}
+        {/* Görselin üzerinde yüzen ince üst şerit: Back + sahne seçici */}
         <div style={{
-          height: '170px',
-          position: 'relative',
-          background: scene.bgImage
-            ? `center/cover no-repeat url(${scene.bgImage})`
-            : 'radial-gradient(120% 90% at 70% 40%, #6b4b18 0%, #2a2416 28%, #131a20 62%, #080c11 100%)',
+          position: 'relative', zIndex: 2,
+          display: 'flex', flexDirection: 'column', gap: '10px',
+          padding: '14px 18px',
+          background: 'linear-gradient(to bottom, rgba(8,10,14,0.55) 0%, rgba(8,10,14,0) 100%)',
         }}>
-          <span style={{ position: 'absolute', left: '14px', top: '12px', fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>{scene.place}</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <button
+              onClick={onBack}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: PANEL_TEXT, fontSize: '13px', padding: 0, textAlign: 'left' }}
+            >← Back</button>
+            <span style={{ fontSize: '12px', color: PANEL_MUTED }}>{scene.place}</span>
+          </div>
+
+          {scenes.length > 1 && (
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {scenes.map((s, i) => (
+                <button
+                  key={s.code}
+                  onClick={() => { restart(); setSceneIndex(i) }}
+                  style={{
+                    background: i === sceneIndex ? 'rgba(240,180,87,0.25)' : 'rgba(20,20,24,0.45)',
+                    color: i === sceneIndex ? PANEL_ACCENT : PANEL_MUTED,
+                    border: `1px solid ${PANEL_BORDER}`, borderRadius: '7px',
+                    padding: '5px 12px', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                  }}
+                >{s.title}</button>
+              ))}
+            </div>
+          )}
         </div>
 
-        <div style={{ padding: '22px 24px 26px', borderTop: '1px solid var(--border)' }}>
+        {/* Alt kısımda yüzen diyalog paneli — okunurluk için sabit koyu gradyan */}
+        <div style={{
+          position: 'relative', zIndex: 2,
+          marginTop: 'auto',
+          maxHeight: '62vh', overflowY: 'auto',
+          padding: '22px 22px 24px',
+          background: 'linear-gradient(to top, rgba(8,10,14,0.94) 0%, rgba(8,10,14,0.80) 55%, rgba(8,10,14,0) 100%)',
+        }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '16px' }}>
-            <span style={{ fontFamily: 'var(--font-display)', fontSize: '15px', fontWeight: 700, color: ACCENT }}>
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: '15px', fontWeight: 700, color: PANEL_ACCENT }}>
               {stage === 'intro' ? scene.title : characterName}
             </span>
             {supported && (
               <button
                 onClick={() => { if (enabled) stop(); setEnabled(!enabled) }}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: 'var(--muted-foreground)', textDecoration: 'underline' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: PANEL_MUTED, textDecoration: 'underline' }}
               >{enabled ? 'Sesi kapat' : 'Sesi aç'}</button>
             )}
           </div>
 
           {stage === 'intro' && (
             <div>
-              <p style={{ ...dialogueStyle, fontSize: '16px', color: 'var(--muted-foreground)' }}>{scene.studentReason}</p>
+              <p style={{ ...dialogueStyle, fontSize: '16px', ...mutedStyle }}>{scene.studentReason}</p>
               <SceneButton primary onClick={() => go('greeting', scene.openingLine)}>Başla</SceneButton>
             </div>
           )}
@@ -436,12 +560,12 @@ export default function SceneView({ scenes, characters, onBack }: {
           {stage === 'greeting' && (
             <div>
               <p style={dialogueStyle}>{scene.openingLine}</p>
-              <p style={{ fontSize: '13px', color: 'var(--muted-foreground)', margin: '0 0 6px' }}>Sesli oku:</p>
+              <p style={{ fontSize: '13px', color: PANEL_MUTED, margin: '0 0 6px' }}>Sesli oku:</p>
               <p style={{
                 ...dialogueStyle,
                 fontSize: '17px',
                 opacity: fadedRevealed ? 1 : 0.3,
-                color: fadedRevealed ? ACCENT : 'var(--muted-foreground)',
+                color: fadedRevealed ? PANEL_ACCENT : PANEL_MUTED,
                 transition: 'opacity 0.3s',
               }}>{scene.fadedLine}</p>
               {!fadedRevealed && <SceneButton onClick={() => setFadedRevealed(true)}>Netleştir</SceneButton>}
@@ -458,10 +582,10 @@ export default function SceneView({ scenes, characters, onBack }: {
 
           {stage === 'drill' && (
             <div>
-              <p style={{ ...dialogueStyle, fontSize: '16px', color: 'var(--muted-foreground)' }}>{scene.drillReason}</p>
+              <p style={{ ...dialogueStyle, fontSize: '16px', ...mutedStyle }}>{scene.drillReason}</p>
 
-              <div style={{ borderLeft: `3px solid ${ACCENT}`, paddingLeft: '14px', margin: '0 0 16px' }}>
-                <p style={{ fontFamily: 'var(--font-display)', fontSize: '17px', margin: 0 }}>{scene.cues[drillIndex]}</p>
+              <div style={{ borderLeft: `3px solid ${PANEL_ACCENT}`, paddingLeft: '14px', margin: '0 0 16px' }}>
+                <p style={{ fontFamily: 'var(--font-display)', fontSize: '17px', margin: 0, color: PANEL_TEXT }}>{scene.cues[drillIndex]}</p>
               </div>
 
               <input
@@ -473,24 +597,24 @@ export default function SceneView({ scenes, characters, onBack }: {
                 placeholder="If ..."
                 style={{
                   width: '100%', boxSizing: 'border-box', padding: '10px 12px',
-                  border: '1px solid var(--border)', borderRadius: '9px',
+                  border: `1px solid ${PANEL_BORDER}`, borderRadius: '9px',
                   fontSize: '15px', fontFamily: 'var(--font-display)',
-                  background: 'var(--background)', color: 'var(--foreground)',
+                  background: 'rgba(20,20,24,0.55)', color: PANEL_TEXT,
                   marginBottom: '16px',
                 }}
               />
 
               {drillRevealed && (
                 <div style={{ marginBottom: '16px' }}>
-                  <p style={{ fontSize: '13px', color: 'var(--muted-foreground)', margin: '0 0 4px' }}>Beklenen cümle:</p>
-                  <p style={{ fontFamily: 'var(--font-display)', fontSize: '16px', color: ACCENT, margin: '0 0 10px' }}>{scene.answers[drillIndex]}</p>
-                  <p style={{ fontFamily: 'var(--font-display)', fontSize: '15px', fontStyle: 'italic', color: 'var(--muted-foreground)', margin: 0 }}>{scene.interjections[drillIndex]}</p>
+                  <p style={{ fontSize: '13px', color: PANEL_MUTED, margin: '0 0 4px' }}>Beklenen cümle:</p>
+                  <p style={{ fontFamily: 'var(--font-display)', fontSize: '16px', color: PANEL_ACCENT, margin: '0 0 10px' }}>{scene.answers[drillIndex]}</p>
+                  <p style={{ fontFamily: 'var(--font-display)', fontSize: '15px', fontStyle: 'italic', color: PANEL_MUTED, margin: 0 }}>{scene.interjections[drillIndex]}</p>
                 </div>
               )}
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <SceneButton primary onClick={handleDrill}>{drillRevealed ? 'Devam' : 'Karşılaştır'}</SceneButton>
-                <span style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>{drillIndex + 1} / {scene.cues.length}</span>
+                <span style={{ fontSize: '12px', color: PANEL_MUTED }}>{drillIndex + 1} / {scene.cues.length}</span>
               </div>
             </div>
           )}
@@ -506,8 +630,8 @@ export default function SceneView({ scenes, characters, onBack }: {
                     fontFamily: 'var(--font-display)',
                     fontSize: turn.from === 'karakter' ? '17px' : '15px',
                     lineHeight: 1.6,
-                    color: turn.from === 'karakter' ? 'var(--foreground)' : 'var(--muted-foreground)',
-                    borderLeft: turn.from === 'karakter' ? `3px solid ${ACCENT}` : '3px solid var(--border)',
+                    color: turn.from === 'karakter' ? PANEL_TEXT : PANEL_MUTED,
+                    borderLeft: turn.from === 'karakter' ? `3px solid ${PANEL_ACCENT}` : `3px solid ${PANEL_BORDER}`,
                     paddingLeft: '14px',
                     margin: '0 0 14px',
                   }}
@@ -515,7 +639,7 @@ export default function SceneView({ scenes, characters, onBack }: {
               ))}
 
               {sending && (
-                <p style={{ fontSize: '13px', color: 'var(--muted-foreground)', margin: '0 0 14px' }}>
+                <p style={{ fontSize: '13px', color: PANEL_MUTED, margin: '0 0 14px' }}>
                   {characterName} düşünüyor…
                 </p>
               )}
@@ -527,13 +651,13 @@ export default function SceneView({ scenes, characters, onBack }: {
                 placeholder="Kendi cümlenle yaz."
                 style={{
                   width: '100%', boxSizing: 'border-box', padding: '10px 12px',
-                  border: '1px solid var(--border)', borderRadius: '9px',
+                  border: `1px solid ${PANEL_BORDER}`, borderRadius: '9px',
                   fontSize: '15px', fontFamily: 'var(--font-display)',
-                  background: 'var(--background)', color: 'var(--foreground)',
+                  background: 'rgba(20,20,24,0.55)', color: PANEL_TEXT,
                   resize: 'vertical', marginBottom: '10px',
                 }}
               />
-              {error && <p style={{ fontSize: '13px', color: '#DC2626', margin: '0 0 10px' }}>{error}</p>}
+              {error && <p style={{ fontSize: '13px', color: '#FCA5A5', margin: '0 0 10px' }}>{error}</p>}
 
               <SceneButton primary onClick={sendProduction} disabled={sending}>
                 {sending ? 'Gönderiliyor…' : 'Söyle'}
@@ -547,33 +671,33 @@ export default function SceneView({ scenes, characters, onBack }: {
           {stage === 'closing' && (
             <div>
               <p style={dialogueStyle}>{scene.closingReaction}</p>
-              <p style={{ ...dialogueStyle, fontSize: '16px', color: 'var(--muted-foreground)' }}>{scene.exitLine}</p>
+              <p style={{ ...dialogueStyle, fontSize: '16px', ...mutedStyle }}>{scene.exitLine}</p>
               <SceneButton primary onClick={() => go('record')}>{scene.exitStyle} — çık</SceneButton>
             </div>
           )}
 
           {stage === 'record' && (
             <div>
-              <p style={{ fontSize: '13px', color: 'var(--muted-foreground)', margin: '0 0 16px' }}>
+              <p style={{ fontSize: '13px', color: PANEL_MUTED, margin: '0 0 16px' }}>
                 Sahne bitti. Hiçbir aşamada engellenmedin; kaydedilen şey aşağıda.
               </p>
 
               {drillLog.map((item, i) => (
                 <div key={i} style={{ marginBottom: '12px' }}>
-                  <p style={{ fontSize: '13px', color: 'var(--muted-foreground)', margin: 0 }}>{item.cue}</p>
-                  <p style={{ fontFamily: 'var(--font-display)', fontSize: '15px', margin: 0 }}>{item.answer || '—'}</p>
+                  <p style={{ fontSize: '13px', color: PANEL_MUTED, margin: 0 }}>{item.cue}</p>
+                  <p style={{ fontFamily: 'var(--font-display)', fontSize: '15px', margin: 0, color: PANEL_TEXT }}>{item.answer || '—'}</p>
                 </div>
               ))}
 
-              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', marginTop: '4px', marginBottom: '18px' }}>
-                <p style={{ fontSize: '13px', color: 'var(--muted-foreground)', margin: '0 0 8px' }}>Desteksiz üretim</p>
+              <div style={{ borderTop: `1px solid ${PANEL_BORDER}`, paddingTop: '12px', marginTop: '4px', marginBottom: '18px' }}>
+                <p style={{ fontSize: '13px', color: PANEL_MUTED, margin: '0 0 8px' }}>Desteksiz üretim</p>
                 {verdicts.length === 0 && (
-                  <p style={{ fontFamily: 'var(--font-display)', fontSize: '16px', color: ACCENT, margin: 0 }}>{productionLog || '—'}</p>
+                  <p style={{ fontFamily: 'var(--font-display)', fontSize: '16px', color: PANEL_ACCENT, margin: 0 }}>{productionLog || '—'}</p>
                 )}
                 {verdicts.map((v, i) => (
                   <div key={i} style={{ marginBottom: '10px' }}>
-                    <p style={{ fontFamily: 'var(--font-display)', fontSize: '16px', color: ACCENT, margin: 0 }}>{v.sentence}</p>
-                    <p style={{ fontSize: '13px', color: 'var(--muted-foreground)', margin: 0 }}>
+                    <p style={{ fontFamily: 'var(--font-display)', fontSize: '16px', color: PANEL_ACCENT, margin: 0 }}>{v.sentence}</p>
+                    <p style={{ fontSize: '13px', color: PANEL_MUTED, margin: 0 }}>
                       {v.ok ? '✓ hedef yapı üretildi' : '○ hedef yapı görülmedi'}{v.note ? ' — ' + v.note : ''}
                     </p>
                   </div>
