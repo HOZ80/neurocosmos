@@ -117,7 +117,7 @@ async function karakterCevabiUret(scene, character, gecmis, ogrenciMesaji, apiKe
       systemInstruction: { parts: [{ text: sistemTalimatiKur(scene, character) }] },
       contents: contents,
       generationConfig: {
-        thinkingConfig: { thinkingBudget: 0 }
+        thinkingConfig: { thinkingLevel: 'minimal' }
       }
     })
   });
@@ -159,7 +159,7 @@ async function yapiTespitiYap(scene, ogrenciMesaji, apiKey) {
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: kontrolPromptu }] }],
       generationConfig: {
-        thinkingConfig: { thinkingBudget: 0 }
+        thinkingConfig: { thinkingLevel: 'minimal' }
       }
     })
   });
