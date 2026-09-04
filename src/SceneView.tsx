@@ -280,6 +280,27 @@ const ATMOSPHERE_CSS = `
 @media (prefers-reduced-motion: reduce) {
   .ncsm-scene-flicker, .ncsm-scene-fog { animation: none; }
 }
+.ncsm-bubble {
+  position: relative;
+  background: rgba(15, 15, 18, 0.92);
+  border: 1px solid rgba(245, 240, 230, 0.22);
+  border-radius: 18px;
+  padding: 14px 18px;
+  max-width: 92%;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+}
+.ncsm-bubble::after {
+  content: '';
+  position: absolute;
+  left: 28px;
+  bottom: -13px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 14px 14px 0 0;
+  border-color: rgba(15, 15, 18, 0.92) transparent transparent transparent;
+  filter: drop-shadow(1px 2px 1px rgba(0,0,0,0.25));
+}
 `
 
 // ─── Aşama başına arka plan görseli çözümü ──────────────────────────────────
@@ -287,6 +308,12 @@ const ATMOSPHERE_CSS = `
 // Hiçbiri doluysa eski tekil arkaplan_gorsel'e, o da boşsa varsayılan gradyana düşer.
 
 const STAGE_ORDER = ['intro', 'greeting', 'reaction', 'drill', 'production', 'closing', 'record'] as const
+
+// ─── Gemini bağlantısı anahtarı ──────────────────────────────────────────────
+// false yaparsan "Söyle" butonu API'ye hiç gitmez, yerine sabit bir test
+// cevabı gösterir. Faturalandırma/kota netleşince true yapman yeterli —
+// başka hiçbir şeyi değiştirmene gerek yok.
+const AI_BAGLANTISI_AKTIF = false
 
 function stageBgField(scene: Scene, stage: typeof STAGE_ORDER[number]): string {
   switch (stage) {
@@ -418,6 +445,17 @@ export default function SceneView({ scenes, characters, onBack }: {
     setProductionText('')
     if (!productionLog) setProductionLog(mesaj)
 
+    if (!AI_BAGLANTISI_AKTIF) {
+      setChatLog(log => [...log, { from: 'karakter', text: '(AI kapalı — test modu)' }])
+      setVerdicts(v => [...v, {
+        sentence: mesaj,
+        ok: false,
+        note: 'AI kapalı — test modu, değerlendirme yapılmadı.',
+      }])
+      setSending(false)
+      return
+    }
+
     try {
       const res = await fetch('/.netlify/functions/scene-chat', {
         method: 'POST',
@@ -487,7 +525,7 @@ export default function SceneView({ scenes, characters, onBack }: {
       <div style={{
         position: 'relative',
         overflow: 'hidden',
-        minHeight: 'min(640px, 78vh)',
+        minHeight: '85vh',
         display: 'flex',
         flexDirection: 'column',
         background: bgImage
@@ -559,7 +597,9 @@ export default function SceneView({ scenes, characters, onBack }: {
 
           {stage === 'greeting' && (
             <div>
-              <p style={dialogueStyle}>{scene.openingLine}</p>
+              <div className="ncsm-bubble" style={{ marginBottom: '28px' }}>
+                <p style={{ ...dialogueStyle, margin: 0 }}>{scene.openingLine}</p>
+              </div>
               <p style={{ fontSize: '13px', color: PANEL_MUTED, margin: '0 0 6px' }}>Sesli oku:</p>
               <p style={{
                 ...dialogueStyle,
@@ -575,7 +615,9 @@ export default function SceneView({ scenes, characters, onBack }: {
 
           {stage === 'reaction' && (
             <div>
-              <p style={dialogueStyle}>{scene.repeatReaction}</p>
+              <div className="ncsm-bubble" style={{ marginBottom: '28px' }}>
+                <p style={{ ...dialogueStyle, margin: 0 }}>{scene.repeatReaction}</p>
+              </div>
               <SceneButton primary onClick={() => { go('drill', scene.drillReason); setTimeout(() => inputRef.current?.focus(), 50) }}>Devam et</SceneButton>
             </div>
           )}
@@ -621,21 +663,29 @@ export default function SceneView({ scenes, characters, onBack }: {
 
           {stage === 'production' && (
             <div>
-              <p style={{ ...dialogueStyle, fontSize: '17px' }}>{scene.productionQuestion}</p>
+              <div className="ncsm-bubble" style={{ marginBottom: '28px' }}>
+                <p style={{ ...dialogueStyle, fontSize: '17px', margin: 0 }}>{scene.productionQuestion}</p>
+              </div>
 
               {chatLog.map((turn, i) => (
-                <p
-                  key={i}
-                  style={{
-                    fontFamily: 'var(--font-display)',
-                    fontSize: turn.from === 'karakter' ? '17px' : '15px',
-                    lineHeight: 1.6,
-                    color: turn.from === 'karakter' ? PANEL_TEXT : PANEL_MUTED,
-                    borderLeft: turn.from === 'karakter' ? `3px solid ${PANEL_ACCENT}` : `3px solid ${PANEL_BORDER}`,
-                    paddingLeft: '14px',
-                    margin: '0 0 14px',
-                  }}
-                >{turn.text}</p>
+                turn.from === 'karakter' ? (
+                  <div key={i} className="ncsm-bubble" style={{ marginBottom: '28px' }}>
+                    <p style={{ fontFamily: 'var(--font-display)', fontSize: '17px', lineHeight: 1.6, color: PANEL_TEXT, margin: 0 }}>{turn.text}</p>
+                  </div>
+                ) : (
+                  <p
+                    key={i}
+                    style={{
+                      fontFamily: 'var(--font-display)',
+                      fontSize: '15px',
+                      lineHeight: 1.6,
+                      color: PANEL_MUTED,
+                      borderLeft: `3px solid ${PANEL_BORDER}`,
+                      paddingLeft: '14px',
+                      margin: '0 0 14px',
+                    }}
+                  >{turn.text}</p>
+                )
               ))}
 
               {sending && (
@@ -670,8 +720,12 @@ export default function SceneView({ scenes, characters, onBack }: {
 
           {stage === 'closing' && (
             <div>
-              <p style={dialogueStyle}>{scene.closingReaction}</p>
-              <p style={{ ...dialogueStyle, fontSize: '16px', ...mutedStyle }}>{scene.exitLine}</p>
+              <div className="ncsm-bubble" style={{ marginBottom: '14px' }}>
+                <p style={{ ...dialogueStyle, margin: 0 }}>{scene.closingReaction}</p>
+              </div>
+              <div className="ncsm-bubble" style={{ marginBottom: '28px' }}>
+                <p style={{ ...dialogueStyle, fontSize: '16px', margin: 0, ...mutedStyle }}>{scene.exitLine}</p>
+              </div>
               <SceneButton primary onClick={() => go('record')}>{scene.exitStyle} — çık</SceneButton>
             </div>
           )}
