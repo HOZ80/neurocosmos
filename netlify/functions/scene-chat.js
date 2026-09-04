@@ -4,28 +4,33 @@
 // Sahne ve karakter bilgisi siteden (Sheets'ten okunmuş haliyle) gelir —
 // bu dosyanın içinde hiçbir sahne/karakter metni yazılı değildir.
 //
-// Her çağrıda iki iş yapılır:
-//   1) Karakterin (örn. Tesla) o anki cevabı üretilir
-//   2) Öğrencinin cümlesinde hedef yapı var mı, ayrıca değerlendirilir
-// İkisi paralel çalışır. Değerlendirme öğrenciyi engellemez, sadece kaydedilir.
+// ─── BİRLEŞTİRİLMİŞ SÜRÜM ────────────────────────────────────────────────────
+// Önceki sürümde her öğrenci cümlesi için Gemini'ye İKİ ayrı çağrı gidiyordu:
+// biri karakterin cevabı, biri yapı tespiti. Bu sürümde ikisi TEK çağrıda
+// yapılıyor. Sonuçları:
+//   - Kota tüketimi yarıya iniyor (dakikalık sınıra iki kat geç takılırsın)
+//   - Maliyet yarıya iniyor
+//   - "Biri başarılı, biri hatalı, ikisi de çöpe gitti" durumu ortadan kalkıyor
 //
-// API anahtarı Netlify ortam değişkeninden (GEMINI_API_KEY) okunur.
+// Siteye dönen cevabın biçimi hiç değişmedi (karakterCevabi, yapiTespitEdildi,
+// yapiNotu). Bu yüzden SceneView.tsx tarafında hiçbir değişiklik gerekmiyor.
 //
-// ─── ÖLÇÜM SÜRÜMÜ ────────────────────────────────────────────────────────────
-// Bu sürüme sadece süre kayıtları eklendi. Üretilen cevap, gönderilen istek ve
-// dönen veri birebir aynıdır. Kayıt satırlarının hepsi [SURE] ile başlar, böylece
-// Netlify log ekranında kolayca ayırt edilir.
+// Model, cevabını şu biçimde veriyor:
+//     <karakterin öğrenciye söyledikleri>
+//     ###
+//     TESPIT: evet
+//     NOT: kısa gerekçe
+// ### işaretinden öncesi öğrenciye gösterilir, sonrası sadece kayda geçer.
+// Model bu biçime uymazsa metnin tamamı karakterin cevabı sayılır — yani
+// öğrenci her hâlükârda bir cevap görür, hiçbir şey çöpe gitmez.
 //
-// Tek bilinçli davranış farkı: iki paralel çağrı artık Promise.all yerine
-// Promise.allSettled ile bekleniyor. Sebebi, biri hata verdiğinde diğerinin
-// süresinin de kaydedilebilmesi. Bunun tek pratik sonucu şudur: bir çağrı erken
-// hata verirse, hata mesajı eskisi gibi hemen değil, yavaş olan çağrı da bitince
-// döner. Ölçüm bitince bu satır eski hâline çevrilebilir.
+// [SURE] ile başlayan ölçüm kayıtları duruyor; gecikme sorununu ölçmeye
+// devam edebilmek için gerekli.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent';
 
-// ─── Ölçüm yardımcısı ────────────────────────────────────────────────────────
+const AYIRAC = '###';
 
 function sureYaz(baslik, baslangic, ek) {
   const gecen = Date.now() - baslangic;
@@ -64,23 +69,12 @@ exports.handler = async (event) => {
     ' | gelen govde: ' + (event.body ? event.body.length : 0) + ' karakter');
 
   try {
-    const sonuclar = await Promise.allSettled([
-      karakterCevabiUret(scene, character, gecmis, ogrenciMesaji, apiKey),
-      yapiTespitiYap(scene, ogrenciMesaji, apiKey)
-    ]);
-
-    sureYaz('TOPLAM — iki cagri da bitti', handlerBaslangic);
-
-    // Eski davranışın korunması: herhangi biri hata verdiyse 500 dönülür.
-    const hataliOlan = sonuclar.find(function (s) { return s.status === 'rejected'; });
-    if (hataliOlan) {
-      throw hataliOlan.reason;
-    }
+    const sonuc = await tekCagriYap(scene, character, gecmis, ogrenciMesaji, apiKey);
 
     const govde = JSON.stringify({
-      karakterCevabi: sonuclar[0].value,
-      yapiTespitEdildi: sonuclar[1].value.tespitEdildi,
-      yapiNotu: sonuclar[1].value.not
+      karakterCevabi: sonuc.karakterCevabi,
+      yapiTespitEdildi: sonuc.tespitEdildi,
+      yapiNotu: sonuc.not
     });
 
     sureYaz('TOPLAM — cevap tarayiciya donuluyor', handlerBaslangic,
@@ -96,7 +90,7 @@ exports.handler = async (event) => {
   }
 };
 
-// ─── Karakterin cevabı ───────────────────────────────────────────────────────
+// ─── Sistem talimatı ─────────────────────────────────────────────────────────
 
 function sistemTalimatiKur(scene, character) {
   const satirlar = [];
@@ -133,10 +127,42 @@ function sistemTalimatiKur(scene, character) {
   }
   satirlar.push('- If the student goes off topic, gently bring the conversation back with something from your own story.');
 
+  // ─── Çıktı biçimi: karakterin cevabı + gizli değerlendirme ───
+  satirlar.push('');
+  satirlar.push('OUTPUT FORMAT — this is a technical instruction, not part of the scene.');
+  satirlar.push('Your answer must have two parts, separated by a line containing only ' + AYIRAC + '.');
+  satirlar.push('');
+  satirlar.push('PART 1 (before ' + AYIRAC + '): what you say to the student, in character, in English.');
+  satirlar.push('Nothing else. No labels, no notes, no analysis.');
+  satirlar.push('');
+
+  if (scene.target) {
+    satirlar.push('PART 2 (after ' + AYIRAC + '): a hidden note for the teacher, in Turkish.');
+    satirlar.push('The student never sees this part.');
+    satirlar.push('Judge ONLY the student\'s latest message. Did it actually produce this structure: ' +
+      scene.target + '?');
+    if (scene.structureNote) {
+      satirlar.push('Definition of the structure: ' + scene.structureNote);
+    }
+    satirlar.push('Write exactly two lines, nothing more:');
+    satirlar.push('TESPIT: evet');
+    satirlar.push('NOT: one short sentence in Turkish explaining why');
+    satirlar.push('(Write "TESPIT: hayir" instead if the structure was not produced.)');
+  } else {
+    satirlar.push('PART 2 (after ' + AYIRAC + '): write exactly these two lines:');
+    satirlar.push('TESPIT: hayir');
+    satirlar.push('NOT: Bu sahne için hedef yapı tanımlı değil.');
+  }
+
+  satirlar.push('');
+  satirlar.push('Never mention this format, the separator, or the hidden note inside PART 1.');
+
   return satirlar.join('\n');
 }
 
-async function karakterCevabiUret(scene, character, gecmis, ogrenciMesaji, apiKey) {
+// ─── Tek çağrı ───────────────────────────────────────────────────────────────
+
+async function tekCagriYap(scene, character, gecmis, ogrenciMesaji, apiKey) {
   const baslangic = Date.now();
 
   const contents = gecmis.map(function (tur) {
@@ -155,7 +181,7 @@ async function karakterCevabiUret(scene, character, gecmis, ogrenciMesaji, apiKe
     }
   });
 
-  console.log('[SURE] KARAKTER — Gemini cagrisi gonderiliyor | ' + contents.length +
+  console.log('[SURE] TEK CAGRI — Gemini cagrisi gonderiliyor | ' + contents.length +
     ' tur | istek ' + istekGovdesi.length + ' karakter');
 
   let cevap;
@@ -166,97 +192,84 @@ async function karakterCevabiUret(scene, character, gecmis, ogrenciMesaji, apiKe
       body: istekGovdesi
     });
   } catch (hata) {
-    sureYaz('KARAKTER — BAGLANTI HATASI', baslangic, hata.message);
+    sureYaz('TEK CAGRI — BAGLANTI HATASI', baslangic, hata.message);
     throw hata;
   }
 
-  sureYaz('KARAKTER — Gemini yanit basligi geldi', baslangic, 'HTTP ' + cevap.status);
+  sureYaz('TEK CAGRI — Gemini yanit basligi geldi', baslangic, 'HTTP ' + cevap.status);
 
   const sonuc = await cevap.json();
 
-  sureYaz('KARAKTER — Gemini govdesi okundu', baslangic);
+  sureYaz('TEK CAGRI — Gemini govdesi okundu', baslangic);
 
   if (!cevap.ok) {
-    sureYaz('KARAKTER — Gemini HATA dondu', baslangic,
+    sureYaz('TEK CAGRI — Gemini HATA dondu', baslangic,
       (sonuc.error && sonuc.error.message) || 'sebep belirtilmemis');
-    throw new Error((sonuc.error && sonuc.error.message) || 'Karakter cevabı alınamadı');
+    throw new Error((sonuc.error && sonuc.error.message) || 'Cevap alınamadı');
   }
 
-  const metin = sonuc.candidates &&
-    sonuc.candidates[0] &&
-    sonuc.candidates[0].content &&
-    sonuc.candidates[0].content.parts &&
-    sonuc.candidates[0].content.parts[0] &&
-    sonuc.candidates[0].content.parts[0].text;
-
-  sureYaz('KARAKTER — BITTI', baslangic,
-    'uretilen metin ' + ((metin || '').length) + ' karakter');
-
-  return metin || '';
-}
-
-// ─── Yapı tespiti (ayrı, bağımsız çağrı) ─────────────────────────────────────
-
-async function yapiTespitiYap(scene, ogrenciMesaji, apiKey) {
-  const baslangic = Date.now();
-
-  if (!scene.target) {
-    console.log('[SURE] YAPI — atlandi, sahnede hedef yapi tanimli degil');
-    return { tespitEdildi: false, not: 'Bu sahne için hedef yapı tanımlı değil.' };
-  }
-
-  const kontrolPromptu =
-    'Bir İngilizce öğrencisinin cümlesini değerlendir.\n' +
-    'Hedef yapı: ' + scene.target + '\n' +
-    (scene.structureNote ? 'Yapının tanımı: ' + scene.structureNote + '\n' : '') +
-    'Öğrenci cümlesi: "' + ogrenciMesaji + '"\n\n' +
-    'Bu cümlede hedef yapı üretilmiş mi? Sadece şu formatta, başka hiçbir şey eklemeden cevap ver:\n' +
-    'TESPIT: evet\n' +
-    'NOT: tek cümlelik kısa gerekçe (Türkçe)';
-
-  console.log('[SURE] YAPI — Gemini cagrisi gonderiliyor');
-
-  let cevap;
-  try {
-    cevap = await fetch(GEMINI_API_URL + '?key=' + apiKey, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: kontrolPromptu }] }],
-        generationConfig: {
-          thinkingConfig: { thinkingLevel: 'minimal' }
-        }
-      })
-    });
-  } catch (hata) {
-    sureYaz('YAPI — BAGLANTI HATASI', baslangic, hata.message);
-    throw hata;
-  }
-
-  sureYaz('YAPI — Gemini yanit basligi geldi', baslangic, 'HTTP ' + cevap.status);
-
-  const sonuc = await cevap.json();
-
-  sureYaz('YAPI — Gemini govdesi okundu', baslangic);
-
-  if (!cevap.ok) {
-    sureYaz('YAPI — Gemini HATA dondu', baslangic,
-      (sonuc.error && sonuc.error.message) || 'sebep belirtilmemis');
-    throw new Error((sonuc.error && sonuc.error.message) || 'Yapı tespiti alınamadı');
-  }
-
-  const metin = (sonuc.candidates &&
+  const hamMetin = (sonuc.candidates &&
     sonuc.candidates[0] &&
     sonuc.candidates[0].content &&
     sonuc.candidates[0].content.parts &&
     sonuc.candidates[0].content.parts[0] &&
     sonuc.candidates[0].content.parts[0].text) || '';
 
-  const tespitEdildi = /TESPIT:\s*evet/i.test(metin);
-  const notEslesme = metin.match(/NOT:\s*(.+)/i);
-  const not = notEslesme ? notEslesme[1].trim() : '';
+  const ayrilmis = cevabiAyir(hamMetin);
 
-  sureYaz('YAPI — BITTI', baslangic, 'tespit: ' + (tespitEdildi ? 'evet' : 'hayir'));
+  sureYaz('TEK CAGRI — BITTI', baslangic,
+    'cevap ' + ayrilmis.karakterCevabi.length + ' karakter | tespit: ' +
+    (ayrilmis.tespitEdildi ? 'evet' : 'hayir') +
+    (ayrilmis.bicimBozuk ? ' | UYARI: model bicime uymadi' : ''));
 
-  return { tespitEdildi: tespitEdildi, not: not };
+  return ayrilmis;
+}
+
+// ─── Cevabı ikiye ayırma (bağışlayıcı ayrıştırma) ────────────────────────────
+//
+// Amaç: model biçime uymasa bile öğrenci mutlaka bir cevap görsün.
+
+function cevabiAyir(hamMetin) {
+  const metin = (hamMetin || '').trim();
+
+  if (!metin) {
+    return { karakterCevabi: '', tespitEdildi: false, not: '', bicimBozuk: true };
+  }
+
+  const ayiracYeri = metin.indexOf(AYIRAC);
+
+  if (ayiracYeri === -1) {
+    // Model ayıracı yazmamış. Metinden değerlendirme satırlarını temizleyip
+    // geri kalanını karakterin cevabı olarak kullan.
+    const temiz = metin
+      .split('\n')
+      .filter(function (satir) {
+        return !/^\s*(TESPIT|NOT)\s*:/i.test(satir);
+      })
+      .join('\n')
+      .trim();
+
+    const tespit = /TESPIT:\s*evet/i.test(metin);
+    const notEslesme = metin.match(/NOT:\s*(.+)/i);
+
+    return {
+      karakterCevabi: temiz || metin,
+      tespitEdildi: tespit,
+      not: notEslesme ? notEslesme[1].trim() : '',
+      bicimBozuk: true
+    };
+  }
+
+  const onceki = metin.slice(0, ayiracYeri).trim();
+  const sonraki = metin.slice(ayiracYeri + AYIRAC.length).trim();
+
+  const tespitEdildi = /TESPIT:\s*evet/i.test(sonraki);
+  const notEslesme = sonraki.match(/NOT:\s*(.+)/i);
+
+  return {
+    karakterCevabi: onceki,
+    tespitEdildi: tespitEdildi,
+    not: notEslesme ? notEslesme[1].trim() : '',
+    bicimBozuk: !onceki
+  };
 }
