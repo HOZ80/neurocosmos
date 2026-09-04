@@ -11,7 +11,7 @@
 //
 // API anahtarı Netlify ortam değişkeninden (GEMINI_API_KEY) okunur.
 
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent';
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
