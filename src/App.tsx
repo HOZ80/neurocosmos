@@ -1,11 +1,13 @@
 import { useState, useRef, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react'
 import PrivateShadowing from './PrivateShadowing'
 import PrivateDictation from './PrivateDictation'
+import SceneView, { parseSceneRows, parseCharacterRows, FALLBACK_SCENE_DATA } from './SceneView'
+import type { Scene, SceneCharacter } from './SceneView'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Level = 'A1' | 'A2' | 'B1' | 'B2' | 'P'
-type View = 'dashboard' | 'unit' | 'grammar' | 'audio' | 'dictation' | 'shadowing' | 'dictationAll' | 'shadowingAll' | 'drill'
+type View = 'dashboard' | 'unit' | 'grammar' | 'audio' | 'dictation' | 'shadowing' | 'dictationAll' | 'shadowingAll' | 'drill' | 'scene'
 
 interface DictationSegment {
   start: number
@@ -58,8 +60,8 @@ interface Unit {
   grammarPlaceholder?: boolean
   unitLabel?: string
   unitId?: string  // sheet'ten gelen gerçek unit_id (örn. 'B2-U01') — drillTopics lookup için
-  moduleLocks?: Partial<Record<'grammar' | 'audio' | 'dictation' | 'shadowing' | 'drill', boolean>>
-  hiddenModules?: Array<'grammar' | 'audio' | 'dictation' | 'shadowing' | 'drill'>
+  moduleLocks?: Partial<Record<'grammar' | 'audio' | 'dictation' | 'shadowing' | 'drill' | 'scene', boolean>>
+  hiddenModules?: Array<'grammar' | 'audio' | 'dictation' | 'shadowing' | 'drill' | 'scene'>
   freeSourceSelect?: boolean
   hidePracticeSentence?: boolean
   videoUrl?: string
@@ -428,6 +430,7 @@ const MODULE_META = {
   dictation: { label: 'Dictation',   icon: '✍️',  color: '#F59E0B', bg: '#FEF3C7' },
   shadowing: { label: 'Shadowing',   icon: '🎙️', color: '#10B981', bg: '#D1FAE5' },
   drill:     { label: 'Drill',       icon: '🎯', color: '#8B5CF6', bg: '#F5F3FF' },
+  scene:     { label: 'Scene',       icon: '🏰', color: '#B45309', bg: '#FEF3C7' },
 }
 
 function Chip({ label, color, bg }: { label: string; color: string; bg: string }) {
@@ -1037,7 +1040,7 @@ function DashboardView({ level, units, onSelectUnit }: {
   )
 }
 
-function UnitDetailView({ unit, level, onBack, onModule, onGrammar, onQuestion, onDictationAll, onShadowingAll, onDrill, grammarSlots }: {
+function UnitDetailView({ unit, level, onBack, onModule, onGrammar, onQuestion, onDictationAll, onShadowingAll, onDrill, onScene, grammarSlots }: {
   unit: Unit
   level: Level
   onBack: () => void
@@ -1047,6 +1050,7 @@ function UnitDetailView({ unit, level, onBack, onModule, onGrammar, onQuestion, 
   onDictationAll: () => void
   onShadowingAll: () => void
   onDrill: () => void
+  onScene: () => void
   grammarSlots: GrammarSlotMeta[] | null  // null = sheet yok, tek kart fallback
 }) {
   return (
@@ -1206,7 +1210,7 @@ function UnitDetailView({ unit, level, onBack, onModule, onGrammar, onQuestion, 
               return [(
                 <button
                   key={key}
-                  onClick={() => { if (isModuleLocked) return; if (key === 'drill') onDrill(); else onModule(key) }}
+                  onClick={() => { if (isModuleLocked) return; if (key === 'drill') onDrill(); else if (key === 'scene') onScene(); else onModule(key) }}
                   disabled={isModuleLocked}
                   style={{
                     textAlign: 'left', background: isModuleLocked ? 'var(--secondary)' : 'var(--card)',
@@ -1235,6 +1239,7 @@ function UnitDetailView({ unit, level, onBack, onModule, onGrammar, onQuestion, 
                       {key === 'dictation' && (isModuleLocked ? 'Content coming later for this unit.' : 'Type what you hear and check your accuracy.')}
                       {key === 'shadowing' && (isModuleLocked ? 'Content coming later for this unit.' : 'Record yourself and compare with the original.')}
                       {key === 'drill' && (isModuleLocked ? 'Drill content will be added after this lesson is taught.' : 'Retrieval practice — produce, check, repeat.')}
+                      {key === 'scene' && (isModuleLocked ? 'Bu ünite için sahne henüz eklenmedi.' : 'Hikâyenin içinde konuş, tekrar et, kendi cümleni kur.')}
                     </p>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -2541,6 +2546,11 @@ const UNITS_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2P
 const DRILL_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSv3MoLyAe0-NNNRyTB5roJYgQ1p0jBt1RTc50HEUp-pSMGMqK8Ljr13rRonh_XxTvrAIIlT9a3aV_S/pub?output=csv'
 const GRAMMAR_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQs8nSbxvuXAVcTFobf4sY-wjZzpE-VhGAyggHDcnG6ZXTubCYWw7cH6ApyhiZzBccuFFIPup-MHaXX/pub?output=csv'
 
+// SAHNE TABLOSU — Sahneler sekmesi ve Karakterler sekmesi ayri ayri publish edilir.
+// Bos birakilirsa kod SceneView icindeki Tesla sahnesini kullanir (test icin).
+const SCENE_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSzx5etyR-Rv8Msh0epQhU6CxIdLeVG7ecVE9qxL7r8wOp3eBM_cn0tYKG9Gq2J592rDO0kk1r0h6k9/pub?output=csv'
+const SCENE_CHARACTERS_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSzx5etyR-Rv8Msh0epQhU6CxIdLeVG7ecVE9qxL7r8wOp3eBM_cn0tYKG9Gq2J592rDO0kk1r0h6k9/pub?gid=673686933&single=true&output=csv'
+
 // ─── Grammar Sheet types & parser ────────────────────────────────────────────
 
 interface GrammarSheetBlock {
@@ -3684,6 +3694,46 @@ export default function App() {
       .catch(() => { /* fallback: drill kartları kilitli görünür */ })
   }, [])
 
+  // ── Scene Sheet: sahneler + karakterler ────────────────────────────
+  // URL boşsa ya da fetch düşerse SceneView içindeki Tesla sahnesi kullanılır.
+  const [sceneRows, setSceneRows] = useState<Scene[] | null>(null)
+  const [characterRows, setCharacterRows] = useState<Record<string, SceneCharacter> | null>(null)
+
+  useEffect(() => {
+    if (!SCENE_SHEET_CSV_URL) return
+    const bustedUrl = `${SCENE_SHEET_CSV_URL}${SCENE_SHEET_CSV_URL.includes('?') ? '&' : '?'}t=${Date.now()}`
+    fetch(bustedUrl, { cache: 'no-store' })
+      .then(res => res.text())
+      .then(text => {
+        const parsed = parseSceneRows(parseCSV(text))
+        if (parsed.length > 0) setSceneRows(parsed)
+      })
+      .catch(() => { /* fallback sahne kullanılır */ })
+  }, [])
+
+  useEffect(() => {
+    if (!SCENE_CHARACTERS_SHEET_CSV_URL) return
+    const bustedUrl = `${SCENE_CHARACTERS_SHEET_CSV_URL}${SCENE_CHARACTERS_SHEET_CSV_URL.includes('?') ? '&' : '?'}t=${Date.now()}`
+    fetch(bustedUrl, { cache: 'no-store' })
+      .then(res => res.text())
+      .then(text => {
+        const parsed = parseCharacterRows(parseCSV(text))
+        if (Object.keys(parsed).length > 0) setCharacterRows(parsed)
+      })
+      .catch(() => { /* fallback karakter kullanılır */ })
+  }, [])
+
+  const allScenes: Scene[] = sceneRows ?? FALLBACK_SCENE_DATA.scenes
+  const allCharacters: Record<string, SceneCharacter> = characterRows ?? FALLBACK_SCENE_DATA.characters
+
+  // Bir ünitenin sahneleri: sahne satırındaki 'unite' değeri ünitenin
+  // unitId'si ya da başlığıyla eşleşiyorsa o üniteye aittir. Kilitli sahneler gizlenir.
+  function scenesForUnit(u: Unit | null): Scene[] {
+    if (!u) return []
+    const keys = [u.unitId ?? '', u.title ?? ''].map(k => k.trim().toLowerCase()).filter(Boolean)
+    return allScenes.filter(sc => !sc.locked && keys.includes(sc.unit.trim().toLowerCase()))
+  }
+
   // Sheets'ten gelen veri varsa buildUnits'in hardcode listesini eziyoruz.
   // Yoksa (URL boş veya fetch başarısız) fallback liste görünür — site hiç kırılmaz.
   // A2 için özel durum: 100Q kartı her zaman hardcode'dan gelir, sheet'e dahil edilmez.
@@ -3712,6 +3762,7 @@ export default function App() {
           dictation: !u.dictation_sentence,
           shadowing: !u.dictation_transcript,
           drill: !hasDrill,  // sheet'te drill verisi yoksa kilitli, gelince açılır
+          scene: allScenes.filter(sc => !sc.locked && [unitId.toLowerCase(), (u.unit_title || '').trim().toLowerCase()].includes(sc.unit.trim().toLowerCase())).length === 0,
         },
         freeSourceSelect: lv === 'P',
       }
@@ -3759,6 +3810,7 @@ export default function App() {
   function goDictationAll() { setSelectedQuestionIndex(null); setView('dictationAll') }
   function goShadowingAll() { setSelectedQuestionIndex(null); setView('shadowingAll') }
   function goDrill() { setSelectedQuestionIndex(null); setView('drill') }
+  function goScene() { setSelectedQuestionIndex(null); setView('scene') }
   function goHome() { setView('dashboard'); setSelectedUnit(null); setSelectedQuestionIndex(null) }
   function goBack() {
     if (view === 'dashboard') return
@@ -3784,7 +3836,7 @@ export default function App() {
   const breadcrumbs = [
     { label: LEVEL_META[level].code, onClick: () => { setView('dashboard'); setSelectedUnit(null) } },
     ...(selectedUnitLive ? [{ label: selectedUnitLive.unitLabel ?? `Unit ${selectedUnitLive.id}`, onClick: () => { setView('unit'); setSelectedQuestionIndex(null) } }] : []),
-    ...(view !== 'dashboard' && view !== 'unit' ? [{ label: view === 'dictationAll' ? 'Dictation All' : view === 'shadowingAll' ? 'Shadowing All' : view === 'drill' ? 'Drill' : (selectedQuestion?.label ?? MODULE_META[view as keyof typeof MODULE_META]?.label) }] : []),
+    ...(view !== 'dashboard' && view !== 'unit' ? [{ label: view === 'dictationAll' ? 'Dictation All' : view === 'shadowingAll' ? 'Shadowing All' : view === 'drill' ? 'Drill' : view === 'scene' ? 'Scene' : (selectedQuestion?.label ?? MODULE_META[view as keyof typeof MODULE_META]?.label) }] : []),
   ]
 
   if (!entryProfile) {
@@ -3925,6 +3977,7 @@ export default function App() {
             onDictationAll={goDictationAll}
             onShadowingAll={goShadowingAll}
             onDrill={goDrill}
+            onScene={goScene}
             grammarSlots={(() => {
               if (!grammarSheetData) return null
               const unitId = selectedUnitLive.unitId ?? `${level}-U${String(selectedUnitLive.id).padStart(2, '0')}`
@@ -3976,6 +4029,13 @@ export default function App() {
           selectedUnitLive.freeSourceSelect
             ? <PrivateShadowing unitTitle={selectedUnitLive.title} onBack={() => setView('unit')} />
             : <ShadowingView unit={selectedUnitLive} onBack={() => setView('unit')} />
+        )}
+        {view === 'scene' && selectedUnitLive && (
+          <SceneView
+            scenes={scenesForUnit(selectedUnitLive)}
+            characters={allCharacters}
+            onBack={() => setView('unit')}
+          />
         )}
         {view === 'drill' && selectedUnitLive && (
           <DrillView
