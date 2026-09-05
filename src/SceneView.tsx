@@ -337,8 +337,10 @@ function resolveStageVisualRaw(scene: Scene, stage: typeof STAGE_ORDER[number]):
   return scene.bgImage || ''
 }
 
-// ─── Hücre biçimi: dosya.webp  veya  dosya.webp|konum  veya  dosya.webp|konum|efekt ───
-// konum ve efekt tamamen opsiyonel, boş bırakılırsa güvenli varsayılana düşer.
+// ─── Hücre biçimi: dosya.webp|konum|efekt|efekt-konumu ───
+// Dört parça da her zaman yazılır. Bir parça bu sahnede uygulanmıyorsa,
+// boş bırakmak yerine değeri açıkça "yok" yazılır — örn: gorsel.webp|yok|sis|orta-ust
+// konum alanına "yok" yazılırsa o aşamada baloncuk hiç gösterilmez.
 // Baloncuğun konumu ile atmosfer efekti birbirinden bağımsızdır, aynı sütunda
 // yan yana durabilirler ama biri diğerini etkilemez.
 
@@ -347,20 +349,26 @@ type EfektTipi = 'yok' | 'sis' | 'isik'
 
 const GECERLI_KONUMLAR: BubblePos[] = ['sol-ust', 'sag-ust', 'orta-ust', 'sol-alt', 'sag-alt', 'orta-alt']
 
-type StageVisual = { image: string; konum: BubblePos; efekt: EfektTipi; efektKonum: BubblePos }
+type StageVisual = { image: string; konum: BubblePos; konumGizli: boolean; efekt: EfektTipi; efektKonum: BubblePos }
 
+// "yok" her dört parça için de geçerli, açık bir boş değer işaretidir — parça
+// hiç yazılmamış gibi boş bırakmak yerine, o parçanın kasıtlı olarak
+// uygulanmadığını belirtir. Dördü de her zaman tam yazılmalıdır:
+// dosya.webp|konum|efekt|efekt-konumu  (uygulanmayan parça: yok)
 function parseStageVisual(raw: string): StageVisual {
   const parts = (raw || '').split('|').map(s => s.trim())
-  const image = parts[0] || ''
-  const konumRaw = (parts[1] || '').toLowerCase() as BubblePos
+  const imageRaw = parts[0] || ''
+  const image = imageRaw.toLowerCase() === 'yok' ? '' : imageRaw
+  const konumRaw = (parts[1] || '').toLowerCase()
+  const konumGizli = konumRaw === 'yok'
+  const konum: BubblePos = GECERLI_KONUMLAR.includes(konumRaw as BubblePos) ? (konumRaw as BubblePos) : 'sol-alt'
   const efektRaw = (parts[2] || '').toLowerCase()
-  const efektKonumRaw = (parts[3] || '').toLowerCase() as BubblePos
-  const konum: BubblePos = GECERLI_KONUMLAR.includes(konumRaw) ? konumRaw : 'sol-alt'
+  const efektKonumRaw = (parts[3] || '').toLowerCase()
   const efekt: EfektTipi = (efektRaw === 'sis' || efektRaw === 'isik') ? efektRaw : 'yok'
-  // Efekt konumu yazılmamışsa, efekt tipine göre makul bir varsayılana düş.
+  // Efekt konumu yazılmamışsa (veya "yok" ise), efekt tipine göre makul bir varsayılana düş.
   const efektVarsayilan: BubblePos = efekt === 'sis' ? 'orta-ust' : 'sol-ust'
-  const efektKonum: BubblePos = GECERLI_KONUMLAR.includes(efektKonumRaw) ? efektKonumRaw : efektVarsayilan
-  return { image, konum, efekt, efektKonum }
+  const efektKonum: BubblePos = GECERLI_KONUMLAR.includes(efektKonumRaw as BubblePos) ? (efektKonumRaw as BubblePos) : efektVarsayilan
+  return { image, konum, konumGizli, efekt, efektKonum }
 }
 
 function resolveStageVisual(scene: Scene, stage: typeof STAGE_ORDER[number]): StageVisual {
@@ -674,9 +682,11 @@ export default function SceneView({ scenes, characters, onBack }: {
 
           {stage === 'greeting' && (
             <div>
-              <div className={bubbleClass} style={{ ...bubbleStyle }}>
-                <p style={{ ...bubbleTextStyle, fontSize: '18px', margin: 0 }}>{scene.openingLine}</p>
-              </div>
+              {!visual.konumGizli && (
+                <div className={bubbleClass} style={{ ...bubbleStyle }}>
+                  <p style={{ ...bubbleTextStyle, fontSize: '18px', margin: 0 }}>{scene.openingLine}</p>
+                </div>
+              )}
               <p style={{ fontSize: '13px', color: PANEL_MUTED, margin: '0 0 6px' }}>Sesli oku:</p>
               <p style={{
                 ...dialogueStyle,
@@ -692,9 +702,11 @@ export default function SceneView({ scenes, characters, onBack }: {
 
           {stage === 'reaction' && (
             <div>
-              <div className={bubbleClass} style={{ ...bubbleStyle }}>
-                <p style={{ ...bubbleTextStyle, fontSize: '18px', margin: 0 }}>{scene.repeatReaction}</p>
-              </div>
+              {!visual.konumGizli && (
+                <div className={bubbleClass} style={{ ...bubbleStyle }}>
+                  <p style={{ ...bubbleTextStyle, fontSize: '18px', margin: 0 }}>{scene.repeatReaction}</p>
+                </div>
+              )}
               <SceneButton primary onClick={() => { go('drill', scene.drillReason); setTimeout(() => inputRef.current?.focus(), 50) }}>Devam et</SceneButton>
             </div>
           )}
@@ -740,16 +752,18 @@ export default function SceneView({ scenes, characters, onBack }: {
 
           {stage === 'production' && (
             <div>
-              <div className={bubbleClass} style={{ ...bubbleStyle }}>
-                <p style={{ ...bubbleTextStyle, fontSize: '17px', margin: 0 }}>
-                  {(() => {
-                    const karakterTurns = chatLog.filter(t => t.from === 'karakter')
-                    return karakterTurns.length > 0
-                      ? karakterTurns[karakterTurns.length - 1].text
-                      : scene.productionQuestion
-                  })()}
-                </p>
-              </div>
+              {!visual.konumGizli && (
+                <div className={bubbleClass} style={{ ...bubbleStyle }}>
+                  <p style={{ ...bubbleTextStyle, fontSize: '17px', margin: 0 }}>
+                    {(() => {
+                      const karakterTurns = chatLog.filter(t => t.from === 'karakter')
+                      return karakterTurns.length > 0
+                        ? karakterTurns[karakterTurns.length - 1].text
+                        : scene.productionQuestion
+                    })()}
+                  </p>
+                </div>
+              )}
 
               {chatLog.map((turn, i) => (
                 <p
@@ -798,9 +812,11 @@ export default function SceneView({ scenes, characters, onBack }: {
 
           {stage === 'closing' && (
             <div>
-              <div className={bubbleClass} style={{ ...bubbleStyle }}>
-                <p style={{ ...bubbleTextStyle, fontSize: '18px', margin: 0 }}>{scene.closingReaction}</p>
-              </div>
+              {!visual.konumGizli && (
+                <div className={bubbleClass} style={{ ...bubbleStyle }}>
+                  <p style={{ ...bubbleTextStyle, fontSize: '18px', margin: 0 }}>{scene.closingReaction}</p>
+                </div>
+              )}
               <p style={{ ...dialogueStyle, fontSize: '16px', ...mutedStyle, marginTop: '90px' }}>{scene.exitLine}</p>
               <SceneButton primary onClick={() => go('record')}>{scene.exitStyle} — çık</SceneButton>
             </div>
