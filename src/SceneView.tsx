@@ -581,6 +581,19 @@ export default function SceneView({ scenes, characters, onBack }: {
   const bubbleClass = bubbleTailClass(visual.konum)
   const bubbleStyle = bubbleAnchorStyle(visual.konum)
 
+  // Baloncuğun bu aşamada gösterilecek metni. Panelin içindeki akıştan bağımsız
+  // olarak, doğrudan görselin üzerine (konum kodunun gerçekten göre olduğu
+  // çerçeveye) yerleştirilebilmesi için burada, tek bir yerde hesaplanıyor.
+  const bubbleText: string | null =
+    stage === 'greeting' ? scene.openingLine :
+    stage === 'reaction' ? scene.repeatReaction :
+    stage === 'production' ? (() => {
+      const karakterTurns = chatLog.filter(t => t.from === 'karakter')
+      return karakterTurns.length > 0 ? karakterTurns[karakterTurns.length - 1].text : scene.productionQuestion
+    })() :
+    stage === 'closing' ? scene.closingReaction :
+    null
+
   const dialogueStyle: React.CSSProperties = {
     fontFamily: 'var(--font-display)',
     fontSize: '18px',
@@ -619,6 +632,15 @@ export default function SceneView({ scenes, characters, onBack }: {
       }}>
         {visual.efekt === 'isik' && <div className="ncsm-scene-flicker" style={flickerStyle(visual.efektKonum)} />}
         {visual.efekt === 'sis' && <div className="ncsm-scene-fog" style={fogStyle(visual.efektKonum)} />}
+
+        {/* Konuşma baloncuğu — panelin değil, doğrudan görselin üzerinde. Konum
+            kodu (sol-ust, sag-alt, vb.) bu büyük görsel alanına göre hesaplanıyor,
+            alttaki diyalog paneline göre değil. */}
+        {!visual.konumGizli && bubbleText !== null && (
+          <div className={bubbleClass} style={{ ...bubbleStyle }}>
+            <p style={{ ...bubbleTextStyle, fontSize: '18px', margin: 0 }}>{bubbleText}</p>
+          </div>
+        )}
 
         {/* Görselin üzerinde yüzen ince üst şerit: Back + sahne seçici */}
         <div style={{
@@ -682,11 +704,6 @@ export default function SceneView({ scenes, characters, onBack }: {
 
           {stage === 'greeting' && (
             <div>
-              {!visual.konumGizli && (
-                <div className={bubbleClass} style={{ ...bubbleStyle }}>
-                  <p style={{ ...bubbleTextStyle, fontSize: '18px', margin: 0 }}>{scene.openingLine}</p>
-                </div>
-              )}
               <p style={{ fontSize: '13px', color: PANEL_MUTED, margin: '0 0 6px' }}>Sesli oku:</p>
               <p style={{
                 ...dialogueStyle,
@@ -702,11 +719,6 @@ export default function SceneView({ scenes, characters, onBack }: {
 
           {stage === 'reaction' && (
             <div>
-              {!visual.konumGizli && (
-                <div className={bubbleClass} style={{ ...bubbleStyle }}>
-                  <p style={{ ...bubbleTextStyle, fontSize: '18px', margin: 0 }}>{scene.repeatReaction}</p>
-                </div>
-              )}
               <SceneButton primary onClick={() => { go('drill', scene.drillReason); setTimeout(() => inputRef.current?.focus(), 50) }}>Devam et</SceneButton>
             </div>
           )}
@@ -752,19 +764,6 @@ export default function SceneView({ scenes, characters, onBack }: {
 
           {stage === 'production' && (
             <div>
-              {!visual.konumGizli && (
-                <div className={bubbleClass} style={{ ...bubbleStyle }}>
-                  <p style={{ ...bubbleTextStyle, fontSize: '17px', margin: 0 }}>
-                    {(() => {
-                      const karakterTurns = chatLog.filter(t => t.from === 'karakter')
-                      return karakterTurns.length > 0
-                        ? karakterTurns[karakterTurns.length - 1].text
-                        : scene.productionQuestion
-                    })()}
-                  </p>
-                </div>
-              )}
-
               {chatLog.map((turn, i) => (
                 <p
                   key={i}
@@ -812,12 +811,7 @@ export default function SceneView({ scenes, characters, onBack }: {
 
           {stage === 'closing' && (
             <div>
-              {!visual.konumGizli && (
-                <div className={bubbleClass} style={{ ...bubbleStyle }}>
-                  <p style={{ ...bubbleTextStyle, fontSize: '18px', margin: 0 }}>{scene.closingReaction}</p>
-                </div>
-              )}
-              <p style={{ ...dialogueStyle, fontSize: '16px', ...mutedStyle, marginTop: '90px' }}>{scene.exitLine}</p>
+              <p style={{ ...dialogueStyle, fontSize: '16px', ...mutedStyle }}>{scene.exitLine}</p>
               <SceneButton primary onClick={() => go('record')}>{scene.exitStyle} — çık</SceneButton>
             </div>
           )}
