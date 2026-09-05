@@ -255,20 +255,19 @@ const ATMOSPHERE_CSS = `
 .ncsm-scene-flicker {
   position: absolute; inset: 0; z-index: 1; pointer-events: none;
   animation: ncsmFlicker 5.5s ease-in-out infinite;
-  mix-blend-mode: screen;
 }
 @keyframes ncsmFlicker {
-  0%, 100% { opacity: 0.60; }
-  20% { opacity: 0.95; }
-  35% { opacity: 0.45; }
-  50% { opacity: 0.80; }
-  65% { opacity: 0.55; }
-  80% { opacity: 1.00; }
+  0%, 100% { opacity: 0.55; }
+  20% { opacity: 0.90; }
+  35% { opacity: 0.40; }
+  50% { opacity: 0.75; }
+  65% { opacity: 0.50; }
+  80% { opacity: 0.95; }
 }
 .ncsm-scene-fog {
   position: absolute; left: -20%; right: -20%;
   z-index: 1; pointer-events: none;
-  background: linear-gradient(90deg, transparent 0%, rgba(230,230,235,0.16) 25%, rgba(230,230,235,0.24) 50%, rgba(230,230,235,0.16) 75%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(230,230,235,0.42) 25%, rgba(230,230,235,0.55) 50%, rgba(230,230,235,0.42) 75%, transparent 100%);
   filter: blur(6px);
   animation: ncsmFog 22s linear infinite;
 }
@@ -403,7 +402,7 @@ function flickerStyle(konum: BubblePos): React.CSSProperties {
     'sol-alt': ['25%', '80%'], 'sag-alt': ['75%', '80%'], 'orta-alt': ['50%', '85%'],
   }
   const [x, y] = merkezler[konum]
-  return { background: `radial-gradient(55% 45% at ${x} ${y}, rgba(255,200,120,0.34) 0%, rgba(255,200,120,0) 70%)` }
+  return { background: `radial-gradient(55% 45% at ${x} ${y}, rgba(255,200,120,0.55) 0%, rgba(255,200,120,0) 70%)` }
 }
 
 // Sis zaten ekranın tamamı genişliğinde bir şerit; konum sadece üstte mi
@@ -587,6 +586,7 @@ export default function SceneView({ scenes, characters, onBack }: {
   const bubbleText: string | null =
     stage === 'greeting' ? scene.openingLine :
     stage === 'reaction' ? scene.repeatReaction :
+    stage === 'drill' ? scene.cues[drillIndex] :
     stage === 'production' ? (() => {
       const karakterTurns = chatLog.filter(t => t.from === 'karakter')
       return karakterTurns.length > 0 ? karakterTurns[karakterTurns.length - 1].text : scene.productionQuestion
@@ -726,10 +726,6 @@ export default function SceneView({ scenes, characters, onBack }: {
           {stage === 'drill' && (
             <div>
               <p style={{ ...dialogueStyle, fontSize: '16px', ...mutedStyle }}>{scene.drillReason}</p>
-
-              <div style={{ borderLeft: `3px solid ${PANEL_ACCENT}`, paddingLeft: '14px', margin: '0 0 16px' }}>
-                <p style={{ fontFamily: 'var(--font-display)', fontSize: '17px', margin: 0, color: PANEL_TEXT }}>{scene.cues[drillIndex]}</p>
-              </div>
 
               <input
                 ref={inputRef}
