@@ -2548,8 +2548,8 @@ const GRAMMAR_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/
 
 // SAHNE TABLOSU — Sahneler sekmesi ve Karakterler sekmesi ayri ayri publish edilir.
 // Bos birakilirsa kod SceneView icindeki Tesla sahnesini kullanir (test icin).
-const SCENE_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSzx5etyR-Rv8Msh0epQhU6CxIdLeVG7ecVE9qxL7r8wOp3eBM_cn0tYKG9Gq2J592rDO0kk1r0h6k9/pub?output=csv'
-const SCENE_CHARACTERS_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSzx5etyR-Rv8Msh0epQhU6CxIdLeVG7ecVE9qxL7r8wOp3eBM_cn0tYKG9Gq2J592rDO0kk1r0h6k9/pub?gid=673686933&single=true&output=csv'
+const SCENE_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRaUcai7WmP71DGXSTRXK95Tw1TLG0LlPvwM6Om7B5jq3wZPEdk3HimYd0hMTTgSw/pub?gid=1604637706&single=true&output=csv'
+const SCENE_CHARACTERS_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRaUcai7WmP71DGXSTRXK95Tw1TLG0LlPvwM6Om7B5jq3wZPEdk3HimYd0hMTTgSw/pub?gid=943347820&single=true&output=csv'
 
 // ─── Grammar Sheet types & parser ────────────────────────────────────────────
 

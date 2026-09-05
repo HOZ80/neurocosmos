@@ -254,22 +254,21 @@ const PANEL_BORDER = 'rgba(245, 240, 230, 0.22)'
 const ATMOSPHERE_CSS = `
 .ncsm-scene-flicker {
   position: absolute; inset: 0; z-index: 1; pointer-events: none;
-  background: radial-gradient(60% 50% at 30% 25%, rgba(255,200,120,0.20) 0%, rgba(255,200,120,0) 70%);
   animation: ncsmFlicker 5.5s ease-in-out infinite;
   mix-blend-mode: screen;
 }
 @keyframes ncsmFlicker {
-  0%, 100% { opacity: 0.55; }
-  20% { opacity: 0.85; }
-  35% { opacity: 0.40; }
-  50% { opacity: 0.70; }
-  65% { opacity: 0.50; }
-  80% { opacity: 0.90; }
+  0%, 100% { opacity: 0.60; }
+  20% { opacity: 0.95; }
+  35% { opacity: 0.45; }
+  50% { opacity: 0.80; }
+  65% { opacity: 0.55; }
+  80% { opacity: 1.00; }
 }
 .ncsm-scene-fog {
-  position: absolute; left: -20%; right: -20%; bottom: 0; height: 45%;
+  position: absolute; left: -20%; right: -20%;
   z-index: 1; pointer-events: none;
-  background: linear-gradient(90deg, transparent 0%, rgba(230,230,235,0.10) 25%, rgba(230,230,235,0.16) 50%, rgba(230,230,235,0.10) 75%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(230,230,235,0.16) 25%, rgba(230,230,235,0.24) 50%, rgba(230,230,235,0.16) 75%, transparent 100%);
   filter: blur(6px);
   animation: ncsmFog 22s linear infinite;
 }
@@ -282,11 +281,11 @@ const ATMOSPHERE_CSS = `
 }
 .ncsm-bubble {
   position: relative;
-  background: rgba(15, 15, 18, 0.92);
-  border: 1px solid rgba(245, 240, 230, 0.22);
+  background: #F3E8D3;
+  border: 1.5px solid #8B5A2B;
   border-radius: 18px;
   padding: 14px 18px;
-  max-width: 92%;
+  max-width: 78%;
   box-shadow: 0 6px 18px rgba(0,0,0,0.35);
 }
 .ncsm-bubble::after {
@@ -298,9 +297,11 @@ const ATMOSPHERE_CSS = `
   height: 0;
   border-style: solid;
   border-width: 14px 14px 0 0;
-  border-color: rgba(15, 15, 18, 0.92) transparent transparent transparent;
+  border-color: #F3E8D3 transparent transparent transparent;
   filter: drop-shadow(1px 2px 1px rgba(0,0,0,0.25));
 }
+.ncsm-bubble--tail-right::after { left: auto; right: 28px; border-width: 14px 0 0 14px; border-color: transparent transparent transparent #F3E8D3; }
+.ncsm-bubble--tail-center::after { left: 50%; transform: translateX(-50%); }
 `
 
 // ─── Aşama başına arka plan görseli çözümü ──────────────────────────────────
@@ -327,13 +328,80 @@ function stageBgField(scene: Scene, stage: typeof STAGE_ORDER[number]): string {
   }
 }
 
-function resolveBgImage(scene: Scene, stage: typeof STAGE_ORDER[number]): string {
+function resolveStageVisualRaw(scene: Scene, stage: typeof STAGE_ORDER[number]): string {
   const idx = STAGE_ORDER.indexOf(stage)
   for (let i = idx; i >= 0; i--) {
     const val = stageBgField(scene, STAGE_ORDER[i])
     if (val) return val
   }
   return scene.bgImage || ''
+}
+
+// ─── Hücre biçimi: dosya.webp  veya  dosya.webp|konum  veya  dosya.webp|konum|efekt ───
+// konum ve efekt tamamen opsiyonel, boş bırakılırsa güvenli varsayılana düşer.
+// Baloncuğun konumu ile atmosfer efekti birbirinden bağımsızdır, aynı sütunda
+// yan yana durabilirler ama biri diğerini etkilemez.
+
+type BubblePos = 'sol-ust' | 'sag-ust' | 'orta-ust' | 'sol-alt' | 'sag-alt' | 'orta-alt'
+type EfektTipi = 'yok' | 'sis' | 'isik'
+
+const GECERLI_KONUMLAR: BubblePos[] = ['sol-ust', 'sag-ust', 'orta-ust', 'sol-alt', 'sag-alt', 'orta-alt']
+
+type StageVisual = { image: string; konum: BubblePos; efekt: EfektTipi; efektKonum: BubblePos }
+
+function parseStageVisual(raw: string): StageVisual {
+  const parts = (raw || '').split('|').map(s => s.trim())
+  const image = parts[0] || ''
+  const konumRaw = (parts[1] || '').toLowerCase() as BubblePos
+  const efektRaw = (parts[2] || '').toLowerCase()
+  const efektKonumRaw = (parts[3] || '').toLowerCase() as BubblePos
+  const konum: BubblePos = GECERLI_KONUMLAR.includes(konumRaw) ? konumRaw : 'sol-alt'
+  const efekt: EfektTipi = (efektRaw === 'sis' || efektRaw === 'isik') ? efektRaw : 'yok'
+  // Efekt konumu yazılmamışsa, efekt tipine göre makul bir varsayılana düş.
+  const efektVarsayilan: BubblePos = efekt === 'sis' ? 'orta-ust' : 'sol-ust'
+  const efektKonum: BubblePos = GECERLI_KONUMLAR.includes(efektKonumRaw) ? efektKonumRaw : efektVarsayilan
+  return { image, konum, efekt, efektKonum }
+}
+
+function resolveStageVisual(scene: Scene, stage: typeof STAGE_ORDER[number]): StageVisual {
+  return parseStageVisual(resolveStageVisualRaw(scene, stage))
+}
+
+// Baloncuğun köşeye yaslanma stili. Üst şeritle (Back + sahne seçici) ve
+// alt panelle çakışmaması için sabit bir boşluk payı bırakılıyor.
+function bubbleAnchorStyle(konum: BubblePos): React.CSSProperties {
+  const base: React.CSSProperties = { position: 'absolute', zIndex: 3, maxWidth: '78%' }
+  switch (konum) {
+    case 'sol-ust': return { ...base, top: '92px', left: '20px' }
+    case 'sag-ust': return { ...base, top: '92px', right: '20px' }
+    case 'orta-ust': return { ...base, top: '92px', left: '50%', transform: 'translateX(-50%)' }
+    case 'sol-alt': return { ...base, bottom: '200px', left: '20px' }
+    case 'sag-alt': return { ...base, bottom: '200px', right: '20px' }
+    case 'orta-alt': return { ...base, bottom: '200px', left: '50%', transform: 'translateX(-50%)' }
+  }
+}
+
+function bubbleTailClass(konum: BubblePos): string {
+  if (konum === 'sag-ust' || konum === 'sag-alt') return 'ncsm-bubble ncsm-bubble--tail-right'
+  if (konum === 'orta-ust' || konum === 'orta-alt') return 'ncsm-bubble ncsm-bubble--tail-center'
+  return 'ncsm-bubble'
+}
+
+// Işık efekti tek bir noktadan yayılan bir parıltı olduğu için altı konumun
+// hepsi farklı bir merkez noktasına karşılık geliyor.
+function flickerStyle(konum: BubblePos): React.CSSProperties {
+  const merkezler: Record<BubblePos, [string, string]> = {
+    'sol-ust': ['25%', '20%'], 'sag-ust': ['75%', '20%'], 'orta-ust': ['50%', '15%'],
+    'sol-alt': ['25%', '80%'], 'sag-alt': ['75%', '80%'], 'orta-alt': ['50%', '85%'],
+  }
+  const [x, y] = merkezler[konum]
+  return { background: `radial-gradient(55% 45% at ${x} ${y}, rgba(255,200,120,0.34) 0%, rgba(255,200,120,0) 70%)` }
+}
+
+// Sis zaten ekranın tamamı genişliğinde bir şerit; konum sadece üstte mi
+// altta mı duracağını belirliyor, sağ/sol farkı önemli değil.
+function fogStyle(konum: BubblePos): React.CSSProperties {
+  return konum.endsWith('ust') ? { top: 0, height: '55%' } : { bottom: 0, height: '55%' }
 }
 
 function SceneButton({ children, onClick, primary = false, disabled = false }: {
@@ -501,7 +569,9 @@ export default function SceneView({ scenes, characters, onBack }: {
     setSending(false)
   }
 
-  const bgImage = resolveBgImage(scene, stage)
+  const visual = resolveStageVisual(scene, stage)
+  const bubbleClass = bubbleTailClass(visual.konum)
+  const bubbleStyle = bubbleAnchorStyle(visual.konum)
 
   const dialogueStyle: React.CSSProperties = {
     fontFamily: 'var(--font-display)',
@@ -511,6 +581,13 @@ export default function SceneView({ scenes, characters, onBack }: {
     margin: '0 0 20px',
   }
   const mutedStyle: React.CSSProperties = { color: PANEL_MUTED }
+  // Baloncuğun zemini krem olduğu için içindeki metin koyu olmalı — panel
+  // metinlerinden (açık renk) ayrı, sadece baloncuk içinde kullanılıyor.
+  const bubbleTextStyle: React.CSSProperties = {
+    fontFamily: 'var(--font-display)',
+    lineHeight: 1.6,
+    color: '#3A2A1A',
+  }
 
   return (
     <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -528,12 +605,12 @@ export default function SceneView({ scenes, characters, onBack }: {
         minHeight: '85vh',
         display: 'flex',
         flexDirection: 'column',
-        background: bgImage
-          ? `center/cover no-repeat url(${bgImage})`
+        background: visual.image
+          ? `center/cover no-repeat url(${visual.image})`
           : 'radial-gradient(120% 90% at 70% 40%, #6b4b18 0%, #2a2416 28%, #131a20 62%, #080c11 100%)',
       }}>
-        <div className="ncsm-scene-flicker" />
-        <div className="ncsm-scene-fog" />
+        {visual.efekt === 'isik' && <div className="ncsm-scene-flicker" style={flickerStyle(visual.efektKonum)} />}
+        {visual.efekt === 'sis' && <div className="ncsm-scene-fog" style={fogStyle(visual.efektKonum)} />}
 
         {/* Görselin üzerinde yüzen ince üst şerit: Back + sahne seçici */}
         <div style={{
@@ -597,8 +674,8 @@ export default function SceneView({ scenes, characters, onBack }: {
 
           {stage === 'greeting' && (
             <div>
-              <div className="ncsm-bubble" style={{ marginBottom: '28px' }}>
-                <p style={{ ...dialogueStyle, margin: 0 }}>{scene.openingLine}</p>
+              <div className={bubbleClass} style={{ ...bubbleStyle }}>
+                <p style={{ ...bubbleTextStyle, fontSize: '18px', margin: 0 }}>{scene.openingLine}</p>
               </div>
               <p style={{ fontSize: '13px', color: PANEL_MUTED, margin: '0 0 6px' }}>Sesli oku:</p>
               <p style={{
@@ -615,8 +692,8 @@ export default function SceneView({ scenes, characters, onBack }: {
 
           {stage === 'reaction' && (
             <div>
-              <div className="ncsm-bubble" style={{ marginBottom: '28px' }}>
-                <p style={{ ...dialogueStyle, margin: 0 }}>{scene.repeatReaction}</p>
+              <div className={bubbleClass} style={{ ...bubbleStyle }}>
+                <p style={{ ...bubbleTextStyle, fontSize: '18px', margin: 0 }}>{scene.repeatReaction}</p>
               </div>
               <SceneButton primary onClick={() => { go('drill', scene.drillReason); setTimeout(() => inputRef.current?.focus(), 50) }}>Devam et</SceneButton>
             </div>
@@ -663,29 +740,30 @@ export default function SceneView({ scenes, characters, onBack }: {
 
           {stage === 'production' && (
             <div>
-              <div className="ncsm-bubble" style={{ marginBottom: '28px' }}>
-                <p style={{ ...dialogueStyle, fontSize: '17px', margin: 0 }}>{scene.productionQuestion}</p>
+              <div className={bubbleClass} style={{ ...bubbleStyle }}>
+                <p style={{ ...bubbleTextStyle, fontSize: '17px', margin: 0 }}>
+                  {(() => {
+                    const karakterTurns = chatLog.filter(t => t.from === 'karakter')
+                    return karakterTurns.length > 0
+                      ? karakterTurns[karakterTurns.length - 1].text
+                      : scene.productionQuestion
+                  })()}
+                </p>
               </div>
 
               {chatLog.map((turn, i) => (
-                turn.from === 'karakter' ? (
-                  <div key={i} className="ncsm-bubble" style={{ marginBottom: '28px' }}>
-                    <p style={{ fontFamily: 'var(--font-display)', fontSize: '17px', lineHeight: 1.6, color: PANEL_TEXT, margin: 0 }}>{turn.text}</p>
-                  </div>
-                ) : (
-                  <p
-                    key={i}
-                    style={{
-                      fontFamily: 'var(--font-display)',
-                      fontSize: '15px',
-                      lineHeight: 1.6,
-                      color: PANEL_MUTED,
-                      borderLeft: `3px solid ${PANEL_BORDER}`,
-                      paddingLeft: '14px',
-                      margin: '0 0 14px',
-                    }}
-                  >{turn.text}</p>
-                )
+                <p
+                  key={i}
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: turn.from === 'karakter' ? '16px' : '15px',
+                    lineHeight: 1.6,
+                    color: turn.from === 'karakter' ? PANEL_TEXT : PANEL_MUTED,
+                    borderLeft: turn.from === 'karakter' ? `3px solid ${PANEL_ACCENT}` : `3px solid ${PANEL_BORDER}`,
+                    paddingLeft: '14px',
+                    margin: '0 0 14px',
+                  }}
+                >{turn.text}</p>
               ))}
 
               {sending && (
@@ -720,12 +798,10 @@ export default function SceneView({ scenes, characters, onBack }: {
 
           {stage === 'closing' && (
             <div>
-              <div className="ncsm-bubble" style={{ marginBottom: '14px' }}>
-                <p style={{ ...dialogueStyle, margin: 0 }}>{scene.closingReaction}</p>
+              <div className={bubbleClass} style={{ ...bubbleStyle }}>
+                <p style={{ ...bubbleTextStyle, fontSize: '18px', margin: 0 }}>{scene.closingReaction}</p>
               </div>
-              <div className="ncsm-bubble" style={{ marginBottom: '28px' }}>
-                <p style={{ ...dialogueStyle, fontSize: '16px', margin: 0, ...mutedStyle }}>{scene.exitLine}</p>
-              </div>
+              <p style={{ ...dialogueStyle, fontSize: '16px', ...mutedStyle, marginTop: '90px' }}>{scene.exitLine}</p>
               <SceneButton primary onClick={() => go('record')}>{scene.exitStyle} — çık</SceneButton>
             </div>
           )}
