@@ -252,31 +252,54 @@ const PANEL_BORDER = 'rgba(245, 240, 230, 0.22)'
 // Ekstra dosya veya kütüphane gerektirmez, sadece CSS animasyonu. Hareket
 // hassasiyeti olan kullanıcılar için prefers-reduced-motion'da kapanır.
 const ATMOSPHERE_CSS = `
-.ncsm-scene-flicker {
-  position: absolute; inset: 0; z-index: 1; pointer-events: none;
-  animation: ncsmFlicker 5.5s ease-in-out infinite;
+.ncsm-scene-flicker-core {
+  position: absolute; z-index: 1; pointer-events: none;
+  width: 90px; height: 90px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,214,150,0.85) 0%, rgba(255,196,110,0.45) 38%, rgba(255,190,100,0) 72%);
+  animation: ncsmFlickerCore 3.4s ease-in-out infinite;
 }
-@keyframes ncsmFlicker {
+.ncsm-scene-flicker-halo {
+  position: absolute; z-index: 1; pointer-events: none;
+  width: 210px; height: 210px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,200,120,0.28) 0%, rgba(255,190,105,0.12) 45%, rgba(255,185,100,0) 75%);
+  animation: ncsmFlickerHalo 5.1s ease-in-out infinite;
+}
+@keyframes ncsmFlickerCore {
+  0%, 100% { opacity: 0.72; }
+  22% { opacity: 0.95; }
+  41% { opacity: 0.58; }
+  63% { opacity: 0.88; }
+  84% { opacity: 0.66; }
+}
+@keyframes ncsmFlickerHalo {
   0%, 100% { opacity: 0.55; }
-  20% { opacity: 0.90; }
-  35% { opacity: 0.40; }
-  50% { opacity: 0.75; }
-  65% { opacity: 0.50; }
-  80% { opacity: 0.95; }
+  35% { opacity: 0.80; }
+  70% { opacity: 0.45; }
 }
-.ncsm-scene-fog {
-  position: absolute; left: -20%; right: -20%;
-  z-index: 1; pointer-events: none;
-  background: linear-gradient(90deg, transparent 0%, rgba(230,230,235,0.42) 25%, rgba(230,230,235,0.55) 50%, rgba(230,230,235,0.42) 75%, transparent 100%);
-  filter: blur(6px);
-  animation: ncsmFog 22s linear infinite;
+.ncsm-scene-smoke {
+  position: absolute; bottom: 0; left: 50%;
+  width: 26px; height: 100%;
+  transform-origin: bottom center;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(226,226,232,0.30) 0%, rgba(226,226,232,0.16) 45%, rgba(226,226,232,0) 88%);
+  filter: blur(7px);
+  border-radius: 50% 50% 0 0;
 }
-@keyframes ncsmFog {
-  0% { transform: translateX(-10%); }
-  100% { transform: translateX(10%); }
+.ncsm-scene-smoke--a { animation: ncsmSmokeDrift 7.5s ease-in-out infinite; }
+.ncsm-scene-smoke--b { animation: ncsmSmokeDrift 9.8s ease-in-out infinite; animation-delay: -3.2s; opacity: 0.7; }
+@keyframes ncsmSmokeDrift {
+  0%   { transform: translateX(-50%) translateY(6%)  scaleX(0.85) skewX(0deg); opacity: 0.30; }
+  30%  { transform: translateX(-46%) translateY(-2%) scaleX(1.05) skewX(4deg); opacity: 0.55; }
+  60%  { transform: translateX(-54%) translateY(-8%) scaleX(0.92) skewX(-5deg); opacity: 0.42; }
+  100% { transform: translateX(-50%) translateY(6%)  scaleX(0.85) skewX(0deg); opacity: 0.30; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ncsm-scene-flicker, .ncsm-scene-fog { animation: none; }
+  .ncsm-scene-flicker-core, .ncsm-scene-flicker-halo,
+  .ncsm-scene-smoke--a, .ncsm-scene-smoke--b { animation: none; }
 }
 .ncsm-bubble {
   position: relative;
@@ -382,9 +405,9 @@ function bubbleAnchorStyle(konum: BubblePos): React.CSSProperties {
     case 'sol-ust': return { ...base, top: '92px', left: '20px' }
     case 'sag-ust': return { ...base, top: '92px', right: '20px' }
     case 'orta-ust': return { ...base, top: '92px', left: '50%', transform: 'translateX(-50%)' }
-    case 'sol-alt': return { ...base, bottom: '200px', left: '20px' }
-    case 'sag-alt': return { ...base, bottom: '200px', right: '20px' }
-    case 'orta-alt': return { ...base, bottom: '200px', left: '50%', transform: 'translateX(-50%)' }
+    case 'sol-alt': return { ...base, bottom: '20px', left: '20px' }
+    case 'sag-alt': return { ...base, bottom: '20px', right: '20px' }
+    case 'orta-alt': return { ...base, bottom: '20px', left: '50%', transform: 'translateX(-50%)' }
   }
 }
 
@@ -394,21 +417,31 @@ function bubbleTailClass(konum: BubblePos): string {
   return 'ncsm-bubble'
 }
 
-// Işık efekti tek bir noktadan yayılan bir parıltı olduğu için altı konumun
-// hepsi farklı bir merkez noktasına karşılık geliyor.
-function flickerStyle(konum: BubblePos): React.CSSProperties {
-  const merkezler: Record<BubblePos, [string, string]> = {
-    'sol-ust': ['25%', '20%'], 'sag-ust': ['75%', '20%'], 'orta-ust': ['50%', '15%'],
-    'sol-alt': ['25%', '80%'], 'sag-alt': ['75%', '80%'], 'orta-alt': ['50%', '85%'],
-  }
-  const [x, y] = merkezler[konum]
-  return { background: `radial-gradient(55% 45% at ${x} ${y}, rgba(255,200,120,0.55) 0%, rgba(255,200,120,0) 70%)` }
+// Efekt merkezleri: Sheets'teki efekt-konumu kodu (sol-ust, sag-alt, vb.)
+// bu tablodan bir noktaya çevriliyor. Işık ve duman aynı tabloyu kullanıyor,
+// böylece aynı kod ikisinde de aynı noktayı işaret ediyor.
+const EFEKT_MERKEZLERI: Record<BubblePos, [string, string]> = {
+  'sol-ust': ['22%', '24%'], 'sag-ust': ['78%', '24%'], 'orta-ust': ['50%', '18%'],
+  'sol-alt': ['22%', '76%'], 'sag-alt': ['78%', '76%'], 'orta-alt': ['50%', '82%'],
 }
 
-// Sis zaten ekranın tamamı genişliğinde bir şerit; konum sadece üstte mi
-// altta mı duracağını belirliyor, sağ/sol farkı önemli değil.
-function fogStyle(konum: BubblePos): React.CSSProperties {
-  return konum.endsWith('ust') ? { top: 0, height: '55%' } : { bottom: 0, height: '55%' }
+// Işık: küçük, odaklı bir flare — çekirdek + hale iki ayrı katman, ikisi de
+// aynı merkeze yerleşiyor.
+function flickerPointStyle(konum: BubblePos): React.CSSProperties {
+  const [x, y] = EFEKT_MERKEZLERI[konum]
+  return { left: x, top: y }
+}
+
+// Duman: mumdan çıkan ince bir şerit. Merkez noktasının hemen üstünde,
+// dar ve sınırlı bir kutu içinde yükseliyor — tüm alanı kaplamıyor.
+function smokeContainerStyle(konum: BubblePos): React.CSSProperties {
+  const [x, y] = EFEKT_MERKEZLERI[konum]
+  return {
+    position: 'absolute', left: x, top: y,
+    width: '64px', height: '150px',
+    transform: 'translate(-50%, -50%)',
+    zIndex: 1, pointerEvents: 'none', overflow: 'visible',
+  }
 }
 
 function SceneButton({ children, onClick, primary = false, disabled = false }: {
@@ -619,19 +652,35 @@ export default function SceneView({ scenes, characters, onBack }: {
         <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{scene.target}</p>
       </div>
 
-      {/* Tam sayfa, atmosferik sahne alanı — kart çerçevesi yok, kenar yuvarlaması yok */}
+      {/* Sahne kartı: görsel ve diyalog paneli aynı dar sütunda, üst üste
+          binmeden — görsel kendi sabit yüksekliğinde, panel onun altında
+          kendi ayrı bloğunda. */}
+      <div style={{ maxWidth: '760px', width: '100%', margin: '0 auto' }}>
+
+      {/* Atmosferik görsel alanı — sabit yükseklik, üst köşeler yuvarlatılmış */}
       <div style={{
         position: 'relative',
         overflow: 'hidden',
-        minHeight: '85vh',
+        height: 'min(60vh, 560px)',
+        borderRadius: '16px 16px 0 0',
         display: 'flex',
         flexDirection: 'column',
         background: visual.image
           ? `center/cover no-repeat url(${visual.image})`
           : 'radial-gradient(120% 90% at 70% 40%, #6b4b18 0%, #2a2416 28%, #131a20 62%, #080c11 100%)',
       }}>
-        {visual.efekt === 'isik' && <div className="ncsm-scene-flicker" style={flickerStyle(visual.efektKonum)} />}
-        {visual.efekt === 'sis' && <div className="ncsm-scene-fog" style={fogStyle(visual.efektKonum)} />}
+        {visual.efekt === 'isik' && (
+          <>
+            <div className="ncsm-scene-flicker-halo" style={flickerPointStyle(visual.efektKonum)} />
+            <div className="ncsm-scene-flicker-core" style={flickerPointStyle(visual.efektKonum)} />
+          </>
+        )}
+        {visual.efekt === 'sis' && (
+          <div style={smokeContainerStyle(visual.efektKonum)}>
+            <div className="ncsm-scene-smoke ncsm-scene-smoke--a" />
+            <div className="ncsm-scene-smoke ncsm-scene-smoke--b" />
+          </div>
+        )}
 
         {/* Konuşma baloncuğu — panelin değil, doğrudan görselin üzerinde. Konum
             kodu (sol-ust, sag-alt, vb.) bu büyük görsel alanına göre hesaplanıyor,
@@ -675,13 +724,15 @@ export default function SceneView({ scenes, characters, onBack }: {
           )}
         </div>
 
-        {/* Alt kısımda yüzen diyalog paneli — okunurluk için sabit koyu gradyan */}
+      </div>
+
+        {/* Diyalog paneli — artık görselin ÜZERİNDE değil, ALTINDA kendi
+            bloğunda. Metin görseli daraltmıyor, görsel de metni kesmiyor. */}
         <div style={{
           position: 'relative', zIndex: 2,
-          marginTop: 'auto',
-          maxHeight: '62vh', overflowY: 'auto',
+          borderRadius: '0 0 16px 16px',
           padding: '22px 22px 24px',
-          background: 'linear-gradient(to top, rgba(8,10,14,0.94) 0%, rgba(8,10,14,0.80) 55%, rgba(8,10,14,0) 100%)',
+          background: '#0d1016',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '16px' }}>
             <span style={{ fontFamily: 'var(--font-display)', fontSize: '15px', fontWeight: 700, color: PANEL_ACCENT }}>
