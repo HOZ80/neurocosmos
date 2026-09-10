@@ -569,7 +569,8 @@ const MiniPlayer = forwardRef<MiniPlayerHandle, {
   duration?: number
   showTranscript: boolean
   onToggleTranscript: () => void
-}>(function MiniPlayer({ audioUrl, duration: fallbackDuration = 142, showTranscript, onToggleTranscript }, ref) {
+  hideTranscriptButton?: boolean
+}>(function MiniPlayer({ audioUrl, duration: fallbackDuration = 142, showTranscript, onToggleTranscript, hideTranscriptButton = false }, ref) {
   const [playing, setPlaying] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const [duration, setDuration] = useState(fallbackDuration)
@@ -731,16 +732,18 @@ const MiniPlayer = forwardRef<MiniPlayerHandle, {
         </select>
 
         {/* Transcript toggle */}
-        <button onClick={onToggleTranscript} style={{
-          padding: '6px 12px', borderRadius: '8px',
-          border: `1px solid ${showTranscript ? 'rgba(79,70,229,0.4)' : 'var(--border)'}`,
-          background: showTranscript ? 'rgba(79,70,229,0.08)' : 'var(--secondary)',
-          color: showTranscript ? 'var(--primary)' : 'var(--muted-foreground)',
-          fontSize: '12px', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
-          transition: 'all 0.15s', whiteSpace: 'nowrap',
-        }}>
-          {showTranscript ? 'Hide Transcript' : 'Show Transcript'}
-        </button>
+        {!hideTranscriptButton && (
+          <button onClick={onToggleTranscript} style={{
+            padding: '6px 12px', borderRadius: '8px',
+            border: `1px solid ${showTranscript ? 'rgba(79,70,229,0.4)' : 'var(--border)'}`,
+            background: showTranscript ? 'rgba(79,70,229,0.08)' : 'var(--secondary)',
+            color: showTranscript ? 'var(--primary)' : 'var(--muted-foreground)',
+            fontSize: '12px', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+            transition: 'all 0.15s', whiteSpace: 'nowrap',
+          }}>
+            {showTranscript ? 'Hide Transcript' : 'Show Transcript'}
+          </button>
+        )}
       </div>
     </div>
   )
@@ -3681,31 +3684,50 @@ function ChildContentCard({ item, onOpen }: { item: ChildContentItem; onOpen: ()
   )
 }
 
-// Basit tam ekran oynatıcı — video için <video>, dinleme için <audio>.
-function ChildPlayerModal({ item, onClose }: { item: ChildContentItem; onClose: () => void }) {
+// Oynatıcı görünümü — yetişkin Audio/Video ekranıyla aynı düzen: üstte geri
+// oku, altında mor-gradyan başlık kartı, en altta oynatıcı. Karartma/modal yok,
+// panelin kendi içinde sade bir sayfa olarak açılıyor.
+function ChildPlayerView({ item, onBack }: { item: ChildContentItem; onBack: () => void }) {
+  const [showTranscript, setShowTranscript] = useState(false)
+  const meta = item.tur === 'video'
+    ? { icon: '🎬', label: 'Video', bg: '#FEF3C7', gradient: 'linear-gradient(135deg, #92400E, #B45309)' }
+    : { icon: '🎧', label: 'Audio / Video', bg: '#E0F2FE', gradient: 'linear-gradient(135deg, #1E3A8A, #3730A3)' }
+
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.85)', zIndex: 1000,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px',
-    }}>
-      <div style={{ width: '100%', maxWidth: '480px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-          <p style={{ margin: 0, color: '#fff', fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: 700 }}>
-            {item.baslik}
-          </p>
-          <button onClick={onClose} style={{
-            background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '8px',
-            color: '#fff', padding: '6px 12px', fontSize: '13px', cursor: 'pointer',
-          }}>Kapat</button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <BackBtn onClick={onBack} label={item.baslik} />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: meta.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>{meta.icon}</div>
+        <div>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '22px', fontWeight: 700, margin: 0, color: '#0F172A' }}>{meta.label}</h2>
+          <p style={{ margin: 0, fontSize: '13px', color: '#64748B' }}>{item.baslik}{item.tur === 'video' ? ' · Watch the video' : ' · Listening practice'}</p>
         </div>
-        {item.tur === 'video' ? (
-          <video src={item.dosyaUrl} controls autoPlay style={{ width: '100%', borderRadius: '12px', background: '#000' }} />
-        ) : (
-          <div style={{ background: '#fff', borderRadius: '16px', padding: '24px' }}>
-            <audio src={item.dosyaUrl} controls autoPlay style={{ width: '100%' }} />
-          </div>
-        )}
       </div>
+
+      {item.tur === 'video' ? (
+        <video
+          src={item.dosyaUrl}
+          controls
+          controlsList="nodownload noplaybackrate"
+          style={{ width: '100%', borderRadius: '16px', background: '#000' }}
+        />
+      ) : (
+        <>
+          {/* Visual player card */}
+          <div style={{
+            background: meta.gradient,
+            borderRadius: '20px', padding: '32px', color: '#fff',
+            display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center',
+          }}>
+            <div style={{ fontSize: '36px', marginBottom: '8px' }}>🎧</div>
+            <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 600 }}>{item.baslik}</p>
+            {item.sure && <p style={{ margin: 0, fontSize: '13px', opacity: 0.65, fontFamily: 'var(--font-mono)' }}>{item.sure} · Listening</p>}
+          </div>
+
+          <MiniPlayer audioUrl={item.dosyaUrl} showTranscript={showTranscript} onToggleTranscript={() => setShowTranscript(t => !t)} hideTranscriptButton />
+        </>
+      )}
     </div>
   )
 }
@@ -3730,57 +3752,61 @@ function ChildDashboard({ childName, childKey, items, onExit }: {
     }}>
       <div style={{ maxWidth: '480px', margin: '0 auto' }}>
 
-        {/* Üst şerit: isimle karşılama + çıkış */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '22px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-              width: '38px', height: '38px', borderRadius: '50%', background: '#4F46E5',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#fff', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '15px',
-            }}>{childName[0]}</div>
-            <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '21px', fontWeight: 700, color: '#0F172A' }}>
-              Merhaba {childName}
-            </p>
-          </div>
-          <button onClick={onExit} style={{
-            background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
-            padding: '6px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--foreground)', cursor: 'pointer',
-          }}>Çıkış</button>
-        </div>
-
-        {/* Yeni */}
-        <p style={{
-          margin: '0 0 10px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#64748B',
-          letterSpacing: '0.08em', textTransform: 'uppercase',
-        }}>Yeni</p>
-
-        {yeniItems.length === 0 ? (
-          <p style={{ margin: '0 0 22px', fontSize: '13px', color: '#94A3B8' }}>Henüz içerik eklenmedi.</p>
+        {openItem ? (
+          <ChildPlayerView item={openItem} onBack={() => setOpenItem(null)} />
         ) : (
-          <div style={{ marginBottom: '12px' }}>
-            {yeniItems.map(it => (
-              <ChildContentCard key={it.icerikId} item={it} onOpen={() => setOpenItem(it)} />
-            ))}
-          </div>
-        )}
+          <>
+            {/* Üst şerit: isimle karşılama + çıkış */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '22px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '38px', height: '38px', borderRadius: '50%', background: '#4F46E5',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '15px',
+                }}>{childName[0]}</div>
+                <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '21px', fontWeight: 700, color: '#0F172A' }}>
+                  Merhaba {childName}
+                </p>
+              </div>
+              <button onClick={onExit} style={{
+                background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
+                padding: '6px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--foreground)', cursor: 'pointer',
+              }}>Çıkış</button>
+            </div>
 
-        {/* Konular */}
-        <p style={{
-          margin: '0 0 10px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#64748B',
-          letterSpacing: '0.08em', textTransform: 'uppercase',
-        }}>Konular</p>
+            {/* Yeni */}
+            <p style={{
+              margin: '0 0 10px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#64748B',
+              letterSpacing: '0.08em', textTransform: 'uppercase',
+            }}>Yeni</p>
 
-        {konularItems.length === 0 ? (
-          <p style={{ margin: 0, fontSize: '13px', color: '#94A3B8' }}>Henüz içerik eklenmedi.</p>
-        ) : (
-          konularItems.map(it => (
-            <ChildContentCard key={it.icerikId} item={it} onOpen={() => setOpenItem(it)} />
-          ))
+            {yeniItems.length === 0 ? (
+              <p style={{ margin: '0 0 22px', fontSize: '13px', color: '#94A3B8' }}>Henüz içerik eklenmedi.</p>
+            ) : (
+              <div style={{ marginBottom: '12px' }}>
+                {yeniItems.map(it => (
+                  <ChildContentCard key={it.icerikId} item={it} onOpen={() => setOpenItem(it)} />
+                ))}
+              </div>
+            )}
+
+            {/* Konular */}
+            <p style={{
+              margin: '0 0 10px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#64748B',
+              letterSpacing: '0.08em', textTransform: 'uppercase',
+            }}>Konular</p>
+
+            {konularItems.length === 0 ? (
+              <p style={{ margin: 0, fontSize: '13px', color: '#94A3B8' }}>Henüz içerik eklenmedi.</p>
+            ) : (
+              konularItems.map(it => (
+                <ChildContentCard key={it.icerikId} item={it} onOpen={() => setOpenItem(it)} />
+              ))
+            )}
+          </>
         )}
 
       </div>
-
-      {openItem && <ChildPlayerModal item={openItem} onClose={() => setOpenItem(null)} />}
     </div>
   )
 }
