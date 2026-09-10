@@ -806,11 +806,11 @@ function PasswordModal({ onSubmit, onClose, error, title }: {
 }
 
 function EntryScreen({ onPickProfile, onPickOwner }: {
-  onPickProfile: (p: 'A1' | 'A2') => void
+  onPickProfile: (p: 'A1' | 'A2' | 'child_omur' | 'child_oztug') => void
   onPickOwner: () => void
 }) {
   // Hangi profil için şifre modalı açık — null ise kapalı
-  const [pendingProfile, setPendingProfile] = useState<'A1' | 'A2' | null>(null)
+  const [pendingProfile, setPendingProfile] = useState<'A1' | 'A2' | 'child_omur' | 'child_oztug' | null>(null)
   const [profilePwError, setProfilePwError] = useState(false)
 
   function handleProfilePw(pw: string) {
@@ -869,6 +869,36 @@ function EntryScreen({ onPickProfile, onPickOwner }: {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', width: '100%', maxWidth: '400px' }}>
 
         <button
+          onClick={() => { setProfilePwError(false); setPendingProfile('child_omur') }}
+          style={cardBase}
+        >
+          <div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: dark.text }}>Ömür</div>
+            <span style={{
+              display: 'inline-block', marginTop: '8px', fontFamily: "'IBM Plex Mono', var(--font-mono)", fontSize: '11px',
+              letterSpacing: '0.05em', color: dark.spark, background: `${dark.spark}33`, border: `1px solid ${dark.spark}`,
+              borderRadius: '100px', padding: '3px 10px',
+            }}>Çocuk Paneli</span>
+          </div>
+          <span style={{ color: dark.textMuted, fontSize: '18px' }}>→</span>
+        </button>
+
+        <button
+          onClick={() => { setProfilePwError(false); setPendingProfile('child_oztug') }}
+          style={cardBase}
+        >
+          <div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: dark.text }}>Öztuğ</div>
+            <span style={{
+              display: 'inline-block', marginTop: '8px', fontFamily: "'IBM Plex Mono', var(--font-mono)", fontSize: '11px',
+              letterSpacing: '0.05em', color: dark.spark, background: `${dark.spark}33`, border: `1px solid ${dark.spark}`,
+              borderRadius: '100px', padding: '3px 10px',
+            }}>Çocuk Paneli</span>
+          </div>
+          <span style={{ color: dark.textMuted, fontSize: '18px' }}>→</span>
+        </button>
+
+        <button
           onClick={() => { setProfilePwError(false); setPendingProfile('A1') }}
           style={cardBase}
         >
@@ -925,7 +955,12 @@ function EntryScreen({ onPickProfile, onPickOwner }: {
       {/* Profil şifre modalı — A1/A2 kartına basılınca açılır */}
       {pendingProfile && (
         <PasswordModal
-          title={pendingProfile === 'A1' ? 'English Group A' : 'English Group B'}
+          title={
+            pendingProfile === 'A1' ? 'English Group A'
+            : pendingProfile === 'A2' ? 'English Group B'
+            : pendingProfile === 'child_omur' ? 'Ömür'
+            : 'Öztuğ'
+          }
           error={profilePwError}
           onSubmit={handleProfilePw}
           onClose={() => { setPendingProfile(null); setProfilePwError(false) }}
@@ -2524,13 +2559,17 @@ const PRIVATE_UNLOCK_KEY = 'nc_private_unlocked'
 const PROFILE_PASSWORDS: Record<string, string> = {
   A1: '1234',
   A2: '1234',
+  // Çocuk profilleri — bunlar geçici PIN'ler, kendi seçtiğin 4 haneli
+  // sayılarla değiştir.
+  child_omur: '1111',
+  child_oztug: '2222',
 }
 
 // ─── Giriş ekranı (EntryScreen) ────────────────────────────────────────────────
 // Dashboard'dan önce gösterilen "kim çalışıyor" ekranı. Seçim sessionStorage'da
 // tutulur — yani sekme kapanmadan tekrar sorulmaz, ama yeni sekme/oturumda
 // (veya tarayıcı tamamen kapatılıp açıldığında) tekrar EntryScreen görünür.
-type EntryProfile = 'A1' | 'A2' | 'owner'
+type EntryProfile = 'A1' | 'A2' | 'owner' | 'child_omur' | 'child_oztug'
 const ENTRY_PROFILE_KEY = 'nc_entry_profile'
 
 // ─── Sheets-backed content loading (100Q) ──────────────────────────────────────
@@ -3570,6 +3609,106 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
   )
 }
 
+// ─── Çocuk Paneli (ChildDashboard) ─────────────────────────────────────────────
+// Ömür ve Öztuğ için ayrı, sade panel. Level/dashboard/modül makinesinden
+// tamamen bağımsız — kendi kartları, kendi (light) teması var.
+// ŞİMDİLİK İSKELET: kartlar sabit/örnek içerik. Bir sonraki turda "Yeni" ve
+// "Konular" bölümleri Sheets'ten beslenecek, dinleme kartları gerçek <audio>
+// ile arka planda çalabilecek şekilde bağlanacak. Şu an hiçbir kart tıklanınca
+// bir şey açmıyor — bilerek böyle, içerik gelene kadar.
+function ChildDashboard({ childName, onExit }: { childName: string; onExit: () => void }) {
+  return (
+    <div style={{
+      minHeight: '100vh', background: '#F8FAFC', padding: '24px 18px 40px',
+      fontFamily: "'Inter', system-ui, sans-serif",
+    }}>
+      <div style={{ maxWidth: '480px', margin: '0 auto' }}>
+
+        {/* Üst şerit: isimle karşılama + çıkış */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '22px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '38px', height: '38px', borderRadius: '50%', background: '#4F46E5',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#fff', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '15px',
+            }}>{childName[0]}</div>
+            <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '21px', fontWeight: 700, color: '#0F172A' }}>
+              Merhaba {childName}
+            </p>
+          </div>
+          <button onClick={onExit} style={{
+            background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
+            padding: '6px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--foreground)', cursor: 'pointer',
+          }}>Çıkış</button>
+        </div>
+
+        {/* Yeni */}
+        <p style={{
+          margin: '0 0 10px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#64748B',
+          letterSpacing: '0.08em', textTransform: 'uppercase',
+        }}>Yeni</p>
+
+        <button style={{
+          width: '100%', textAlign: 'left', background: '#FFFFFF', border: '1.5px solid #B4530933',
+          borderRadius: '16px', padding: '16px', marginBottom: '10px',
+          boxShadow: '0 1px 5px rgba(15,23,42,0.06)', cursor: 'pointer',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '52px', height: '52px', borderRadius: '12px', background: '#FEF3C7',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '24px',
+            }}>🎬</div>
+            <div>
+              <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: '#0F172A' }}>
+                Bugünün mesajı
+              </p>
+              <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748B' }}>İzle · içerik yakında eklenecek</p>
+            </div>
+          </div>
+        </button>
+
+        <button style={{
+          width: '100%', textAlign: 'left', background: '#FFFFFF', border: '1.5px solid #0EA5E933',
+          borderRadius: '16px', padding: '16px', marginBottom: '22px',
+          boxShadow: '0 1px 5px rgba(15,23,42,0.06)', cursor: 'pointer',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '52px', height: '52px', borderRadius: '12px', background: '#E0F2FE',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '24px',
+            }}>🎧</div>
+            <div>
+              <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: '#0F172A' }}>
+                Dinleme parçası
+              </p>
+              <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748B' }}>Dinle · içerik yakında eklenecek</p>
+            </div>
+          </div>
+        </button>
+
+        {/* Konular */}
+        <p style={{
+          margin: '0 0 10px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#64748B',
+          letterSpacing: '0.08em', textTransform: 'uppercase',
+        }}>Konular</p>
+
+        <button style={{
+          width: '100%', textAlign: 'left', background: '#FFFFFF', border: '1px solid rgba(15,23,42,0.09)',
+          borderRadius: '16px', padding: '18px 16px', marginBottom: '10px',
+          boxShadow: '0 1px 5px rgba(15,23,42,0.06)', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', cursor: 'pointer',
+        }}>
+          <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: '#0F172A' }}>
+            (ilk konu buraya gelecek)
+          </span>
+          <span style={{ color: '#64748B', fontSize: '18px' }}>→</span>
+        </button>
+
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [level, setLevel] = useState<Level>('A1')
   const [view, setView] = useState<View>('dashboard')
@@ -3581,15 +3720,19 @@ export default function App() {
   const [entryProfile, setEntryProfile] = useState<EntryProfile | null>(() => {
     try {
       const v = sessionStorage.getItem(ENTRY_PROFILE_KEY)
-      return (v === 'A1' || v === 'A2' || v === 'owner') ? v : null
+      return (v === 'A1' || v === 'A2' || v === 'owner' || v === 'child_omur' || v === 'child_oztug') ? v : null
     } catch { return null }
   })
 
-  function chooseProfile(p: 'A1' | 'A2') {
+  function chooseProfile(p: 'A1' | 'A2' | 'child_omur' | 'child_oztug') {
     setEntryProfile(p)
     try { sessionStorage.setItem(ENTRY_PROFILE_KEY, p) } catch {}
-    setLevel(p)
-    setSelectedUnit(null)
+    // Çocuk profilleri Level/dashboard makinesinden geçmiyor — ayrı bir
+    // panel render ediliyor (bkz. ChildDashboard, App() içindeki dönüş).
+    if (p === 'A1' || p === 'A2') {
+      setLevel(p)
+      setSelectedUnit(null)
+    }
   }
 
   // ── Kişisel alan kilidi ──
@@ -3854,6 +3997,15 @@ export default function App() {
           />
         )}
       </>
+    )
+  }
+
+  if (entryProfile === 'child_omur' || entryProfile === 'child_oztug') {
+    return (
+      <ChildDashboard
+        childName={entryProfile === 'child_omur' ? 'Ömür' : 'Öztuğ'}
+        onExit={handleExitToEntry}
+      />
     )
   }
 
