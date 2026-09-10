@@ -2590,6 +2590,21 @@ const GRAMMAR_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/
 const SCENE_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRaUcai7WmP71DGXSTRXK95Tw1TLG0LlPvwM6Om7B5jq3wZPEdk3HimYd0hMTTgSw/pub?gid=1604637706&single=true&output=csv'
 const SCENE_CHARACTERS_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRaUcai7WmP71DGXSTRXK95Tw1TLG0LlPvwM6Om7B5jq3wZPEdk3HimYd0hMTTgSw/pub?gid=943347820&single=true&output=csv'
 
+// Çocuk paneli içerik listesi (Yeni / Konular kartları). Boş kalırsa panel
+// sabit/örnek haliyle görünür, site kırılmaz.
+const CHILD_CONTENT_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSZdjKdPOTOs1EqQi7iKdDLQIvhRkg5Jwr6w_zUW2tBlQqTqH131lRS8zzcroQap75Nw4fbAmemR809/pub?gid=283192375&single=true&output=csv'
+
+interface ChildContentItem {
+  icerikId: string
+  cocuk: 'omur' | 'oztug' | 'ikisi' | ''
+  tur: 'video' | 'dinleme' | ''
+  baslik: string
+  dosyaUrl: string
+  sure: string
+  tarih: string
+  bolum: 'yeni' | 'konular' | ''
+}
+
 // ─── Grammar Sheet types & parser ────────────────────────────────────────────
 
 interface GrammarSheetBlock {
@@ -2881,6 +2896,24 @@ function rowsToQuestionChain(rows: Record<string, string>[]): QuestionItem[] {
     postAnalogy: r.postAnalogy || undefined,
     videoUrl: r.videoUrl || undefined,
   }))
+}
+
+// Converts parsed Child-content Sheet rows into ChildContentItem shape.
+// Column names must match the Sheet header exactly (case-sensitive):
+// icerik_id, cocuk, tur, baslik, dosya_url, sure, tarih, bolum
+function rowsToChildContent(rows: Record<string, string>[]): ChildContentItem[] {
+  return rows
+    .filter(r => (r.icerik_id || '').trim() !== '')
+    .map(r => ({
+      icerikId: r.icerik_id || '',
+      cocuk: (r.cocuk || '').trim().toLowerCase() as ChildContentItem['cocuk'],
+      tur: (r.tur || '').trim().toLowerCase() as ChildContentItem['tur'],
+      baslik: r.baslik || '',
+      dosyaUrl: r.dosya_url || '',
+      sure: r.sure || '',
+      tarih: r.tarih || '',
+      bolum: (r.bolum || '').trim().toLowerCase() as ChildContentItem['bolum'],
+    }))
 }
 
 // ─── Drill yardımcı bileşenleri ──────────────────────────────────────────────
@@ -3612,11 +3645,84 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
 // ─── Çocuk Paneli (ChildDashboard) ─────────────────────────────────────────────
 // Ömür ve Öztuğ için ayrı, sade panel. Level/dashboard/modül makinesinden
 // tamamen bağımsız — kendi kartları, kendi (light) teması var.
-// ŞİMDİLİK İSKELET: kartlar sabit/örnek içerik. Bir sonraki turda "Yeni" ve
-// "Konular" bölümleri Sheets'ten beslenecek, dinleme kartları gerçek <audio>
-// ile arka planda çalabilecek şekilde bağlanacak. Şu an hiçbir kart tıklanınca
-// bir şey açmıyor — bilerek böyle, içerik gelene kadar.
-function ChildDashboard({ childName, onExit }: { childName: string; onExit: () => void }) {
+// Kartlar CHILD_CONTENT_SHEET_CSV_URL'den gelen `items` ile besleniyor:
+//  - önce `cocuk` = childKey ya da 'ikisi' olanlar alınır
+//  - `bolum`a göre Yeni/Konular olarak ikiye ayrılır
+//  - `tarih`e göre en yeni üstte sıralanır
+// items null ise (link boş/erişilemedi) her iki bölüm de boş görünür, site kırılmaz.
+function childCardIcon(tur: ChildContentItem['tur']) {
+  return tur === 'video' ? '🎬' : '🎧'
+}
+
+function ChildContentCard({ item, onOpen }: { item: ChildContentItem; onOpen: () => void }) {
+  const border = item.tur === 'video' ? '#B4530933' : '#0EA5E933'
+  const iconBg = item.tur === 'video' ? '#FEF3C7' : '#E0F2FE'
+  return (
+    <button onClick={onOpen} style={{
+      width: '100%', textAlign: 'left', background: '#FFFFFF', border: `1.5px solid ${border}`,
+      borderRadius: '16px', padding: '16px', marginBottom: '10px',
+      boxShadow: '0 1px 5px rgba(15,23,42,0.06)', cursor: 'pointer',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{
+          width: '52px', height: '52px', borderRadius: '12px', background: iconBg,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '24px',
+        }}>{childCardIcon(item.tur)}</div>
+        <div>
+          <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: '#0F172A' }}>
+            {item.baslik}
+          </p>
+          <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748B' }}>
+            {item.tur === 'video' ? 'İzle' : 'Dinle'}{item.sure ? ` · ${item.sure}` : ''}
+          </p>
+        </div>
+      </div>
+    </button>
+  )
+}
+
+// Basit tam ekran oynatıcı — video için <video>, dinleme için <audio>.
+function ChildPlayerModal({ item, onClose }: { item: ChildContentItem; onClose: () => void }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.85)', zIndex: 1000,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px',
+    }}>
+      <div style={{ width: '100%', maxWidth: '480px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+          <p style={{ margin: 0, color: '#fff', fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: 700 }}>
+            {item.baslik}
+          </p>
+          <button onClick={onClose} style={{
+            background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '8px',
+            color: '#fff', padding: '6px 12px', fontSize: '13px', cursor: 'pointer',
+          }}>Kapat</button>
+        </div>
+        {item.tur === 'video' ? (
+          <video src={item.dosyaUrl} controls autoPlay style={{ width: '100%', borderRadius: '12px', background: '#000' }} />
+        ) : (
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '24px' }}>
+            <audio src={item.dosyaUrl} controls autoPlay style={{ width: '100%' }} />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ChildDashboard({ childName, childKey, items, onExit }: {
+  childName: string
+  childKey: 'omur' | 'oztug'
+  items: ChildContentItem[] | null
+  onExit: () => void
+}) {
+  const [openItem, setOpenItem] = useState<ChildContentItem | null>(null)
+
+  const forChild = (items ?? []).filter(it => it.cocuk === childKey || it.cocuk === 'ikisi')
+  const byDateDesc = [...forChild].sort((a, b) => b.tarih.localeCompare(a.tarih))
+  const yeniItems = byDateDesc.filter(it => it.bolum === 'yeni')
+  const konularItems = byDateDesc.filter(it => it.bolum === 'konular')
+
   return (
     <div style={{
       minHeight: '100vh', background: '#F8FAFC', padding: '24px 18px 40px',
@@ -3648,43 +3754,15 @@ function ChildDashboard({ childName, onExit }: { childName: string; onExit: () =
           letterSpacing: '0.08em', textTransform: 'uppercase',
         }}>Yeni</p>
 
-        <button style={{
-          width: '100%', textAlign: 'left', background: '#FFFFFF', border: '1.5px solid #B4530933',
-          borderRadius: '16px', padding: '16px', marginBottom: '10px',
-          boxShadow: '0 1px 5px rgba(15,23,42,0.06)', cursor: 'pointer',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '52px', height: '52px', borderRadius: '12px', background: '#FEF3C7',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '24px',
-            }}>🎬</div>
-            <div>
-              <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: '#0F172A' }}>
-                Bugünün mesajı
-              </p>
-              <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748B' }}>İzle · içerik yakında eklenecek</p>
-            </div>
+        {yeniItems.length === 0 ? (
+          <p style={{ margin: '0 0 22px', fontSize: '13px', color: '#94A3B8' }}>Henüz içerik eklenmedi.</p>
+        ) : (
+          <div style={{ marginBottom: '12px' }}>
+            {yeniItems.map(it => (
+              <ChildContentCard key={it.icerikId} item={it} onOpen={() => setOpenItem(it)} />
+            ))}
           </div>
-        </button>
-
-        <button style={{
-          width: '100%', textAlign: 'left', background: '#FFFFFF', border: '1.5px solid #0EA5E933',
-          borderRadius: '16px', padding: '16px', marginBottom: '22px',
-          boxShadow: '0 1px 5px rgba(15,23,42,0.06)', cursor: 'pointer',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '52px', height: '52px', borderRadius: '12px', background: '#E0F2FE',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '24px',
-            }}>🎧</div>
-            <div>
-              <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: '#0F172A' }}>
-                Dinleme parçası
-              </p>
-              <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748B' }}>Dinle · içerik yakında eklenecek</p>
-            </div>
-          </div>
-        </button>
+        )}
 
         {/* Konular */}
         <p style={{
@@ -3692,19 +3770,17 @@ function ChildDashboard({ childName, onExit }: { childName: string; onExit: () =
           letterSpacing: '0.08em', textTransform: 'uppercase',
         }}>Konular</p>
 
-        <button style={{
-          width: '100%', textAlign: 'left', background: '#FFFFFF', border: '1px solid rgba(15,23,42,0.09)',
-          borderRadius: '16px', padding: '18px 16px', marginBottom: '10px',
-          boxShadow: '0 1px 5px rgba(15,23,42,0.06)', display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', cursor: 'pointer',
-        }}>
-          <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: '#0F172A' }}>
-            (ilk konu buraya gelecek)
-          </span>
-          <span style={{ color: '#64748B', fontSize: '18px' }}>→</span>
-        </button>
+        {konularItems.length === 0 ? (
+          <p style={{ margin: 0, fontSize: '13px', color: '#94A3B8' }}>Henüz içerik eklenmedi.</p>
+        ) : (
+          konularItems.map(it => (
+            <ChildContentCard key={it.icerikId} item={it} onOpen={() => setOpenItem(it)} />
+          ))
+        )}
 
       </div>
+
+      {openItem && <ChildPlayerModal item={openItem} onClose={() => setOpenItem(null)} />}
     </div>
   )
 }
@@ -3866,6 +3942,21 @@ export default function App() {
       .catch(() => { /* fallback karakter kullanılır */ })
   }, [])
 
+  // ── Çocuk paneli içerik Sheet'i ─────────────────────────────────────────
+  const [childContentRows, setChildContentRows] = useState<ChildContentItem[] | null>(null)
+
+  useEffect(() => {
+    if (!CHILD_CONTENT_SHEET_CSV_URL) return
+    const bustedUrl = `${CHILD_CONTENT_SHEET_CSV_URL}${CHILD_CONTENT_SHEET_CSV_URL.includes('?') ? '&' : '?'}t=${Date.now()}`
+    fetch(bustedUrl, { cache: 'no-store' })
+      .then(res => res.text())
+      .then(text => {
+        const parsed = rowsToChildContent(parseCSV(text))
+        if (parsed.length > 0) setChildContentRows(parsed)
+      })
+      .catch(() => { /* fallback: panel sade haliyle görünür */ })
+  }, [])
+
   const allScenes: Scene[] = sceneRows ?? FALLBACK_SCENE_DATA.scenes
   const allCharacters: Record<string, SceneCharacter> = characterRows ?? FALLBACK_SCENE_DATA.characters
 
@@ -4004,6 +4095,8 @@ export default function App() {
     return (
       <ChildDashboard
         childName={entryProfile === 'child_omur' ? 'Ömür' : 'Öztuğ'}
+        childKey={entryProfile === 'child_omur' ? 'omur' : 'oztug'}
+        items={childContentRows}
         onExit={handleExitToEntry}
       />
     )
