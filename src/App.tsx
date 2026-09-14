@@ -569,8 +569,7 @@ const MiniPlayer = forwardRef<MiniPlayerHandle, {
   duration?: number
   showTranscript: boolean
   onToggleTranscript: () => void
-  hideTranscriptButton?: boolean
-}>(function MiniPlayer({ audioUrl, duration: fallbackDuration = 142, showTranscript, onToggleTranscript, hideTranscriptButton = false }, ref) {
+}>(function MiniPlayer({ audioUrl, duration: fallbackDuration = 142, showTranscript, onToggleTranscript }, ref) {
   const [playing, setPlaying] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const [duration, setDuration] = useState(fallbackDuration)
@@ -732,18 +731,16 @@ const MiniPlayer = forwardRef<MiniPlayerHandle, {
         </select>
 
         {/* Transcript toggle */}
-        {!hideTranscriptButton && (
-          <button onClick={onToggleTranscript} style={{
-            padding: '6px 12px', borderRadius: '8px',
-            border: `1px solid ${showTranscript ? 'rgba(79,70,229,0.4)' : 'var(--border)'}`,
-            background: showTranscript ? 'rgba(79,70,229,0.08)' : 'var(--secondary)',
-            color: showTranscript ? 'var(--primary)' : 'var(--muted-foreground)',
-            fontSize: '12px', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
-            transition: 'all 0.15s', whiteSpace: 'nowrap',
-          }}>
-            {showTranscript ? 'Hide Transcript' : 'Show Transcript'}
-          </button>
-        )}
+        <button onClick={onToggleTranscript} style={{
+          padding: '6px 12px', borderRadius: '8px',
+          border: `1px solid ${showTranscript ? 'rgba(79,70,229,0.4)' : 'var(--border)'}`,
+          background: showTranscript ? 'rgba(79,70,229,0.08)' : 'var(--secondary)',
+          color: showTranscript ? 'var(--primary)' : 'var(--muted-foreground)',
+          fontSize: '12px', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+          transition: 'all 0.15s', whiteSpace: 'nowrap',
+        }}>
+          {showTranscript ? 'Hide Transcript' : 'Show Transcript'}
+        </button>
       </div>
     </div>
   )
@@ -2181,9 +2178,16 @@ function ShadowingAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
   )
   const [index, setIndex] = useState(0)
   const [revealed, setRevealed] = useState(false)
+  const [listOpen, setListOpen] = useState(false)
 
   const current = items[index]
   const isLast = index + 1 >= items.length
+
+  function jumpTo(i: number) {
+    setIndex(i)
+    setRevealed(false)
+    setListOpen(false)
+  }
 
   function next() {
     if (isLast) return
@@ -2301,6 +2305,39 @@ function ShadowingAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
               >
                 Sonraki →
               </button>
+            )}
+          </div>
+
+          {/* Soru listesi — istediğin soruya direkt atla */}
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: '14px' }}>
+            <button
+              onClick={() => setListOpen(o => !o)}
+              style={{
+                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                fontSize: '13px', fontWeight: 600, color: MODULE_META.shadowing.color,
+                display: 'flex', alignItems: 'center', gap: '6px',
+              }}
+            >
+              Soru listesi {listOpen ? '▴' : '▾'}
+            </button>
+            {listOpen && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto', marginTop: '10px' }}>
+                {items.map((q, i) => (
+                  <button
+                    key={i}
+                    onClick={() => jumpTo(i)}
+                    style={{
+                      display: 'flex', gap: '10px', textAlign: 'left', width: '100%',
+                      padding: '10px 12px', borderRadius: '10px', cursor: 'pointer',
+                      border: `1px solid ${i === index ? MODULE_META.shadowing.color : 'var(--border)'}`,
+                      background: i === index ? `${MODULE_META.shadowing.color}12` : 'var(--card)',
+                    }}
+                  >
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: i === index ? MODULE_META.shadowing.color : 'var(--muted-foreground)', minWidth: '20px', paddingTop: '1px' }}>{i + 1}</span>
+                    <span style={{ fontSize: '13px', lineHeight: 1.5, color: i === index ? 'var(--foreground)' : 'var(--muted-foreground)', fontWeight: i === index ? 600 : 400 }}>{q.question}</span>
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         </div>
@@ -2593,21 +2630,6 @@ const GRAMMAR_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/
 const SCENE_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRaUcai7WmP71DGXSTRXK95Tw1TLG0LlPvwM6Om7B5jq3wZPEdk3HimYd0hMTTgSw/pub?gid=1604637706&single=true&output=csv'
 const SCENE_CHARACTERS_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRaUcai7WmP71DGXSTRXK95Tw1TLG0LlPvwM6Om7B5jq3wZPEdk3HimYd0hMTTgSw/pub?gid=943347820&single=true&output=csv'
 
-// Çocuk paneli içerik listesi (Yeni / Konular kartları). Boş kalırsa panel
-// sabit/örnek haliyle görünür, site kırılmaz.
-const CHILD_CONTENT_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSZdjKdPOTOs1EqQi7iKdDLQIvhRkg5Jwr6w_zUW2tBlQqTqH131lRS8zzcroQap75Nw4fbAmemR809/pub?gid=283192375&single=true&output=csv'
-
-interface ChildContentItem {
-  icerikId: string
-  cocuk: 'omur' | 'oztug' | 'ikisi' | ''
-  tur: 'video' | 'dinleme' | ''
-  baslik: string
-  dosyaUrl: string
-  sure: string
-  tarih: string
-  bolum: 'yeni' | 'konular' | ''
-}
-
 // ─── Grammar Sheet types & parser ────────────────────────────────────────────
 
 interface GrammarSheetBlock {
@@ -2899,24 +2921,6 @@ function rowsToQuestionChain(rows: Record<string, string>[]): QuestionItem[] {
     postAnalogy: r.postAnalogy || undefined,
     videoUrl: r.videoUrl || undefined,
   }))
-}
-
-// Converts parsed Child-content Sheet rows into ChildContentItem shape.
-// Column names must match the Sheet header exactly (case-sensitive):
-// icerik_id, cocuk, tur, baslik, dosya_url, sure, tarih, bolum
-function rowsToChildContent(rows: Record<string, string>[]): ChildContentItem[] {
-  return rows
-    .filter(r => (r.icerik_id || '').trim() !== '')
-    .map(r => ({
-      icerikId: r.icerik_id || '',
-      cocuk: (r.cocuk || '').trim().toLowerCase() as ChildContentItem['cocuk'],
-      tur: (r.tur || '').trim().toLowerCase() as ChildContentItem['tur'],
-      baslik: r.baslik || '',
-      dosyaUrl: r.dosya_url || '',
-      sure: r.sure || '',
-      tarih: r.tarih || '',
-      bolum: (r.bolum || '').trim().toLowerCase() as ChildContentItem['bolum'],
-    }))
 }
 
 // ─── Drill yardımcı bileşenleri ──────────────────────────────────────────────
@@ -3648,103 +3652,11 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
 // ─── Çocuk Paneli (ChildDashboard) ─────────────────────────────────────────────
 // Ömür ve Öztuğ için ayrı, sade panel. Level/dashboard/modül makinesinden
 // tamamen bağımsız — kendi kartları, kendi (light) teması var.
-// Kartlar CHILD_CONTENT_SHEET_CSV_URL'den gelen `items` ile besleniyor:
-//  - önce `cocuk` = childKey ya da 'ikisi' olanlar alınır
-//  - `bolum`a göre Yeni/Konular olarak ikiye ayrılır
-//  - `tarih`e göre en yeni üstte sıralanır
-// items null ise (link boş/erişilemedi) her iki bölüm de boş görünür, site kırılmaz.
-function childCardIcon(tur: ChildContentItem['tur']) {
-  return tur === 'video' ? '🎬' : '🎧'
-}
-
-function ChildContentCard({ item, onOpen }: { item: ChildContentItem; onOpen: () => void }) {
-  const border = item.tur === 'video' ? '#B4530933' : '#0EA5E933'
-  const iconBg = item.tur === 'video' ? '#FEF3C7' : '#E0F2FE'
-  return (
-    <button onClick={onOpen} style={{
-      width: '100%', textAlign: 'left', background: '#FFFFFF', border: `1.5px solid ${border}`,
-      borderRadius: '16px', padding: '16px', marginBottom: '10px',
-      boxShadow: '0 1px 5px rgba(15,23,42,0.06)', cursor: 'pointer',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <div style={{
-          width: '52px', height: '52px', borderRadius: '12px', background: iconBg,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '24px',
-        }}>{childCardIcon(item.tur)}</div>
-        <div>
-          <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: '#0F172A' }}>
-            {item.baslik}
-          </p>
-          <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748B' }}>
-            {item.tur === 'video' ? 'İzle' : 'Dinle'}{item.sure ? ` · ${item.sure}` : ''}
-          </p>
-        </div>
-      </div>
-    </button>
-  )
-}
-
-// Oynatıcı görünümü — yetişkin Audio/Video ekranıyla aynı düzen: üstte geri
-// oku, altında mor-gradyan başlık kartı, en altta oynatıcı. Karartma/modal yok,
-// panelin kendi içinde sade bir sayfa olarak açılıyor.
-function ChildPlayerView({ item, onBack }: { item: ChildContentItem; onBack: () => void }) {
-  const [showTranscript, setShowTranscript] = useState(false)
-  const meta = item.tur === 'video'
-    ? { icon: '🎬', label: 'Video', bg: '#FEF3C7', gradient: 'linear-gradient(135deg, #92400E, #B45309)' }
-    : { icon: '🎧', label: 'Audio / Video', bg: '#E0F2FE', gradient: 'linear-gradient(135deg, #1E3A8A, #3730A3)' }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <BackBtn onClick={onBack} label={item.baslik} />
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: meta.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>{meta.icon}</div>
-        <div>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '22px', fontWeight: 700, margin: 0, color: '#0F172A' }}>{meta.label}</h2>
-          <p style={{ margin: 0, fontSize: '13px', color: '#64748B' }}>{item.baslik}{item.tur === 'video' ? ' · Watch the video' : ' · Listening practice'}</p>
-        </div>
-      </div>
-
-      {item.tur === 'video' ? (
-        <video
-          src={item.dosyaUrl}
-          controls
-          controlsList="nodownload noplaybackrate"
-          style={{ width: '100%', borderRadius: '16px', background: '#000' }}
-        />
-      ) : (
-        <>
-          {/* Visual player card */}
-          <div style={{
-            background: meta.gradient,
-            borderRadius: '20px', padding: '32px', color: '#fff',
-            display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center',
-          }}>
-            <div style={{ fontSize: '36px', marginBottom: '8px' }}>🎧</div>
-            <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 600 }}>{item.baslik}</p>
-            {item.sure && <p style={{ margin: 0, fontSize: '13px', opacity: 0.65, fontFamily: 'var(--font-mono)' }}>{item.sure} · Listening</p>}
-          </div>
-
-          <MiniPlayer audioUrl={item.dosyaUrl} showTranscript={showTranscript} onToggleTranscript={() => setShowTranscript(t => !t)} hideTranscriptButton />
-        </>
-      )}
-    </div>
-  )
-}
-
-function ChildDashboard({ childName, childKey, items, onExit }: {
-  childName: string
-  childKey: 'omur' | 'oztug'
-  items: ChildContentItem[] | null
-  onExit: () => void
-}) {
-  const [openItem, setOpenItem] = useState<ChildContentItem | null>(null)
-
-  const forChild = (items ?? []).filter(it => it.cocuk === childKey || it.cocuk === 'ikisi')
-  const byDateDesc = [...forChild].sort((a, b) => b.tarih.localeCompare(a.tarih))
-  const yeniItems = byDateDesc.filter(it => it.bolum === 'yeni')
-  const konularItems = byDateDesc.filter(it => it.bolum === 'konular')
-
+// ŞİMDİLİK İSKELET: kartlar sabit/örnek içerik. Bir sonraki turda "Yeni" ve
+// "Konular" bölümleri Sheets'ten beslenecek, dinleme kartları gerçek <audio>
+// ile arka planda çalabilecek şekilde bağlanacak. Şu an hiçbir kart tıklanınca
+// bir şey açmıyor — bilerek böyle, içerik gelene kadar.
+function ChildDashboard({ childName, onExit }: { childName: string; onExit: () => void }) {
   return (
     <div style={{
       minHeight: '100vh', background: '#F8FAFC', padding: '24px 18px 40px',
@@ -3752,59 +3664,85 @@ function ChildDashboard({ childName, childKey, items, onExit }: {
     }}>
       <div style={{ maxWidth: '480px', margin: '0 auto' }}>
 
-        {openItem ? (
-          <ChildPlayerView item={openItem} onBack={() => setOpenItem(null)} />
-        ) : (
-          <>
-            {/* Üst şerit: isimle karşılama + çıkış */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '22px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{
-                  width: '38px', height: '38px', borderRadius: '50%', background: '#4F46E5',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '15px',
-                }}>{childName[0]}</div>
-                <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '21px', fontWeight: 700, color: '#0F172A' }}>
-                  Merhaba {childName}
-                </p>
-              </div>
-              <button onClick={onExit} style={{
-                background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
-                padding: '6px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--foreground)', cursor: 'pointer',
-              }}>Çıkış</button>
+        {/* Üst şerit: isimle karşılama + çıkış */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '22px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '38px', height: '38px', borderRadius: '50%', background: '#4F46E5',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#fff', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '15px',
+            }}>{childName[0]}</div>
+            <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '21px', fontWeight: 700, color: '#0F172A' }}>
+              Merhaba {childName}
+            </p>
+          </div>
+          <button onClick={onExit} style={{
+            background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
+            padding: '6px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--foreground)', cursor: 'pointer',
+          }}>Çıkış</button>
+        </div>
+
+        {/* Yeni */}
+        <p style={{
+          margin: '0 0 10px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#64748B',
+          letterSpacing: '0.08em', textTransform: 'uppercase',
+        }}>Yeni</p>
+
+        <button style={{
+          width: '100%', textAlign: 'left', background: '#FFFFFF', border: '1.5px solid #B4530933',
+          borderRadius: '16px', padding: '16px', marginBottom: '10px',
+          boxShadow: '0 1px 5px rgba(15,23,42,0.06)', cursor: 'pointer',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '52px', height: '52px', borderRadius: '12px', background: '#FEF3C7',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '24px',
+            }}>🎬</div>
+            <div>
+              <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: '#0F172A' }}>
+                Bugünün mesajı
+              </p>
+              <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748B' }}>İzle · içerik yakında eklenecek</p>
             </div>
+          </div>
+        </button>
 
-            {/* Yeni */}
-            <p style={{
-              margin: '0 0 10px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#64748B',
-              letterSpacing: '0.08em', textTransform: 'uppercase',
-            }}>Yeni</p>
+        <button style={{
+          width: '100%', textAlign: 'left', background: '#FFFFFF', border: '1.5px solid #0EA5E933',
+          borderRadius: '16px', padding: '16px', marginBottom: '22px',
+          boxShadow: '0 1px 5px rgba(15,23,42,0.06)', cursor: 'pointer',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '52px', height: '52px', borderRadius: '12px', background: '#E0F2FE',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '24px',
+            }}>🎧</div>
+            <div>
+              <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: '#0F172A' }}>
+                Dinleme parçası
+              </p>
+              <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748B' }}>Dinle · içerik yakında eklenecek</p>
+            </div>
+          </div>
+        </button>
 
-            {yeniItems.length === 0 ? (
-              <p style={{ margin: '0 0 22px', fontSize: '13px', color: '#94A3B8' }}>Henüz içerik eklenmedi.</p>
-            ) : (
-              <div style={{ marginBottom: '12px' }}>
-                {yeniItems.map(it => (
-                  <ChildContentCard key={it.icerikId} item={it} onOpen={() => setOpenItem(it)} />
-                ))}
-              </div>
-            )}
+        {/* Konular */}
+        <p style={{
+          margin: '0 0 10px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#64748B',
+          letterSpacing: '0.08em', textTransform: 'uppercase',
+        }}>Konular</p>
 
-            {/* Konular */}
-            <p style={{
-              margin: '0 0 10px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#64748B',
-              letterSpacing: '0.08em', textTransform: 'uppercase',
-            }}>Konular</p>
-
-            {konularItems.length === 0 ? (
-              <p style={{ margin: 0, fontSize: '13px', color: '#94A3B8' }}>Henüz içerik eklenmedi.</p>
-            ) : (
-              konularItems.map(it => (
-                <ChildContentCard key={it.icerikId} item={it} onOpen={() => setOpenItem(it)} />
-              ))
-            )}
-          </>
-        )}
+        <button style={{
+          width: '100%', textAlign: 'left', background: '#FFFFFF', border: '1px solid rgba(15,23,42,0.09)',
+          borderRadius: '16px', padding: '18px 16px', marginBottom: '10px',
+          boxShadow: '0 1px 5px rgba(15,23,42,0.06)', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', cursor: 'pointer',
+        }}>
+          <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: '#0F172A' }}>
+            (ilk konu buraya gelecek)
+          </span>
+          <span style={{ color: '#64748B', fontSize: '18px' }}>→</span>
+        </button>
 
       </div>
     </div>
@@ -3968,21 +3906,6 @@ export default function App() {
       .catch(() => { /* fallback karakter kullanılır */ })
   }, [])
 
-  // ── Çocuk paneli içerik Sheet'i ─────────────────────────────────────────
-  const [childContentRows, setChildContentRows] = useState<ChildContentItem[] | null>(null)
-
-  useEffect(() => {
-    if (!CHILD_CONTENT_SHEET_CSV_URL) return
-    const bustedUrl = `${CHILD_CONTENT_SHEET_CSV_URL}${CHILD_CONTENT_SHEET_CSV_URL.includes('?') ? '&' : '?'}t=${Date.now()}`
-    fetch(bustedUrl, { cache: 'no-store' })
-      .then(res => res.text())
-      .then(text => {
-        const parsed = rowsToChildContent(parseCSV(text))
-        if (parsed.length > 0) setChildContentRows(parsed)
-      })
-      .catch(() => { /* fallback: panel sade haliyle görünür */ })
-  }, [])
-
   const allScenes: Scene[] = sceneRows ?? FALLBACK_SCENE_DATA.scenes
   const allCharacters: Record<string, SceneCharacter> = characterRows ?? FALLBACK_SCENE_DATA.characters
 
@@ -4121,8 +4044,6 @@ export default function App() {
     return (
       <ChildDashboard
         childName={entryProfile === 'child_omur' ? 'Ömür' : 'Öztuğ'}
-        childKey={entryProfile === 'child_omur' ? 'omur' : 'oztug'}
-        items={childContentRows}
         onExit={handleExitToEntry}
       />
     )
