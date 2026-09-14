@@ -56,6 +56,9 @@ interface Unit {
   transcript: string
   audioUrl?: string
   dictationSegments?: DictationSegment[]
+  shadowingAudioUrl?: string   // boşsa audioUrl kullanılır — dictation/shadowing farklı kaynaktan beslenebilsin diye
+  shadowingSegments?: DictationSegment[]  // boşsa dictationSegments kullanılır
+  mediaUrl?: string  // Audio/Video kartının kendi bağımsız dosyası — dictation/shadowing'den ayrı. Uzantısına göre (.mp4/.mov → video, .mp3 → ses) otomatik gösterilir.
   readingTitle?: string
   grammarPlaceholder?: boolean
   unitLabel?: string
@@ -149,31 +152,7 @@ const GRAMMAR_RULES: Record<string, { rule: string; ruleTr: string; examples: { 
 function buildUnits(level: Level): Unit[] {
   const sets: Record<Level, Omit<Unit, 'id' | 'completed' | 'locked' | 'progress'>[]> = {
     A1: [
-      { title: 'I Want This', topic: 'Requests', grammar: 'Want / Would Like', grammarPlaceholder: true, readingTitle: "Jessica's First Day of School", dictationSentence: "Today is Jessica's first day of kindergarten.", translation: 'Bugün Jessica\'nın anaokulundaki ilk günü.', transcript: "Jessica's first day of school. Today is Jessica's first day of kindergarten, and her parents walk to school. Jessica's mom walks with her to her classroom. Jessica meets her teacher. His name is Mr. Parker. The school bell rings at 8:45 a.m. Jessica hugs and kisses her mom goodbye. Jessica's mom says, \"I love you.\" At 9:00 a.m., Jessica stands for the national anthem. Mr. Parker calls out children's names. Each child yells back, \"Here\". Mr. Parker teaches them about letters. Mr. Parker teaches them about numbers. At 10:15 a.m., the students have recess. Recess is fun. The students get to play and eat. At 10:30 a.m., the students go to gym class. At 11:15 a.m., the students return to Mr. Parker's classroom. Mr. Parker tells the students to sit on the carpet. Mr. Parker reads the students a story. Mr. Parker teaches the students a song. The lunch bell rings.", audioUrl: '/jessicas-first-day.mp3', dictationSegments: [
-        {"start":0.48,"end":4.0,"text":"Jessica's first day of school."},
-        {"start":4.0,"end":8.33,"text":"Today is Jessica's first day of kindergarten."},
-        {"start":8.5,"end":12.0,"text":"and her parents walk to school."},
-        {"start":12.0,"end":16.67,"text":"Jessica's mom walks with her to her classroom."},
-        {"start":16.83,"end":20.0,"text":"Jessica meets her teacher."},
-        {"start":20.17,"end":23.17,"text":"His name is Mr. Parker."},
-        {"start":23.17,"end":28.33,"text":"The school bell rings at 8:45 a.m."},
-        {"start":30.56,"end":33.0,"text":"Jessica hugs and kisses her mom goodbye."},
-        {"start":33.0,"end":37.5,"text":"Jessica's mom says, \"I love you.\""},
-        {"start":37.5,"end":43.67,"text":"At 9:00 a.m., Jessica stands for the national anthem."},
-        {"start":43.67,"end":47.83,"text":"Mr. Parker calls out children's names."},
-        {"start":47.83,"end":51.5,"text":"Each child yells back, \"Here\"."},
-        {"start":51.67,"end":56.17,"text":"Mr. Parker teaches them about letters."},
-        {"start":56.17,"end":60.83,"text":"Mr. Parker teaches them about numbers."},
-        {"start":61.0,"end":66.5,"text":"At 10:15 a.m., the students have recess."},
-        {"start":66.5,"end":69.33,"text":"Recess is fun."},
-        {"start":69.5,"end":73.0,"text":"The students get to play and eat."},
-        {"start":73.17,"end":79.17,"text":"At 10:30 a.m., the students go to gym class."},
-        {"start":79.17,"end":85.67,"text":"At 11:15 a.m., the students return to Mr. Parker's classroom."},
-        {"start":85.83,"end":90.5,"text":"Mr. Parker tells the students to sit on the carpet."},
-        {"start":90.5,"end":94.17,"text":"Mr. Parker reads the students a story."},
-        {"start":94.17,"end":98.83,"text":"Mr. Parker teaches the students a song."},
-        {"start":98.83,"end":101.67,"text":"The lunch bell rings."}
-      ] },
+      { title: 'Who am I', topic: 'Requests', grammar: 'To Be', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
       { title: 'Who Are You?', topic: 'Self & Others', grammar: 'To Be & Have', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
       { title: 'What Is This?', topic: 'Pointing', grammar: 'Demonstratives', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
       { title: 'Where Am I?', topic: 'Places', grammar: 'There Is / Are', grammarPlaceholder: true, dictationSentence: 'Example sentence.', translation: 'Example sentence.', transcript: 'Unit content will be added after this lesson is taught.' },
@@ -1563,7 +1542,15 @@ function GrammarView({ unit, question, onBack, grammarBlocks, grammarSlotLabel }
 function AudioView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const [showTranscript, setShowTranscript] = useState(false)
 
-  if (unit.passiveVideo && unit.videoUrl) {
+  // Kaynak sırası: önce bağımsız mediaUrl (sheet'ten), yoksa eski
+  // videoUrl/passiveVideo alanları — böylece daha önce elle girilmiş
+  // hiçbir ünite bozulmuyor.
+  const src = unit.mediaUrl || (unit.passiveVideo ? unit.videoUrl : undefined)
+  const isVideo = unit.mediaUrl
+    ? /\.(mp4|mov|webm)$/i.test(unit.mediaUrl)
+    : !!(unit.passiveVideo && unit.videoUrl)
+
+  if (isVideo && src) {
     return (
       <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '720px' }}>
         <BackBtn onClick={onBack} label={unit.title} />
@@ -1577,7 +1564,7 @@ function AudioView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
         </div>
 
         <video
-          src={unit.videoUrl}
+          src={src}
           controls
           controlsList="nodownload noplaybackrate"
           style={{ width: '100%', borderRadius: '16px', background: '#000' }}
@@ -1598,7 +1585,8 @@ function AudioView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
         </div>
       </div>
 
-      {/* Visual player card */}
+      {/* Visual player card — gerçek süre aşağıdaki oynatıcıda, dosya
+          yüklenince kendiliğinden görünüyor; burada sabit bir süre yazmıyoruz. */}
       <div style={{
         background: 'linear-gradient(135deg, #1E3A8A, #3730A3)',
         borderRadius: '20px', padding: '32px', color: '#fff',
@@ -1606,10 +1594,10 @@ function AudioView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
       }}>
         <div style={{ fontSize: '36px', marginBottom: '8px' }}>🎧</div>
         <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 600 }}>{unit.title}</p>
-        <p style={{ margin: 0, fontSize: '13px', opacity: 0.65, fontFamily: 'var(--font-mono)' }}>2:22 · Listening</p>
+        <p style={{ margin: 0, fontSize: '13px', opacity: 0.65, fontFamily: 'var(--font-mono)' }}>Listening</p>
       </div>
 
-      <MiniPlayer audioUrl={unit.audioUrl} showTranscript={showTranscript} onToggleTranscript={() => setShowTranscript(t => !t)} duration={142} />
+      <MiniPlayer audioUrl={src} showTranscript={showTranscript} onToggleTranscript={() => setShowTranscript(t => !t)} />
 
       {showTranscript && (
         <div className="anim-slide-down" style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '20px 24px' }}>
@@ -1646,6 +1634,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const [showSettings, setShowSettings] = useState(false)
   const [recording, setRecording] = useState(false)
   const [recSec, setRecSec] = useState(0)
+  const [pastListOpen, setPastListOpen] = useState(false)
   const recRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const playerRef = useRef<MiniPlayerHandle>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -1696,6 +1685,13 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
 
   function goPrev() {
     setCurIndex(i => Math.max(0, i - 1))
+  }
+
+  // Yalnızca geçilmiş (mevcut dahil) cümlelere atlanabilir — dictation'da
+  // öğrenci henüz duymadığı bir cümleyi görmemeli.
+  function goToPast(i: number) {
+    if (i > curIndex) return
+    setCurIndex(i)
   }
 
   function replay() {
@@ -1951,6 +1947,43 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
           <p style={{ margin: 0, fontSize: '11px', color: 'var(--muted-foreground)' }}>
             <kbd>Enter</kbd> check · correct then <kbd>Enter</kbd> again for next &nbsp; <kbd>Ctrl+R</kbd> replay &nbsp; <kbd>←</kbd>/<kbd>→</kbd> segments
           </p>
+
+          {/* Geçilen cümleler — sadece o ana kadar gelinen (mevcut dahil) cümleler
+              listelenir; henüz duyulmamış cümleler dictation'ın mantığını bozacağı
+              için hiç gösterilmez. */}
+          {curIndex > 0 && (
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '14px' }}>
+              <button
+                onClick={() => setPastListOpen(o => !o)}
+                style={{
+                  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                  fontSize: '13px', fontWeight: 600, color: MODULE_META.dictation.color,
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                }}
+              >
+                Geçilen cümleler {pastListOpen ? '▴' : '▾'}
+              </button>
+              {pastListOpen && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto', marginTop: '10px' }}>
+                  {segments.slice(0, curIndex + 1).map((s, i) => (
+                    <button
+                      key={i}
+                      onClick={() => goToPast(i)}
+                      style={{
+                        display: 'flex', gap: '10px', textAlign: 'left', width: '100%',
+                        padding: '10px 12px', borderRadius: '10px', cursor: 'pointer',
+                        border: `1px solid ${i === curIndex ? MODULE_META.dictation.color : 'var(--border)'}`,
+                        background: i === curIndex ? `${MODULE_META.dictation.color}12` : 'var(--card)',
+                      }}
+                    >
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: i === curIndex ? MODULE_META.dictation.color : 'var(--muted-foreground)', minWidth: '20px', paddingTop: '1px' }}>{i + 1}</span>
+                      <span style={{ fontSize: '13px', lineHeight: 1.5, color: i === curIndex ? 'var(--foreground)' : 'var(--muted-foreground)', fontWeight: i === curIndex ? 600 : 400 }}>{s.text}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ── Error State ── */}
           {checked && !allCorrect && (
@@ -2349,14 +2382,17 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const [pickedAudioUrl, setPickedAudioUrl] = useState<string | null>(null)
   const [pickedSegments, setPickedSegments] = useState<DictationSegment[] | null>(null)
   const needsPicker = !!unit.freeSourceSelect && (!pickedAudioUrl || !pickedSegments)
-  const activeAudioUrl = unit.freeSourceSelect ? (pickedAudioUrl ?? undefined) : unit.audioUrl
+  const activeAudioUrl = unit.freeSourceSelect ? (pickedAudioUrl ?? undefined) : (unit.shadowingAudioUrl ?? unit.audioUrl)
 
   const segments = useMemo<DictationSegment[]>(() => {
     if (unit.freeSourceSelect) return pickedSegments ?? []
-    return (unit.dictationSegments && unit.dictationSegments.length > 0)
-      ? unit.dictationSegments
+    const shadowingOrShared = (unit.shadowingSegments && unit.shadowingSegments.length > 0)
+      ? unit.shadowingSegments
+      : unit.dictationSegments
+    return (shadowingOrShared && shadowingOrShared.length > 0)
+      ? shadowingOrShared
       : [{ start: 0, end: 0, text: unit.dictationSentence }]
-  }, [unit.freeSourceSelect, unit.dictationSegments, unit.dictationSentence, pickedSegments])
+  }, [unit.freeSourceSelect, unit.shadowingSegments, unit.dictationSegments, unit.dictationSentence, pickedSegments])
 
   const [current, setCurrent] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -2765,6 +2801,10 @@ interface UnitRow {
   dictation_translation: string
   dictation_transcript: string
   audio_url: string
+  srt_url: string
+  shadowing_audio_url: string
+  shadowing_srt_url: string
+  audio_video_url: string
 }
 
 interface UnitsSheetData {
@@ -2796,6 +2836,10 @@ function parseUnitsSheet(rows: Record<string, string>[]): UnitsSheetData {
         dictation_translation: r.dictation_translation?.trim() || '',
         dictation_transcript: r.dictation_transcript?.trim() || '',
         audio_url: r.audio_url?.trim() || '',
+        srt_url: r.srt_url?.trim() || '',
+        shadowing_audio_url: r.shadowing_audio_url?.trim() || '',
+        shadowing_srt_url: r.shadowing_srt_url?.trim() || '',
+        audio_video_url: r.audio_video_url?.trim() || '',
       })
     }
   })
@@ -3861,6 +3905,45 @@ export default function App() {
       .catch(() => { /* fallback: hardcode liste görünür */ })
   }, [])
 
+  // ── Units Sheet'teki srt_url / shadowing_srt_url: her ünitenin altyazısını
+  // çekip cümle-zaman listesine çeviriyor. Kişisel alanda zaten kanıtlanmış
+  // olan parseSRT aynen kullanılıyor, sadece kaynak dosya yerine sheet'teki
+  // link okunuyor.
+  const [dictationSrtByUnit, setDictationSrtByUnit] = useState<Record<string, DictationSegment[]>>({})
+  const [shadowingSrtByUnit, setShadowingSrtByUnit] = useState<Record<string, DictationSegment[]>>({})
+
+  useEffect(() => {
+    if (!unitsSheetData) return
+    const allRows = Object.values(unitsSheetData.unitsByLevel).flat()
+    let cancelled = false
+
+    async function fetchAndParse(url: string): Promise<DictationSegment[]> {
+      try {
+        const bustedUrl = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`
+        const res = await fetch(bustedUrl, { cache: 'no-store' })
+        const text = await res.text()
+        return parseSRT(text)
+      } catch {
+        return []
+      }
+    }
+
+    ;(async () => {
+      const dictResult: Record<string, DictationSegment[]> = {}
+      const shadowResult: Record<string, DictationSegment[]> = {}
+      for (const row of allRows) {
+        if (row.srt_url) dictResult[row.unit_id] = await fetchAndParse(row.srt_url)
+        if (row.shadowing_srt_url) shadowResult[row.unit_id] = await fetchAndParse(row.shadowing_srt_url)
+      }
+      if (!cancelled) {
+        setDictationSrtByUnit(dictResult)
+        setShadowingSrtByUnit(shadowResult)
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [unitsSheetData])
+
   // ── Drill Sheet: tüm seviyeler drill konuları ─────────────────────────────
   const [drillSheetData, setDrillSheetData] = useState<DrillSheetData | null>(null)
 
@@ -3937,6 +4020,10 @@ export default function App() {
         translation: u.dictation_translation,
         transcript: u.dictation_transcript,
         audioUrl: u.audio_url || undefined,
+        dictationSegments: dictationSrtByUnit[unitId] ?? undefined,
+        shadowingAudioUrl: u.shadowing_audio_url || undefined,
+        shadowingSegments: shadowingSrtByUnit[unitId] ?? undefined,
+        mediaUrl: u.audio_video_url || undefined,
         unitLabel: `Unit ${i + 1}`,
         unitId,  // sheet'ten gelen gerçek unit_id — drillTopicsByUnit lookup için
         hiddenModules: [],  // 5 kart her zaman görünür; drill verisi yoksa moduleLocks kilitler
