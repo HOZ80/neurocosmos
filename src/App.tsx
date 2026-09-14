@@ -2186,7 +2186,6 @@ function ShadowingAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
   function jumpTo(i: number) {
     setIndex(i)
     setRevealed(false)
-    setListOpen(false)
   }
 
   function next() {
