@@ -3792,12 +3792,81 @@ function ChildDashboard({ childName, onExit }: { childName: string; onExit: () =
   )
 }
 
+// ─── URL ile konum hafızası ─────────────────────────────────────────────────
+// Refresh'te ve tarayıcının geri/ileri tuşlarında kaldığı yerde kalması için:
+// mevcut ekran (seviye, görünüm, ünite, gramer sekmesi, soru) adres satırına
+// yazılır; sayfa yeniden yüklendiğinde ya da geri/ileri tuşuna basıldığında
+// buradan okunup ekran o hale geri getirilir.
+const VALID_VIEWS: View[] = ['dashboard', 'unit', 'grammar', 'audio', 'dictation', 'shadowing', 'dictationAll', 'shadowingAll', 'drill', 'scene']
+function getUrlParam(name: string): string | null {
+  try { return new URLSearchParams(window.location.search).get(name) } catch { return null }
+}
+function levelFromUrl(v: string | null): Level {
+  return (v === 'A1' || v === 'A2' || v === 'B1' || v === 'B2' || v === 'P') ? v : 'A1'
+}
+function viewFromUrl(v: string | null): View {
+  return (v && (VALID_VIEWS as string[]).includes(v)) ? (v as View) : 'dashboard'
+}
+function unitFromUrl(v: string | null): Unit | null {
+  const id = v ? parseInt(v, 10) : NaN
+  if (!Number.isFinite(id)) return null
+  // Sadece id doluyoruz; selectedUnitLive bunu gerçek ünite listesiyle eşleştirip tamamlıyor.
+  return { id, title: '', topic: '', grammar: '', completed: false, locked: false, progress: 0, dictationSentence: '', translation: '', transcript: '' } as Unit
+}
+
 export default function App() {
-  const [level, setLevel] = useState<Level>('A1')
-  const [view, setView] = useState<View>('dashboard')
-  const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null)
-  const [selectedQuestionIndex, setSelectedQuestionIndex] = useState<number | null>(null)
-  const [selectedGrammarSlot, setSelectedGrammarSlot] = useState<number>(1)
+  const [level, setLevel] = useState<Level>(() => levelFromUrl(getUrlParam('lvl')))
+  const [view, setView] = useState<View>(() => viewFromUrl(getUrlParam('view')))
+  const [selectedUnit, setSelectedUnit] = useState<Unit | null>(() => unitFromUrl(getUrlParam('u')))
+  const [selectedQuestionIndex, setSelectedQuestionIndex] = useState<number | null>(() => {
+    const v = getUrlParam('q')
+    const n = v ? parseInt(v, 10) : NaN
+    return Number.isFinite(n) ? n : null
+  })
+  const [selectedGrammarSlot, setSelectedGrammarSlot] = useState<number>(() => {
+    const v = getUrlParam('gs')
+    const n = v ? parseInt(v, 10) : NaN
+    return Number.isFinite(n) && n > 0 ? n : 1
+  })
+
+  // Adres ↔ ekran senkronizasyonu. isRestoringFromUrl: geri/ileri tuşuyla
+  // gelen bir değişiklikte adresi tekrar yazmamak için (sonsuz döngü olmasın).
+  const isRestoringFromUrl = useRef(false)
+  const didMountUrlSync = useRef(false)
+
+  useEffect(() => {
+    function onPopState() {
+      isRestoringFromUrl.current = true
+      setLevel(levelFromUrl(getUrlParam('lvl')))
+      setView(viewFromUrl(getUrlParam('view')))
+      setSelectedUnit(unitFromUrl(getUrlParam('u')))
+      const q = getUrlParam('q')
+      const qn = q ? parseInt(q, 10) : NaN
+      setSelectedQuestionIndex(Number.isFinite(qn) ? qn : null)
+      const gs = getUrlParam('gs')
+      const gsn = gs ? parseInt(gs, 10) : NaN
+      setSelectedGrammarSlot(Number.isFinite(gsn) && gsn > 0 ? gsn : 1)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  useEffect(() => {
+    if (isRestoringFromUrl.current) { isRestoringFromUrl.current = false; return }
+    const params = new URLSearchParams()
+    params.set('lvl', level)
+    params.set('view', view)
+    if (selectedUnit) params.set('u', String(selectedUnit.id))
+    if (view === 'grammar') params.set('gs', String(selectedGrammarSlot))
+    if (selectedQuestionIndex !== null) params.set('q', String(selectedQuestionIndex))
+    const newUrl = `${window.location.pathname}?${params.toString()}`
+    if (!didMountUrlSync.current) {
+      didMountUrlSync.current = true
+      window.history.replaceState(null, '', newUrl)
+    } else {
+      window.history.pushState(null, '', newUrl)
+    }
+  }, [level, view, selectedUnit, selectedGrammarSlot, selectedQuestionIndex])
 
   // ── Giriş ekranı profili (bkz. EntryScreen) ──
   const [entryProfile, setEntryProfile] = useState<EntryProfile | null>(() => {
