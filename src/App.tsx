@@ -2896,7 +2896,9 @@ function parseCSV(text: string): Record<string, string>[] {
     .filter(r => r.some(cell => cell.trim() !== ''))
     .map(r => {
       const obj: Record<string, string> = {}
-      header.forEach((h, i) => { obj[h.trim()] = (r[i] ?? '').trim() })
+      // {{ ... }} ile yazılan her şey kendine özel nottur — hangi sheet, hangi
+      // sütun olursa olsun, siteye hiç yansımadan burada temizlenir.
+      header.forEach((h, i) => { obj[h.trim()] = (r[i] ?? '').replace(/\{\{[\s\S]*?\}\}/g, '').trim() })
       return obj
     })
 }
