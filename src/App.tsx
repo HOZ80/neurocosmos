@@ -1420,7 +1420,7 @@ function renderTextCards(text?: string, opts?: { italic?: boolean; leadingTitle?
 
 function GrammarView({ unit, question, onBack, grammarBlocks, grammarSlotLabel }: { unit: Unit; question?: QuestionItem; onBack: () => void; grammarBlocks?: GrammarSheetBlock[] | null; grammarSlotLabel?: string }) {
   const [showAnswer, setShowAnswer] = useState(false)
-  const rule = unit.grammarPlaceholder ? PLACEHOLDER_RULE : (GRAMMAR_RULES[unit.grammar] ?? GRAMMAR_RULES['Simple Present'])
+  const rule = PLACEHOLDER_RULE
   return (
     <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '680px' }}>
       <BackBtn onClick={onBack} label={unit.title} />
