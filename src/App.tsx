@@ -3870,6 +3870,78 @@ export default function App() {
     }
   }, [level, view, selectedUnit, selectedGrammarSlot, selectedQuestionIndex])
 
+  // ── PWA yükleme — Android/Chrome: beforeinstallprompt yakalama ──
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null)
+  useEffect(() => {
+    function onBeforeInstallPrompt(e: any) {
+      e.preventDefault()
+      setDeferredInstallPrompt(e)
+    }
+    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+    return () => window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+  }, [])
+
+  async function handleInstallClick() {
+    if (!deferredInstallPrompt) return
+    deferredInstallPrompt.prompt()
+    await deferredInstallPrompt.userChoice
+    setDeferredInstallPrompt(null)
+  }
+
+  const isAndroidDevice = /android/i.test(navigator.userAgent)
+  const showAndroidInstallButton = isAndroidDevice && !!deferredInstallPrompt
+
+  // ── PWA yükleme — iPhone/Safari: otomatik istem yok, talimat şeridi gösteriyoruz ──
+  const isIOSDevice = /iphone|ipad|ipod/i.test(navigator.userAgent) && !(window as any).MSStream
+  const isSafariBrowser = /^((?!chrome|android|crios|fxios|edgios).)*safari/i.test(navigator.userAgent)
+  const isStandaloneMode = (window.navigator as any).standalone === true || window.matchMedia('(display-mode: standalone)').matches
+  const [iosBannerDismissed, setIosBannerDismissed] = useState<boolean>(() => {
+    try { return sessionStorage.getItem('ios_install_banner_dismissed') === 'true' } catch { return false }
+  })
+  const showIOSInstallBanner = isIOSDevice && isSafariBrowser && !isStandaloneMode && !iosBannerDismissed
+
+  function dismissIOSBanner() {
+    setIosBannerDismissed(true)
+    try { sessionStorage.setItem('ios_install_banner_dismissed', 'true') } catch {}
+  }
+
+  const iosInstallBanner = showIOSInstallBanner ? (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+      background: '#4F46E5', color: '#fff', padding: '10px 16px',
+      display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+    }}>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+        <rect x="7" y="2" width="10" height="17" rx="2" />
+        <path d="M12 13v-7" />
+        <path d="M9.5 8.5L12 6l2.5 2.5" />
+      </svg>
+      <div style={{ flex: 1, lineHeight: 1.4 }}>
+        Uygulama gibi kullanmak için: alttaki <strong>Paylaş</strong> ikonuna dokun, sonra <strong>Ana Ekrana Ekle</strong>'yi seç.
+      </div>
+      <button onClick={dismissIOSBanner} style={{
+        background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '6px',
+        color: '#fff', padding: '5px 10px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+      }}>Anladım</button>
+    </div>
+  ) : null
+
+  const androidInstallButton = showAndroidInstallButton ? (
+    <button onClick={handleInstallClick} style={{
+      background: 'var(--primary)', border: 'none', borderRadius: '7px',
+      padding: '5px 10px', fontSize: '12px', fontWeight: 600, color: '#fff', cursor: 'pointer',
+      display: 'flex', alignItems: 'center', gap: '6px',
+    }}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 3v12" />
+        <path d="M7 10l5 5 5-5" />
+        <path d="M5 19h14" />
+      </svg>
+      Uygulamayı Yükle
+    </button>
+  ) : null
+
   // ── Giriş ekranı profili (bkz. EntryScreen) ──
   const [entryProfile, setEntryProfile] = useState<EntryProfile | null>(() => {
     try {
@@ -4182,6 +4254,7 @@ export default function App() {
   if (!entryProfile) {
     return (
       <>
+        {iosInstallBanner}
         <EntryScreen
           onPickProfile={chooseProfile}
           onPickOwner={() => setShowPasswordModal(true)}
@@ -4199,15 +4272,19 @@ export default function App() {
 
   if (entryProfile === 'child_omur' || entryProfile === 'child_oztug') {
     return (
-      <ChildDashboard
-        childName={entryProfile === 'child_omur' ? 'Ömür' : 'Öztuğ'}
-        onExit={handleExitToEntry}
-      />
+      <>
+        {iosInstallBanner}
+        <ChildDashboard
+          childName={entryProfile === 'child_omur' ? 'Ömür' : 'Öztuğ'}
+          onExit={handleExitToEntry}
+        />
+      </>
     )
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      {iosInstallBanner}
 
       {/* ── Nav ── */}
       <header style={{
@@ -4253,6 +4330,7 @@ export default function App() {
 
           {/* User */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {androidInstallButton}
             <button onClick={handleExitToEntry} title="Profili değiştir" style={{
               background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
               padding: '5px 10px', fontSize: '12px', fontWeight: 600, color: 'var(--foreground)', cursor: 'pointer',
