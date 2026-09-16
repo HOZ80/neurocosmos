@@ -4331,17 +4331,27 @@ export default function App() {
           {/* User */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {androidInstallButton}
+            {level === 'P' && privateUnlocked && (
+              <button onClick={handleLockPrivate} title="Kilitle" style={{
+                background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
+                padding: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="5" y="11" width="14" height="10" rx="2" />
+                  <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                </svg>
+              </button>
+            )}
             <button onClick={handleExitToEntry} title="Profili değiştir" style={{
               background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
-              padding: '5px 10px', fontSize: '12px', fontWeight: 600, color: 'var(--foreground)', cursor: 'pointer',
-            }}>Çıkış</button>
-            {level === 'P' && privateUnlocked && (
-              <button onClick={handleLockPrivate} style={{
-                background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
-                padding: '5px 10px', fontSize: '12px', fontWeight: 600, color: 'var(--foreground)', cursor: 'pointer',
-              }}>🔒 Kilitle</button>
-            )}
-            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, #4F46E5, #818CF8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 700, color: '#fff' }}>S</div>
+              padding: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <path d="M16 17l5-5-5-5" />
+                <path d="M21 12H9" />
+              </svg>
+            </button>
           </div>
         </div>
 
