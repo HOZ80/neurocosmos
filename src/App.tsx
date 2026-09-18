@@ -1437,7 +1437,13 @@ function GrammarView({ unit, question, onBack, grammarBlocks, grammarSlotLabel, 
 
       {grammarBlocks && grammarBlocks.length > 0 && !question ? (
         slideMode ? (
-          <GrammarSlideshow key={unit.id} blocks={grammarBlocks} />
+          <>
+            {grammarBlocks.filter(b => b.type === 'HEADER').map((block, i) => (
+              <GrammarSheetBlockView key={`h${i}`} block={block} />
+            ))}
+            {grammarBlocks.filter(b => b.type !== 'HEADER').length > 0 && (
+              <GrammarSlideshow key={unit.id} blocks={grammarBlocks.filter(b => b.type !== 'HEADER')} />
+            )}          </>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {grammarBlocks.map((block, i) => (
@@ -2798,6 +2804,17 @@ function GrammarSheetBlockView({ block }: { block: GrammarSheetBlock }) {
         <div key={si} style={{ borderTop: si > 0 ? '1px solid var(--border)' : 'none', paddingTop: si > 0 ? '10px' : '0' }}>
           {section.split('\n').map((line, li) => {
             if (!line.trim()) return <br key={li} />
+            const imgMatch = line.trim().match(/^\(\(([^\s()]+)\)\)$/)
+            if (imgMatch) {
+              return (
+                <img
+                  key={li}
+                  src={imgMatch[1]}
+                  alt=""
+                  style={{ maxWidth: '100%', borderRadius: '12px', margin: '6px 0', display: 'block' }}
+                />
+              )
+            }
             return (
               <p key={li} style={{
                 margin: '0 0 4px',
