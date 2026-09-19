@@ -79,7 +79,8 @@ interface DrillCueItem {
   cue: string
   expected: string | null // null = free production, self-graded only
   audioUrl?: string       // ses desteği için — şimdilik boş, ilerisi için hazır
-  modelOverride?: string  // bu cue'dan itibaren gösterilen model cümlesi değişsin diye
+  modelOverride?: string  // sadece isMarker=true satırlarda dolu olur
+  isMarker?: boolean      // true ise bu bir cue değil, model değiştirme işaretidir
 }
 
 interface DrillTopic {
@@ -96,6 +97,7 @@ interface DrillTopic {
     question: DrillCueItem[]
   }
   notes: string
+  modelMismatchWarning?: string // model sayısı ile grup sayısı tutmuyorsa, hangi aşama(lar)da olduğu
 }
 
 interface DrillProgress {
@@ -2894,7 +2896,7 @@ interface UnitsSheetData {
 }
 
 // Drill sheet ayrı — level | unit_id | topic_id | topic_label | target_structure |
-// model_sentence | substitution_cues | transformation_types | expansion_cues |
+// substitution_model | substitution_cues | transformation_types | expansion_cues |
 // cue_response_items | question_prompts | notes |
 // model_audio_url | substitution_audio_urls | transformation_audio_urls |
 // expansion_audio_urls | cue_response_audio_urls
@@ -2987,7 +2989,7 @@ function parseCSV(text: string): Record<string, string>[] {
 
 // ─── Drill engine — Sheet parsing (Private area only) ─────────────────────────
 // Column names (case-sensitive): topic_id, topic_label, target_structure,
-// model_sentence, substitution_cues, transformation_types, expansion_cues,
+// substitution_model, substitution_cues, transformation_types, expansion_cues,
 // cue_response_items, question_prompts, notes
 // Cue/expected-answer fields use: cue:expected|cue2:expected2
 // question_prompts has no expected answer: soru1|soru2
@@ -2996,41 +2998,104 @@ function parsePairedField(str: string | undefined, audioUrlStr?: string): DrillC
   if (!str) return []
   const audioUrls = audioUrlStr ? audioUrlStr.split('|').map(s => s.trim()) : []
   return str.split('|').map(s => s.trim()).filter(Boolean).map((item, i) => {
+    if (item.startsWith('::')) {
+      // Kendi başına bir işaret satırı — bir cue değil, bundan sonraki cue'lar için
+      // model kutusunu günceller.
+      return { cue: '', expected: null, modelOverride: item.slice(2).trim(), isMarker: true }
+    }
     const idx = item.indexOf(':')
     const audioUrl = audioUrls[i] || undefined
     if (idx === -1) return { cue: item, expected: null, audioUrl }
-    const cue = item.slice(0, idx).trim()
-    let rest = item.slice(idx + 1).trim()
-    let modelOverride: string | undefined
-    const ovIdx = rest.indexOf('::')
-    if (ovIdx !== -1) {
-      modelOverride = rest.slice(ovIdx + 2).trim()
-      rest = rest.slice(0, ovIdx).trim()
-    }
-    return { cue, expected: rest, audioUrl, modelOverride }
+    return { cue: item.slice(0, idx).trim(), expected: item.slice(idx + 1).trim(), audioUrl }
   })
 }
 function parsePromptField(str: string | undefined): DrillCueItem[] {
   if (!str) return []
   return str.split('|').map(s => s.trim()).filter(Boolean).map(q => ({ cue: q, expected: null }))
 }
+// question_prompts için: gruplanmış (||) prompt listesi.
+function parseGroupedPromptField(str: string | undefined): DrillCueItem[][] {
+  if (!str) return []
+  return str.split('||').map(g => parsePromptField(g))
+}
+
+// question stage'i, diğer aşamalarla aynı model+grup mantığıyla ama
+// cue:beklenen değil, düz soru listesiyle çalışır.
+function buildQuestionStageItems(modelListStr: string | undefined, promptsStr: string | undefined): { items: DrillCueItem[]; mismatch: boolean } {
+  const models = parseModelList(modelListStr)
+  const hasGroups = !!promptsStr && promptsStr.includes('||')
+  const groups = hasGroups ? parseGroupedPromptField(promptsStr) : [parsePromptField(promptsStr)]
+  const mismatch = models.length > 1 && groups.length > 1 && models.length !== groups.length
+  const items: DrillCueItem[] = []
+  groups.forEach((group, i) => {
+    const model = models.length > 0 ? (models[i] ?? models[models.length - 1]) : undefined
+    if (model) items.push({ cue: '', expected: null, modelOverride: model, isMarker: true })
+    items.push(...group)
+  })
+  return { items, mismatch }
+}
+
+// Bir "_model" sütununu (alt alta, "|" ile ayrılmış model cümleleri) diziye çevirir.
+function parseModelList(str: string | undefined): string[] {
+  if (!str) return []
+  return str.split('|').map(s => s.trim()).filter(Boolean)
+}
+
+// Bir cue sütununu "||" ile gruplara ayırır, her grubu kendi içinde normal
+// şekilde ("|" ile) cue'lara çevirir.
+function parseGroupedField(str: string | undefined): DrillCueItem[][] {
+  if (!str) return []
+  return str.split('||').map(g => parsePairedField(g))
+}
+
+// Bir aşamanın model listesini ve gruplanmış cue'larını birleştirip tek bir
+// sıralı listeye çevirir — her grubun başına, kendi modelini gösteren görünmez
+// bir işaret ekler. audioUrlStr sadece grup yoksa (tek model / tek grup) hizalanır.
+function buildStageItems(modelListStr: string | undefined, cuesStr: string | undefined, audioUrlStr?: string): { items: DrillCueItem[]; mismatch: boolean } {
+  const models = parseModelList(modelListStr)
+  const hasGroups = !!cuesStr && cuesStr.includes('||')
+  const groups = hasGroups ? parseGroupedField(cuesStr) : [parsePairedField(cuesStr, audioUrlStr)]
+  const mismatch = models.length > 1 && groups.length > 1 && models.length !== groups.length
+  const items: DrillCueItem[] = []
+  groups.forEach((group, i) => {
+    const model = models.length > 0 ? (models[i] ?? models[models.length - 1]) : undefined
+    if (model) items.push({ cue: '', expected: null, modelOverride: model, isMarker: true })
+    items.push(...group)
+  })
+  return { items, mismatch }
+}
+
 function rowsToDrillTopics(rows: Record<string, string>[]): DrillTopic[] {
-  return rows.map(r => ({
-    id: r.topic_id || `t_${Math.random().toString(36).slice(2, 8)}`,
-    label: r.topic_label || r.target_structure || 'Adsız konu',
-    target: r.target_structure || '',
-    model: r.model_sentence || '',
-    modelAudioUrl: r.model_audio_url?.trim() || undefined,
-    stages: {
-      // cue_audio_url kolonları cue'larla aynı sırada, pipe ile ayrılmış URL'ler
-      substitution: parsePairedField(r.substitution_cues, r.substitution_audio_urls),
-      transformation: parsePairedField(r.transformation_types, r.transformation_audio_urls),
-      expansion: parsePairedField(r.expansion_cues, r.expansion_audio_urls),
-      cue_response: parsePairedField(r.cue_response_items, r.cue_response_audio_urls),
-      question: parsePromptField(r.question_prompts),
-    },
-    notes: r.notes || '',
-  }))
+  return rows.map(r => {
+    const sub = buildStageItems(r.substitution_model, r.substitution_cues, r.substitution_audio_urls)
+    const trans = buildStageItems(r.transformation_model, r.transformation_types, r.transformation_audio_urls)
+    const exp = buildStageItems(r.expansion_model, r.expansion_cues, r.expansion_audio_urls)
+    const cueResp = buildStageItems(r.cue_response_model, r.cue_response_items, r.cue_response_audio_urls)
+    const question = buildQuestionStageItems(r.question_model, r.question_prompts)
+    const mismatchWarning = [
+      sub.mismatch && 'Substitution',
+      trans.mismatch && 'Transformation',
+      exp.mismatch && 'Expansion',
+      cueResp.mismatch && 'Cue-Response',
+      question.mismatch && 'Question-Answer',
+    ].filter(Boolean).join(', ')
+    return {
+      id: r.topic_id || `t_${Math.random().toString(36).slice(2, 8)}`,
+      label: r.topic_label || r.target_structure || 'Adsız konu',
+      target: r.target_structure || '',
+      model: parseModelList(r.substitution_model)[0] || '',
+      modelAudioUrl: r.model_audio_url?.trim() || undefined,
+      stages: {
+        substitution: sub.items,
+        transformation: trans.items,
+        expansion: exp.items,
+        cue_response: cueResp.items,
+        question: question.items,
+      },
+      notes: r.notes || '',
+      modelMismatchWarning: mismatchWarning || undefined,
+    }
+  })
 }
 
 // Converts parsed Sheet rows into the QuestionItem shape the app already renders.
@@ -3239,7 +3304,7 @@ function drillWordDiff(expected: string, given: string): { expectedHtml: string;
   return { expectedHtml: outE.join(' '), givenHtml: outG.join(' ') }
 }
 
-type DrillQueueItem = { stageKey: keyof DrillTopic['stages']; stageName: string; cue: string; expected: string | null; modelOverride?: string }
+type DrillQueueItem = { stageKey: keyof DrillTopic['stages']; stageName: string; cue: string; expected: string | null; resolvedModel?: string }
 
 function drillProgressKey(unitId: number) { return `nc_drill_progress_u${unitId}` }
 function loadDrillProgress(unitId: number): Record<string, DrillProgress> {
@@ -3270,7 +3335,7 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
       topic_id: 'sample_past_simple',
       topic_label: 'Past Simple – affirmative (örnek)',
       target_structure: 'Past Simple',
-      model_sentence: 'I went to the cinema yesterday.',
+      substitution_model: 'I went to the cinema yesterday.',
       substitution_cues: 'museum:I went to the museum yesterday.|park:I went to the park yesterday.|restaurant:I went to the restaurant yesterday.',
       transformation_types: "negative:I didn't go to the cinema yesterday.|question:Did you go to the cinema yesterday?|short answer:Yes, I did.",
       expansion_cues: 'with my sister:I went to the cinema yesterday with my sister.|because we wanted to see a new film:I went to the cinema yesterday with my sister because we wanted to see a new film.',
@@ -3345,7 +3410,7 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
   function saveManualTopic() {
     if (!mLabel.trim()) return
     const [t] = rowsToDrillTopics([{
-      topic_label: mLabel, target_structure: mTarget, model_sentence: mModel,
+      topic_label: mLabel, target_structure: mTarget, substitution_model: mModel,
       substitution_cues: mSub, transformation_types: mTrans, expansion_cues: mExp,
       cue_response_items: mCr, question_prompts: mQ,
     }])
@@ -3381,8 +3446,16 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
 
   function startSession(topic: DrillTopic) {
     const q: DrillQueueItem[] = []
+    let runningModel = topic.model
     DRILL_STAGE_ORDER.forEach(s => {
-      (topic.stages[s.key] || []).forEach(item => q.push({ stageKey: s.key, stageName: s.name, cue: item.cue, expected: item.expected, modelOverride: item.modelOverride }))
+      ;(topic.stages[s.key] || []).forEach(item => {
+        if (item.isMarker) {
+          if (item.modelOverride) runningModel = item.modelOverride
+          return
+        }
+        q.push({ stageKey: s.key, stageName: s.name, cue: item.cue, expected: item.expected, resolvedModel: runningModel })
+      })
+    })
     })
     if (q.length === 0) return
     setActiveTopicId(topic.id)
@@ -3493,12 +3566,15 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
             {DRILL_STAGE_HINTS[item.stageKey]}
           </div>
 
-          {/* Model cümle — her zaman görünür; bir cue'dan itibaren değişebilir */}
+          {activeTopic?.modelMismatchWarning && (
+            <div style={{ fontSize: '11px', color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '7px', padding: '7px 10px', marginBottom: '12px' }}>
+              ⚠ {activeTopic.modelMismatchWarning}: model sayısı ile "||" grup sayısı tutmuyor — eşleşme kaymış olabilir, sheet'i kontrol et.
+            </div>
+          )}
+
+          {/* Model cümle — her zaman görünür; bir :: işaretinden sonra değişebilir */}
           {(() => {
-            let activeModel = activeTopic?.model || ''
-            for (let k = 0; k <= idx; k++) {
-              if (queue[k]?.modelOverride) activeModel = queue[k].modelOverride!
-            }
+            const activeModel = item.resolvedModel || activeTopic?.model || ''
             if (!activeModel) return null
             return (
               <div style={{
@@ -3734,7 +3810,7 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
               <button onClick={fetchCsv} style={{ background: accent, color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', cursor: 'pointer' }}>Linkten çek</button>
             </div>
             <label style={{ display: 'block', fontSize: '12px', color: 'var(--muted-foreground)', margin: '12px 0 4px' }}>veya CSV'yi buraya yapıştır</label>
-            <textarea value={csvPaste} onChange={e => setCsvPaste(e.target.value)} placeholder="topic_id,topic_label,target_structure,model_sentence,..."
+            <textarea value={csvPaste} onChange={e => setCsvPaste(e.target.value)} placeholder="topic_id,topic_label,target_structure,substitution_model,..."
               style={{ width: '100%', minHeight: '80px', border: '1px solid var(--border)', borderRadius: '8px', padding: '9px 10px', fontSize: '13px', background: 'var(--background)', color: 'var(--foreground)', fontFamily: 'inherit' }} />
             <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
               <button onClick={() => importCsvText(csvPaste)} style={{ background: accent, color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', cursor: 'pointer' }}>Yapıştırılanı içe aktar</button>
@@ -3742,7 +3818,7 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
             </div>
             {importStatus && <div style={{ marginTop: '8px', fontSize: '12px', color: importStatus.kind === 'err' ? '#DC2626' : '#059669' }}>{importStatus.text}</div>}
             <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--muted-foreground)', lineHeight: 1.6 }}>
-              Sütunlar: topic_id, topic_label, target_structure, model_sentence, substitution_cues, transformation_types, expansion_cues, cue_response_items, question_prompts, notes<br />
+              Sütunlar: topic_id, topic_label, target_structure, substitution_model, substitution_cues, transformation_types, expansion_cues, cue_response_items, question_prompts, notes<br />
               Cevap gerektiren alanlarda format: <code>cue:beklenen cümle|cue2:beklenen cümle2</code> — question_prompts'ta beklenen cevap yok, sadece <code>soru1|soru2</code>.
             </div>
           </div>
