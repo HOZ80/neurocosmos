@@ -79,6 +79,7 @@ interface DrillCueItem {
   cue: string
   expected: string | null // null = free production, self-graded only
   audioUrl?: string       // ses desteği için — şimdilik boş, ilerisi için hazır
+  modelOverride?: string  // bu cue'dan itibaren gösterilen model cümlesi değişsin diye
 }
 
 interface DrillTopic {
@@ -2998,7 +2999,15 @@ function parsePairedField(str: string | undefined, audioUrlStr?: string): DrillC
     const idx = item.indexOf(':')
     const audioUrl = audioUrls[i] || undefined
     if (idx === -1) return { cue: item, expected: null, audioUrl }
-    return { cue: item.slice(0, idx).trim(), expected: item.slice(idx + 1).trim(), audioUrl }
+    const cue = item.slice(0, idx).trim()
+    let rest = item.slice(idx + 1).trim()
+    let modelOverride: string | undefined
+    const ovIdx = rest.indexOf('::')
+    if (ovIdx !== -1) {
+      modelOverride = rest.slice(ovIdx + 2).trim()
+      rest = rest.slice(0, ovIdx).trim()
+    }
+    return { cue, expected: rest, audioUrl, modelOverride }
   })
 }
 function parsePromptField(str: string | undefined): DrillCueItem[] {
@@ -3230,7 +3239,7 @@ function drillWordDiff(expected: string, given: string): { expectedHtml: string;
   return { expectedHtml: outE.join(' '), givenHtml: outG.join(' ') }
 }
 
-type DrillQueueItem = { stageKey: keyof DrillTopic['stages']; stageName: string; cue: string; expected: string | null }
+type DrillQueueItem = { stageKey: keyof DrillTopic['stages']; stageName: string; cue: string; expected: string | null; modelOverride?: string }
 
 function drillProgressKey(unitId: number) { return `nc_drill_progress_u${unitId}` }
 function loadDrillProgress(unitId: number): Record<string, DrillProgress> {
@@ -3373,7 +3382,7 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
   function startSession(topic: DrillTopic) {
     const q: DrillQueueItem[] = []
     DRILL_STAGE_ORDER.forEach(s => {
-      (topic.stages[s.key] || []).forEach(item => q.push({ stageKey: s.key, stageName: s.name, cue: item.cue, expected: item.expected }))
+      (topic.stages[s.key] || []).forEach(item => q.push({ stageKey: s.key, stageName: s.name, cue: item.cue, expected: item.expected, modelOverride: item.modelOverride }))
     })
     if (q.length === 0) return
     setActiveTopicId(topic.id)
@@ -3484,16 +3493,23 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
             {DRILL_STAGE_HINTS[item.stageKey]}
           </div>
 
-          {/* Model cümle — her zaman görünür */}
-          {activeTopic?.model && (
-            <div style={{
-              background: '#EEF2FF', border: '1px solid rgba(99,102,241,0.25)',
-              borderRadius: '10px', padding: '12px 16px', marginBottom: '12px',
-            }}>
-              <div style={{ fontSize: '10px', color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, marginBottom: '5px' }}>Model</div>
-              <div style={{ fontSize: '15px', color: '#1E1B4B', fontWeight: 500, lineHeight: 1.5 }}>{activeTopic.model}</div>
-            </div>
-          )}
+          {/* Model cümle — her zaman görünür; bir cue'dan itibaren değişebilir */}
+          {(() => {
+            let activeModel = activeTopic?.model || ''
+            for (let k = 0; k <= idx; k++) {
+              if (queue[k]?.modelOverride) activeModel = queue[k].modelOverride!
+            }
+            if (!activeModel) return null
+            return (
+              <div style={{
+                background: '#EEF2FF', border: '1px solid rgba(99,102,241,0.25)',
+                borderRadius: '10px', padding: '12px 16px', marginBottom: '12px',
+              }}>
+                <div style={{ fontSize: '10px', color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, marginBottom: '5px' }}>Model</div>
+                <div style={{ fontSize: '15px', color: '#1E1B4B', fontWeight: 500, lineHeight: 1.5 }}>{activeModel}</div>
+              </div>
+            )
+          })()}
 
           {/* Cue (ipucu) kutusu */}
           <div style={{ background: 'var(--secondary)', borderRadius: '10px', padding: '18px', textAlign: 'center', marginBottom: '16px' }}>
