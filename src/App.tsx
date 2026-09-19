@@ -3464,7 +3464,6 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
         q.push({ stageKey: s.key, stageName: s.name, cue: item.cue, expected: item.expected, resolvedModel: runningModel })
       })
     })
-    })
     if (q.length === 0) return
     setActiveTopicId(topic.id)
     setQueue(q); setIdx(0); setCorrect(0); setWrong(0); setRetryPool([]); setUsedRetry(false)
