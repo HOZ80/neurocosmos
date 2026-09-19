@@ -98,6 +98,7 @@ interface DrillTopic {
   }
   notes: string
   modelMismatchWarning?: string // model sayısı ile grup sayısı tutmuyorsa, hangi aşama(lar)da olduğu
+  hints?: Partial<Record<keyof DrillTopic['stages'], string>> // konuya özel yönlendirme — boşsa sabit genel açıklama kullanılır
 }
 
 interface DrillProgress {
@@ -3094,6 +3095,13 @@ function rowsToDrillTopics(rows: Record<string, string>[]): DrillTopic[] {
       },
       notes: r.notes || '',
       modelMismatchWarning: mismatchWarning || undefined,
+      hints: {
+        substitution: r.substitution_hint?.trim() || undefined,
+        transformation: r.transformation_hint?.trim() || undefined,
+        expansion: r.expansion_hint?.trim() || undefined,
+        cue_response: r.cue_response_hint?.trim() || undefined,
+        question: r.question_hint?.trim() || undefined,
+      },
     }
   })
 }
@@ -3170,7 +3178,7 @@ function DrillInputArea({ answer, onAnswerChange, onCheck, onSkip, expected }: {
               borderRadius: '8px', padding: '10px 14px',
             }}>
               <div style={{ fontSize: '10px', color: '#8B5CF6', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, marginBottom: '4px' }}>Beklenen</div>
-              <div style={{ fontSize: '14px', color: '#1E1B4B', lineHeight: 1.5 }}>{expected}</div>
+              <div style={{ fontSize: '14px', color: '#1E1B4B', lineHeight: 1.5 }}>{renderInlineMarkup(expected)}</div>
             </div>
           )}
         </div>
@@ -3214,7 +3222,7 @@ function DrillRevealBlock({ expected, onCorrect, onWrong, accent }: {
           borderRadius: '9px', padding: '12px 16px',
         }}>
           <div style={{ fontSize: '10px', color: accent, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, marginBottom: '5px' }}>Beklenen</div>
-          <div style={{ fontSize: '15px', color: '#1E1B4B', lineHeight: 1.5 }}>{expected}</div>
+          <div style={{ fontSize: '15px', color: '#1E1B4B', lineHeight: 1.5 }}>{renderInlineMarkup(expected)}</div>
         </div>
       ) : (
         <div style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>Tek doğru cevap yok — kendi kendini değerlendir.</div>
@@ -3247,7 +3255,7 @@ function DrillRevealInline({ expected, accent }: { expected: string; accent: str
           borderRadius: '8px', padding: '10px 14px',
         }}>
           <div style={{ fontSize: '10px', color: accent, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, marginBottom: '4px' }}>Örnek</div>
-          <div style={{ fontSize: '14px', color: '#1E1B4B', lineHeight: 1.5 }}>{expected}</div>
+          <div style={{ fontSize: '14px', color: '#1E1B4B', lineHeight: 1.5 }}>{renderInlineMarkup(expected)}</div>
         </div>
       )}
     </div>
@@ -3563,7 +3571,7 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
 
           {/* Aşama açıklaması */}
           <div style={{ fontSize: '11px', color: 'var(--muted-foreground)', background: 'var(--secondary)', borderRadius: '7px', padding: '7px 10px', marginBottom: '12px' }}>
-            {DRILL_STAGE_HINTS[item.stageKey]}
+            {renderInlineMarkup(activeTopic?.hints?.[item.stageKey] || DRILL_STAGE_HINTS[item.stageKey])}
           </div>
 
           {activeTopic?.modelMismatchWarning && (
@@ -3582,7 +3590,7 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
                 borderRadius: '10px', padding: '12px 16px', marginBottom: '12px',
               }}>
                 <div style={{ fontSize: '10px', color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, marginBottom: '5px' }}>Model</div>
-                <div style={{ fontSize: '15px', color: '#1E1B4B', fontWeight: 500, lineHeight: 1.5 }}>{activeModel}</div>
+                <div style={{ fontSize: '15px', color: '#1E1B4B', fontWeight: 500, lineHeight: 1.5 }}>{renderInlineMarkup(activeModel)}</div>
               </div>
             )
           })()}
@@ -3590,7 +3598,7 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
           {/* Cue (ipucu) kutusu */}
           <div style={{ background: 'var(--secondary)', borderRadius: '10px', padding: '18px', textAlign: 'center', marginBottom: '16px' }}>
             <div style={{ fontSize: '10px', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>İpucu</div>
-            <div style={{ fontSize: '18px' }}>{item.cue}</div>
+            <div style={{ fontSize: '18px' }}>{renderInlineMarkup(item.cue)}</div>
           </div>
 
           {/* ── Yazma modu: giriş alanı + Kontrol et + Cevabı gör ── */}
