@@ -2837,9 +2837,9 @@ function GrammarSheetBlockView({ block }: { block: GrammarSheetBlock }) {
   )
 }
 
-// Sadece A1'in ilk ünitesinde deneme amaçlı: gramer parçalarını tek tek,
-// "İleri/Geri" ile gezilen slayt olarak gösterir. Diğer her yerde eski,
-// hepsi-tek-sayfada görünüm kullanılmaya devam eder.
+// Sheet'ten gelen tüm gramer kartlarında: gramer parçalarını tek tek,
+// "İleri/Geri" ile gezilen slayt olarak gösterir. Soru kartlarında
+// (question dolu olan görünüm) kullanılmaz.
 function GrammarSlideshow({ blocks }: { blocks: GrammarSheetBlock[] }) {
   const [i, setI] = useState(0)
   const total = blocks.length
@@ -4526,7 +4526,7 @@ export default function App() {
             unit={selectedUnitLive}
             question={selectedQuestion}
             onBack={() => { setView('unit'); setSelectedQuestionIndex(null) }}
-            slideMode={level === 'A1' && selectedUnitLive.id === 1}
+            slideMode={true}
             grammarSlotLabel={(() => {
               if (!grammarSheetData) return undefined
               const unitId = selectedUnitLive.unitId ?? `${level}-U${String(selectedUnitLive.id).padStart(2, '0')}`
