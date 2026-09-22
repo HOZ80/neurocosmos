@@ -3162,7 +3162,7 @@ function rowsToQuestionChain(rows: Record<string, string>[]): QuestionItem[] {
 function DrillInputArea({ answer, onAnswerChange, onCheck, onSkip, expected }: {
   answer: string
   onAnswerChange: (v: string) => void
-  onCheck: () => void
+  onCheck: () => void | Promise<void>
   onSkip: () => void
   expected: string | null
 }) {
@@ -3293,6 +3293,10 @@ function DrillRevealInline({ expected, accent }: { expected: string; accent: str
 // chain per topic, and schedules spaced review (8h/1d/2d/1w/2w/1m/3m) in
 // localStorage, keyed per unit so different Private units don't collide.
 
+// Faz 1 pilot: Serbest Üretim (question) aşamasında AI değerlendirmesi
+// yalnızca bu topic_id'ler için aktif. Yeni konu eklendikçe buraya eklenir.
+const AI_EVAL_TOPIC_IDS = ['P-U02-T01']
+
 const DRILL_REVIEW_STAGES = [
   { label: '8 saat', ms: 8 * 3600 * 1000 },
   { label: '1 gün', ms: 24 * 3600 * 1000 },
@@ -3405,6 +3409,8 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
   const [usedRetry, setUsedRetry] = useState(false)
   const [answer, setAnswer] = useState('')
   const [feedback, setFeedback] = useState<null | { kind: 'good' | 'bad' | 'free'; expectedHtml?: string; givenHtml?: string }>(null)
+  const [aiChecking, setAiChecking] = useState(false)
+  const [aiResult, setAiResult] = useState<null | { karar: string; mesaj: string }>(null)
   const [quickMode, setQuickMode] = useState<boolean>(() => { try { return localStorage.getItem('nc_drill_quick_mode') === '1' } catch { return false } })
   const [summary, setSummary] = useState<null | { correct: number; wrong: number; stageLabel: string; nextReview: number }>(null)
 
@@ -3413,6 +3419,9 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
   // ilerlemeyi o ünitenin kendi verisiyle yeniden yükle. Aksi halde başlık
   // güncellenip içindeki konu listesi bir önceki üniteden kalıyordu.
   const drillUnitKey = unit.unitId ?? `${unit.title}::${unit.id}`
+  // Sheets'ten gelen gerçek liste bu ünite için zaten uygulandı mı — aşağıda
+  // hem ünite değişince hem de liste geldiğinde kullanılıyor.
+  const sheetTopicsAppliedRef = useRef(false)
   useEffect(() => {
     setTopics(computeInitialDrillTopics(unit.id, sheetTopics))
     setProgress(loadDrillProgress(unit.id))
@@ -3427,8 +3436,24 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
     setAnswer('')
     setFeedback(null)
     setSummary(null)
+    setAiChecking(false)
+    setAiResult(null)
+    sheetTopicsAppliedRef.current = false
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drillUnitKey])
+
+  // Kart ilk açıldığında B2 Sheets'ten gelen drill listesi (drillSheetData)
+  // henüz yüklenmemiş olabilir — o anda geçici olarak örnek/lokal içerik
+  // gösterilir. Gerçek liste birkaç saniye sonra gelince, yukarıdaki
+  // senkronizasyon bir daha tetiklenmediği için ekran hep örnekte takılı
+  // kalıyordu. Bu effect, aynı ünitede kalırken gerçek liste geldiği anı
+  // (boştan doluya geçişi) yakalayıp konu listesini onunla değiştiriyor.
+  useEffect(() => {
+    if (sheetTopicsAppliedRef.current) return
+    if (!sheetTopics || sheetTopics.length === 0) return
+    sheetTopicsAppliedRef.current = true
+    setTopics(sheetTopics)
+  }, [sheetTopics])
 
   function persistTopics(next: DrillTopic[]) {
     setTopics(next)
@@ -3520,10 +3545,12 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
     setActiveTopicId(topic.id)
     setQueue(q); setIdx(0); setCorrect(0); setWrong(0); setRetryPool([]); setUsedRetry(false)
     setAnswer(''); setFeedback(null); setSummary(null)
+    setAiChecking(false); setAiResult(null)
   }
 
   function exitSession() {
     setQueue(null); setActiveTopicId(null); setSummary(null)
+    setAiChecking(false); setAiResult(null)
   }
 
   function finishSession(finalCorrect: number, finalWrong: number) {
@@ -3545,6 +3572,7 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
     const newRetry = isCorrect || usedRetry ? retryPool : [...retryPool, item]
     setCorrect(newCorrect); setWrong(newWrong); setRetryPool(newRetry)
     setAnswer(''); setFeedback(null)
+    setAiChecking(false); setAiResult(null)
     const nextIdx = idx + 1
     if (queue && nextIdx < queue.length) { setIdx(nextIdx); return }
     if (newRetry.length > 0 && !usedRetry) {
@@ -3554,14 +3582,41 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
     finishSession(newCorrect, newWrong)
   }
 
-  function checkAnswer() {
+  async function checkAnswer() {
     if (!queue) return
     const item = queue[idx]
     const given = answer.trim()
+
     if (item.expected === null) {
+      // Faz 1 pilot: bu konuda Serbest Üretim, kendi kendini değerlendirme
+      // yerine AI kapısına gönderilir.
+      const aiEnabled = item.stageKey === 'question' && AI_EVAL_TOPIC_IDS.includes(activeTopicId || '')
+      if (aiEnabled) {
+        if (!given) return
+        setAiChecking(true)
+        setAiResult(null)
+        try {
+          const res = await fetch('/.netlify/functions/drill-evaluate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sentence: given }),
+          })
+          const data = await res.json()
+          setAiResult({ karar: data.karar, mesaj: data.mesaj })
+          if (data.karar === 'dogru') {
+            setTimeout(() => advance(true, item), 1200)
+          }
+        } catch {
+          setAiResult({ karar: 'hata', mesaj: 'Bir bağlantı sorunu oldu, biraz sonra tekrar dene.' })
+        } finally {
+          setAiChecking(false)
+        }
+        return
+      }
       setFeedback({ kind: 'free' })
       return
     }
+
     if (drillNormalize(given) === drillNormalize(item.expected)) {
       setFeedback({ kind: 'good' })
       setTimeout(() => advance(true, item), 450)
@@ -3653,14 +3708,41 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
           </div>
 
           {/* ── Yazma modu: giriş alanı + Kontrol et + Cevabı gör ── */}
-          {!quickMode && !feedback && (
-            <DrillInputArea
-              answer={answer}
-              onAnswerChange={setAnswer}
-              onCheck={checkAnswer}
-              onSkip={() => advance(false, item)}
-              expected={item.expected}
-            />
+          {!quickMode && !feedback && !aiResult && (
+            <div>
+              <DrillInputArea
+                answer={answer}
+                onAnswerChange={setAnswer}
+                onCheck={checkAnswer}
+                onSkip={() => advance(false, item)}
+                expected={item.expected}
+              />
+              {aiChecking && (
+                <div style={{ marginTop: '10px', fontSize: '12px', color: 'var(--muted-foreground)' }}>
+                  Kontrol ediliyor...
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── AI değerlendirmesi (Faz 1 pilot) ── */}
+          {aiResult && (
+            <div>
+              <div style={{
+                background: aiResult.karar === 'dogru' ? '#F0FDF4' : (aiResult.karar === 'hata' ? '#FEF3C7' : '#FEF2F2'),
+                border: `1px solid ${aiResult.karar === 'dogru' ? 'rgba(34,197,94,0.3)' : (aiResult.karar === 'hata' ? '#FDE68A' : 'rgba(220,38,38,0.25)')}`,
+                borderRadius: '9px', padding: '12px 14px', fontSize: '13px', lineHeight: 1.6,
+                color: aiResult.karar === 'dogru' ? '#166534' : (aiResult.karar === 'hata' ? '#92400E' : '#991B1B'),
+              }}>
+                {aiResult.mesaj}
+              </div>
+              {aiResult.karar !== 'dogru' && (
+                <button
+                  onClick={() => setAiResult(null)}
+                  style={{ marginTop: '10px', background: accent, color: '#fff', border: 'none', borderRadius: '9px', padding: '10px 16px', fontSize: '13px', cursor: 'pointer' }}
+                >Tekrar dene</button>
+              )}
+            </div>
           )}
 
           {/* ── Quick mod: Cevabı gör → self-grade ── */}
