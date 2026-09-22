@@ -1446,7 +1446,7 @@ function GrammarView({ unit, question, onBack, grammarBlocks, grammarSlotLabel, 
               <GrammarSheetBlockView key={`h${i}`} block={block} />
             ))}
             {grammarBlocks.filter(b => b.type !== 'HEADER').length > 0 && (
-              <GrammarSlideshow key={unit.id} blocks={grammarBlocks.filter(b => b.type !== 'HEADER')} />
+              <GrammarSlideshow key={`${unit.unitId ?? unit.title}::${grammarSlotLabel ?? ''}`} blocks={grammarBlocks.filter(b => b.type !== 'HEADER')} />
             )}          </>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -2099,6 +2099,20 @@ function DictationAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
   const [finished, setFinished] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // Ünite gerçekten değiştiğinde (aynı ekran açık kalıp arkadan ünite
+  // değişse bile) konumu sıfırla — geri/ileri ile başka ünitenin
+  // Dictation All'ına geçildiğinde önceki ünitenin konumunda kalmasın.
+  const unitKey = unit.unitId ?? `${unit.title}::${unit.id}`
+  useEffect(() => {
+    setIndex(0)
+    setTyped('')
+    setChecked(false)
+    setCorrect(false)
+    setScore(0)
+    setFinished(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unitKey])
+
   const current = items[index]
 
   function check() {
@@ -2226,6 +2240,17 @@ function ShadowingAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
   const [index, setIndex] = useState(0)
   const [revealed, setRevealed] = useState(false)
   const [listOpen, setListOpen] = useState(false)
+
+  // Ünite gerçekten değiştiğinde (aynı ekran açık kalıp arkadan ünite
+  // değişse bile) konumu sıfırla — geri/ileri ile başka ünitenin
+  // Shadowing All'ına geçildiğinde önceki ünitenin konumunda kalmasın.
+  const unitKey = unit.unitId ?? `${unit.title}::${unit.id}`
+  useEffect(() => {
+    setIndex(0)
+    setRevealed(false)
+    setListOpen(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unitKey])
 
   const current = items[index]
   const isLast = index + 1 >= items.length
@@ -2837,9 +2862,9 @@ function GrammarSheetBlockView({ block }: { block: GrammarSheetBlock }) {
   )
 }
 
-// Sheet'ten gelen tüm gramer kartlarında: gramer parçalarını tek tek,
-// "İleri/Geri" ile gezilen slayt olarak gösterir. Soru kartlarında
-// (question dolu olan görünüm) kullanılmaz.
+// Sadece A1'in ilk ünitesinde deneme amaçlı: gramer parçalarını tek tek,
+// "İleri/Geri" ile gezilen slayt olarak gösterir. Diğer her yerde eski,
+// hepsi-tek-sayfada görünüm kullanılmaya devam eder.
 function GrammarSlideshow({ blocks }: { blocks: GrammarSheetBlock[] }) {
   const [i, setI] = useState(0)
   const total = blocks.length
@@ -3330,30 +3355,35 @@ function saveDrillTopicsToStorage(unitId: number, topics: DrillTopic[]) {
   try { localStorage.setItem(drillTopicsKey(unitId), JSON.stringify(topics)) } catch {}
 }
 
+// Bir ünite için Drill konularının hangi kaynaktan geleceğini belirler.
+// Hem ilk açılışta hem de (aynı ekran açık kalıp arkadan ünite değiştiğinde)
+// yeniden senkronize etmek için kullanılıyor — DrillView içinde iki yerden çağrılıyor.
+function computeInitialDrillTopics(unitId: number, sheetTopics?: DrillTopic[]): DrillTopic[] {
+  // Öncelik sırası:
+  // 1. sheetTopics (B2 Sheets'ten canlı gelen konular)
+  // 2. localStorage'da kayıtlı konular (P alanı manuel ekleme)
+  // 3. Örnek konu (P alanı ilk açılış)
+  if (sheetTopics && sheetTopics.length > 0) return sheetTopics
+  const existing = loadDrillTopics(unitId)
+  if (existing.length > 0) return existing
+  const seeded = rowsToDrillTopics([{
+    topic_id: 'sample_past_simple',
+    topic_label: 'Past Simple – affirmative (örnek)',
+    target_structure: 'Past Simple',
+    substitution_model: 'I went to the cinema yesterday.',
+    substitution_cues: 'museum:I went to the museum yesterday.|park:I went to the park yesterday.|restaurant:I went to the restaurant yesterday.',
+    transformation_types: "negative:I didn't go to the cinema yesterday.|question:Did you go to the cinema yesterday?|short answer:Yes, I did.",
+    expansion_cues: 'with my sister:I went to the cinema yesterday with my sister.|because we wanted to see a new film:I went to the cinema yesterday with my sister because we wanted to see a new film.',
+    cue_response_items: 'last weekend/museum:I went to the museum last weekend.|yesterday/restaurant:I went to the restaurant yesterday.',
+    question_prompts: 'What did you do yesterday?|Tell me about somewhere you went last weekend.',
+    notes: 'Örnek konu — silip kendi konularını ekleyebilirsin.',
+  }])
+  saveDrillTopicsToStorage(unitId, seeded)
+  return seeded
+}
+
 function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => void; sheetTopics?: DrillTopic[] }) {
-  const [topics, setTopics] = useState<DrillTopic[]>(() => {
-    // Öncelik sırası:
-    // 1. sheetTopics (B2 Sheets'ten canlı gelen konular)
-    // 2. localStorage'da kayıtlı konular (P alanı manuel ekleme)
-    // 3. Örnek konu (P alanı ilk açılış)
-    if (sheetTopics && sheetTopics.length > 0) return sheetTopics
-    const existing = loadDrillTopics(unit.id)
-    if (existing.length > 0) return existing
-    const seeded = rowsToDrillTopics([{
-      topic_id: 'sample_past_simple',
-      topic_label: 'Past Simple – affirmative (örnek)',
-      target_structure: 'Past Simple',
-      substitution_model: 'I went to the cinema yesterday.',
-      substitution_cues: 'museum:I went to the museum yesterday.|park:I went to the park yesterday.|restaurant:I went to the restaurant yesterday.',
-      transformation_types: "negative:I didn't go to the cinema yesterday.|question:Did you go to the cinema yesterday?|short answer:Yes, I did.",
-      expansion_cues: 'with my sister:I went to the cinema yesterday with my sister.|because we wanted to see a new film:I went to the cinema yesterday with my sister because we wanted to see a new film.',
-      cue_response_items: 'last weekend/museum:I went to the museum last weekend.|yesterday/restaurant:I went to the restaurant yesterday.',
-      question_prompts: 'What did you do yesterday?|Tell me about somewhere you went last weekend.',
-      notes: 'Örnek konu — silip kendi konularını ekleyebilirsin.',
-    }])
-    saveDrillTopicsToStorage(unit.id, seeded)
-    return seeded
-  })
+  const [topics, setTopics] = useState<DrillTopic[]>(() => computeInitialDrillTopics(unit.id, sheetTopics))
   const [progress, setProgress] = useState<Record<string, DrillProgress>>(() => loadDrillProgress(unit.id))
   const [activeTopicId, setActiveTopicId] = useState<string | null>(null)
 
@@ -3377,6 +3407,28 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
   const [feedback, setFeedback] = useState<null | { kind: 'good' | 'bad' | 'free'; expectedHtml?: string; givenHtml?: string }>(null)
   const [quickMode, setQuickMode] = useState<boolean>(() => { try { return localStorage.getItem('nc_drill_quick_mode') === '1' } catch { return false } })
   const [summary, setSummary] = useState<null | { correct: number; wrong: number; stageLabel: string; nextReview: number }>(null)
+
+  // Ünite gerçekten değiştiğinde (aynı Drill ekranı açık kalıp arkadan başka
+  // seviye/üniteye geçilse bile — örn. geri/ileri ile) tüm kart içeriğini ve
+  // ilerlemeyi o ünitenin kendi verisiyle yeniden yükle. Aksi halde başlık
+  // güncellenip içindeki konu listesi bir önceki üniteden kalıyordu.
+  const drillUnitKey = unit.unitId ?? `${unit.title}::${unit.id}`
+  useEffect(() => {
+    setTopics(computeInitialDrillTopics(unit.id, sheetTopics))
+    setProgress(loadDrillProgress(unit.id))
+    setActiveTopicId(null)
+    setAddPanel(null)
+    setQueue(null)
+    setIdx(0)
+    setCorrect(0)
+    setWrong(0)
+    setRetryPool([])
+    setUsedRetry(false)
+    setAnswer('')
+    setFeedback(null)
+    setSummary(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drillUnitKey])
 
   function persistTopics(next: DrillTopic[]) {
     setTopics(next)
@@ -4526,7 +4578,7 @@ export default function App() {
             unit={selectedUnitLive}
             question={selectedQuestion}
             onBack={() => { setView('unit'); setSelectedQuestionIndex(null) }}
-            slideMode={true}
+            slideMode={level === 'A1' && selectedUnitLive.id === 1}
             grammarSlotLabel={(() => {
               if (!grammarSheetData) return undefined
               const unitId = selectedUnitLive.unitId ?? `${level}-U${String(selectedUnitLive.id).padStart(2, '0')}`
