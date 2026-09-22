@@ -10,6 +10,10 @@
 
 const MODEL_ID = 'gemma-4-26b-a4b-it'
 
+// NOT: Gemma modelleri Gemini API'de ayrı bir "system_instruction" alanını
+// desteklemiyor (Google bunu 400 hatasıyla reddediyor: "Developer instruction
+// is not enabled for models/gemma-..."). Bu yüzden sistem talimatını ayrı
+// göndermek yerine, aşağıda öğrencinin cümlesiyle tek mesaj halinde birleştiriyoruz.
 const SYSTEM_PROMPT = `You are a grammar drill assistant for an English language learning platform. Your role is strictly limited to evaluating student responses during structured drills.
 
 YOUR BEHAVIOR RULES:
@@ -59,19 +63,23 @@ exports.handler = async (event) => {
   }
 
   try {
+    const combinedPrompt = `${SYSTEM_PROMPT}\n\n---\n\nÖğrencinin cümlesi (bunu değerlendir):\n${sentence}`
+
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:generateContent?key=${apiKey}`
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ role: 'user', parts: [{ text: sentence }] }],
+        contents: [{ role: 'user', parts: [{ text: combinedPrompt }] }],
       }),
     })
 
     if (!res.ok) {
       // Google'dan hata döndü (kota, geçici sorun vb.) — öğrenciye nötr mesaj.
-      return { statusCode: 200, body: JSON.stringify({ karar: 'hata', mesaj: 'Şu an kontrol edemedim, biraz sonra tekrar dene.' }) }
+      // Hatanın gerçek nedenini (öğrenciye gösterilmeyen) debug alanında taşıyoruz.
+      let errDetail = ''
+      try { errDetail = (await res.text()).slice(0, 300) } catch {}
+      return { statusCode: 200, body: JSON.stringify({ karar: 'hata', mesaj: 'Şu an kontrol edemedim, biraz sonra tekrar dene.', debug: errDetail }) }
     }
 
     const data = await res.json()
