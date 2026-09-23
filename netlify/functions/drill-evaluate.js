@@ -59,6 +59,7 @@ exports.handler = async (event) => {
 
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
+    console.error('[drill-evaluate] GEMINI_API_KEY tanımlı değil.')
     return { statusCode: 500, body: JSON.stringify({ karar: 'hata', mesaj: 'Sunucu tarafında bir ayar eksik. Lütfen daha sonra tekrar dene.' }) }
   }
 
@@ -76,9 +77,9 @@ exports.handler = async (event) => {
 
     if (!res.ok) {
       // Google'dan hata döndü (kota, geçici sorun vb.) — öğrenciye nötr mesaj.
-      // Hatanın gerçek nedenini (öğrenciye gösterilmeyen) debug alanında taşıyoruz.
       let errDetail = ''
-      try { errDetail = (await res.text()).slice(0, 300) } catch {}
+      try { errDetail = (await res.text()).slice(0, 500) } catch {}
+      console.error('[drill-evaluate] Google hata döndü. status=' + res.status + ' body=' + errDetail)
       return { statusCode: 200, body: JSON.stringify({ karar: 'hata', mesaj: 'Şu an kontrol edemedim, biraz sonra tekrar dene.', debug: errDetail }) }
     }
 
@@ -90,6 +91,7 @@ exports.handler = async (event) => {
 
     if (!kararMatch || !mesajMatch) {
       // Model kalıp dışı cevap verdi — site bozulmasın, nötr mesaj göster.
+      console.error('[drill-evaluate] Kalıp uyuşmadı. rawText=' + rawText.slice(0, 500))
       return { statusCode: 200, body: JSON.stringify({ karar: 'hata', mesaj: 'Cevabı okuyamadım, biraz sonra tekrar dene.' }) }
     }
 
@@ -101,6 +103,7 @@ exports.handler = async (event) => {
       }),
     }
   } catch (e) {
+    console.error('[drill-evaluate] Beklenmedik hata: ' + (e && e.message ? e.message : String(e)))
     return { statusCode: 200, body: JSON.stringify({ karar: 'hata', mesaj: 'Bir bağlantı sorunu oldu, biraz sonra tekrar dene.' }) }
   }
 }
