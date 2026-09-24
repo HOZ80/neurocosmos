@@ -2,7 +2,7 @@
 //
 // Neurocosmos AI Kapısı — "drill_degerlendirme" görev tipi.
 // Faz 1: yalnızca "neither / nor" konusu için test ediliyor.
-// Model: Gemma 4 26B A4B IT, OpenRouter üzerinden (ücretsiz, ":free" sürümü).
+// Model: Gemma 4 26B A4B IT, OpenRouter üzerinden (ücretli sürüm, ön ödemeli bakiyeden düşer).
 // Google'ın kendi API'si (Gemini API) bu proje için erişimi reddettiğinden
 // (403 PERMISSION_DENIED, hesap tarafında bir kısıtlama), aynı modeli
 // tamamen ayrı, bağımsız bir servisten çağırıyoruz.
@@ -11,7 +11,7 @@
 // API anahtarı Netlify'daki OPENROUTER_API_KEY ortam değişkeninden okunur —
 // koda hiçbir zaman yazılmaz.
 
-const MODEL_ID = 'google/gemma-4-26b-a4b-it:free'
+const MODEL_ID = 'google/gemma-4-26b-a4b-it'
 
 const SYSTEM_PROMPT = `You are a grammar drill assistant for an English language learning platform. Your role is strictly limited to evaluating student responses during structured drills.
 
