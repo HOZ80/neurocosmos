@@ -3597,23 +3597,44 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
         if (!given) return
         setAiChecking(true)
         setAiResult(null)
-        const isRevealAttempt = aiWrongCount >= 2
         try {
+          // Her denemede önce normal değerlendirme yapılır — 3. deneme dahil,
+          // çünkü öğrenci bu sefer doğru yazmış olabilir.
           const res = await fetch('/.netlify/functions/drill-evaluate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sentence: given, reveal: isRevealAttempt }),
+            body: JSON.stringify({ sentence: given, question: item.cue }),
           })
           const data = await res.json()
-          setAiResult({ karar: data.karar, mesaj: data.mesaj })
+
           if (data.karar === 'dogru') {
+            setAiResult({ karar: data.karar, mesaj: data.mesaj })
             setAiWrongCount(0)
             setTimeout(() => advance(true, item), 1200)
-          } else if (data.karar === 'gramer_hatasi' || data.karar === 'yapi_eksik') {
-            setAiWrongCount(c => c + 1)
+            return
           }
-          // 'aciklama' → kullanıcı "Devam et"e basana kadar bekler.
-          // 'hata' → deneme sayılmaz, aynı hakla tekrar dener.
+
+          if (data.karar === 'gramer_hatasi' || data.karar === 'yapi_eksik') {
+            const nextWrongCount = aiWrongCount + 1
+            if (nextWrongCount >= 3) {
+              // Üçüncü hatalı deneme: düzeltmeyi ve açıklamayı göster.
+              const revealRes = await fetch('/.netlify/functions/drill-evaluate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sentence: given, question: item.cue, reveal: true }),
+              })
+              const revealData = await revealRes.json()
+              setAiResult({ karar: revealData.karar, mesaj: revealData.mesaj })
+              setAiWrongCount(nextWrongCount)
+            } else {
+              setAiResult({ karar: data.karar, mesaj: data.mesaj })
+              setAiWrongCount(nextWrongCount)
+            }
+            return
+          }
+
+          // 'hata' — bağlantı/format sorunu, deneme sayılmaz.
+          setAiResult({ karar: data.karar, mesaj: data.mesaj })
         } catch {
           setAiResult({ karar: 'hata', mesaj: 'Bir bağlantı sorunu oldu, biraz sonra tekrar dene.' })
         } finally {

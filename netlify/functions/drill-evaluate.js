@@ -33,6 +33,8 @@ ERROR CATEGORIES YOU TRACK:
 
 LANGUAGE: Respond in Turkish unless the drill prompt specifies otherwise.
 
+You will also be given the question the student was answering — use it to judge whether their sentence is on-topic and to make your feedback more specific, but keep following the rules above.
+
 OUTPUT FORMAT (mandatory, always exactly two lines, nothing else — no greetings, no extra text before or after):
 KARAR: <dogru | gramer_hatasi | yapi_eksik>
 MESAJ: <student-facing feedback in Turkish, 2-3 sentences, following rules above>
@@ -44,7 +46,9 @@ Mapping: rule 2 → KARAR: dogru. Rule 3 → KARAR: gramer_hatasi. Rule 4 → KA
 // açıklama veriyoruz.
 const REVEAL_SYSTEM_PROMPT = `You are a grammar drill assistant for an English language learning platform.
 
-The student has attempted this question three times without producing a correct sentence using the target structure (neither/nor). Your job now is different from normal evaluation: take their most recent sentence and rewrite it into a correct, natural example that uses the target structure, preserving their original content and meaning as closely as possible. Then add one short, clear explanation of the key rule the correction illustrates.
+The student has attempted the given question three times without producing a correct sentence using the target structure (neither/nor). Your job now is different from normal evaluation: take their most recent sentence and rewrite ONLY the incorrect part into a correct, natural sentence that uses the target structure, keeping any part of their sentence that was already correct exactly as they wrote it, and preserving their original content and meaning as closely as possible. Then add one short, clear explanation of the key rule the correction illustrates.
+
+You will be given the question the student was answering — use it to make sure the correction stays relevant to what was asked.
 
 ERROR CATEGORIES FOR CONTEXT:
 - Double negative (neither + didn't/wasn't etc.)
@@ -59,15 +63,14 @@ TARGET STRUCTURE LAYERS:
 - Subject + verb + neither X nor Y (Complement)
 
 RULES:
-- Keep the student's own topic/content (their words, their subject matter) as much as possible.
+- Do not repeat parts of the student's sentence that were already correct — only show the corrected sentence once, in full, not twice.
 - Keep it short: the corrected sentence, then one explanation sentence. Maximum 2-3 sentences total.
 - Calm and encouraging tone.
 
-LANGUAGE: Respond in Turkish (the corrected sentence itself stays in English, the explanation is in Turkish).
+LANGUAGE: The corrected sentence stays in English; everything else is in Turkish.
 
-OUTPUT FORMAT (mandatory, always exactly two lines, nothing else — no greetings, no extra text before or after):
-KARAR: aciklama
-MESAJ: <the corrected sentence in English>. <one-sentence explanation in Turkish>`
+OUTPUT FORMAT (mandatory, exactly this shape, nothing else before or after):
+Doğru hali: "<the corrected sentence in English>." Burada <what was wrong, in a few words> — <the rule, in one clause>.`
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -75,10 +78,12 @@ exports.handler = async (event) => {
   }
 
   let sentence = ''
+  let question = ''
   let reveal = false
   try {
     const body = JSON.parse(event.body || '{}')
     sentence = (body.sentence || '').trim()
+    question = (body.question || '').trim()
     reveal = !!body.reveal
   } catch {
     return { statusCode: 400, body: JSON.stringify({ karar: 'hata', mesaj: 'İstek okunamadı.' }) }
@@ -95,6 +100,10 @@ exports.handler = async (event) => {
   }
 
   try {
+    const userContent = question
+      ? `SORU (öğrenciye verilen görev): ${question}\n\nÖĞRENCİNİN CÜMLESİ: ${sentence}`
+      : sentence
+
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -107,7 +116,7 @@ exports.handler = async (event) => {
         model: MODEL_ID,
         messages: [
           { role: 'system', content: reveal ? REVEAL_SYSTEM_PROMPT : SYSTEM_PROMPT },
-          { role: 'user', content: sentence },
+          { role: 'user', content: userContent },
         ],
       }),
     })
@@ -121,9 +130,24 @@ exports.handler = async (event) => {
     }
 
     const data = await res.json()
-    const rawText = data?.choices?.[0]?.message?.content || ''
+    const rawText = (data?.choices?.[0]?.message?.content || '').trim()
 
-    const kararMatch = rawText.match(/KARAR:\s*(dogru|gramer_hatasi|yapi_eksik|aciklama)/i)
+    if (reveal) {
+      // Model "Doğru hali: ..." kalıbına uyması bekleniyor, ama kontrolü
+      // elimizde tutmak için olası kaçak KARAR:/MESAJ: etiketlerini
+      // öğrenciye göstermeden önce temizliyoruz.
+      const mesaj = rawText
+        .replace(/^KARAR:.*$/gim, '')
+        .replace(/MESAJ:\s*/gi, '')
+        .trim()
+      if (!mesaj) {
+        console.error('[drill-evaluate] Reveal modunda boş cevap geldi. rawText=' + rawText.slice(0, 300))
+        return { statusCode: 200, body: JSON.stringify({ karar: 'hata', mesaj: 'Cevabı okuyamadım, biraz sonra tekrar dene.' }) }
+      }
+      return { statusCode: 200, body: JSON.stringify({ karar: 'aciklama', mesaj }) }
+    }
+
+    const kararMatch = rawText.match(/KARAR:\s*(dogru|gramer_hatasi|yapi_eksik)/i)
     const mesajMatch = rawText.match(/MESAJ:\s*([\s\S]*)/i)
 
     if (!kararMatch || !mesajMatch) {
