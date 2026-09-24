@@ -97,6 +97,7 @@ interface DrillTopic {
     question: DrillCueItem[]
   }
   notes: string
+  aiEval?: boolean // Sheet'teki ai_eval sütunu TRUE ise Serbest Üretim'de AI değerlendirmesi açık
   modelMismatchWarning?: string // model sayısı ile grup sayısı tutmuyorsa, hangi aşama(lar)da olduğu
   hints?: Partial<Record<keyof DrillTopic['stages'], string>> // konuya özel yönlendirme — boşsa sabit genel açıklama kullanılır
 }
@@ -3119,6 +3120,7 @@ function rowsToDrillTopics(rows: Record<string, string>[]): DrillTopic[] {
         question: question.items,
       },
       notes: r.notes || '',
+      aiEval: ['true', '1', 'evet'].includes((r.ai_eval || '').trim().toLowerCase()),
       modelMismatchWarning: mismatchWarning || undefined,
       hints: {
         substitution: r.substitution_hint?.trim() || undefined,
@@ -3293,9 +3295,8 @@ function DrillRevealInline({ expected, accent }: { expected: string; accent: str
 // chain per topic, and schedules spaced review (8h/1d/2d/1w/2w/1m/3m) in
 // localStorage, keyed per unit so different Private units don't collide.
 
-// Faz 1 pilot: Serbest Üretim (question) aşamasında AI değerlendirmesi
-// yalnızca bu topic_id'ler için aktif. Yeni konu eklendikçe buraya eklenir.
-const AI_EVAL_TOPIC_IDS = ['P-U02-T01']
+// Serbest Üretim (question) aşamasında AI değerlendirmesinin hangi konularda
+// açık olacağı Drill Sheet'teki ai_eval sütunundan gelir (TRUE = açık).
 
 const DRILL_REVIEW_STAGES = [
   { label: '8 saat', ms: 8 * 3600 * 1000 },
@@ -3351,6 +3352,20 @@ function saveDrillProgress(unitId: number, data: Record<string, DrillProgress>) 
   try { localStorage.setItem(drillProgressKey(unitId), JSON.stringify(data)) } catch {}
 }
 
+// AI kullanımı için günlük giriş kotası: profil + o günün tarihine göre,
+// cihazda tutuluyor. Owner profili sınırsızdır (ayrıca çağrılmaz).
+const DAILY_AI_QUOTA = 3
+function aiQuotaKey(profile: string) {
+  const day = new Date().toISOString().slice(0, 10)
+  return `nc_ai_quota_${profile}_${day}`
+}
+function loadAiQuotaUsed(profile: string): number {
+  try { return parseInt(localStorage.getItem(aiQuotaKey(profile)) || '0', 10) || 0 } catch { return 0 }
+}
+function incrementAiQuotaUsed(profile: string) {
+  try { localStorage.setItem(aiQuotaKey(profile), String(loadAiQuotaUsed(profile) + 1)) } catch {}
+}
+
 function drillTopicsKey(unitId: number) { return `nc_drill_topics_u${unitId}` }
 function loadDrillTopics(unitId: number): DrillTopic[] {
   try { return JSON.parse(localStorage.getItem(drillTopicsKey(unitId)) || '[]') } catch { return [] }
@@ -3386,7 +3401,7 @@ function computeInitialDrillTopics(unitId: number, sheetTopics?: DrillTopic[]): 
   return seeded
 }
 
-function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => void; sheetTopics?: DrillTopic[] }) {
+function DrillView({ unit, onBack, sheetTopics, entryProfile }: { unit: Unit; onBack: () => void; sheetTopics?: DrillTopic[]; entryProfile: string | null }) {
   const [topics, setTopics] = useState<DrillTopic[]>(() => computeInitialDrillTopics(unit.id, sheetTopics))
   const [progress, setProgress] = useState<Record<string, DrillProgress>>(() => loadDrillProgress(unit.id))
   const [activeTopicId, setActiveTopicId] = useState<string | null>(null)
@@ -3412,6 +3427,7 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
   const [aiChecking, setAiChecking] = useState(false)
   const [aiResult, setAiResult] = useState<null | { karar: string; mesaj: string }>(null)
   const [aiWrongCount, setAiWrongCount] = useState(0)
+  const [aiAvailableThisSession, setAiAvailableThisSession] = useState(true)
   const [quickMode, setQuickMode] = useState<boolean>(() => { try { return localStorage.getItem('nc_drill_quick_mode') === '1' } catch { return false } })
   const [summary, setSummary] = useState<null | { correct: number; wrong: number; stageLabel: string; nextReview: number }>(null)
 
@@ -3548,6 +3564,22 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
     setQueue(q); setIdx(0); setCorrect(0); setWrong(0); setRetryPool([]); setUsedRetry(false)
     setAnswer(''); setFeedback(null); setSummary(null)
     setAiChecking(false); setAiResult(null); setAiWrongCount(0)
+
+    // AI kullanımı için günlük giriş kotası — yalnızca AI'li konularda,
+    // yalnızca Owner olmayan profillerde kontrol edilir. Kota dolmuşsa bu
+    // oturumda AI hiç devreye girmez, Serbest Üretim eski haline döner.
+    const isAiTopic = !!topic.aiEval
+    if (isAiTopic && entryProfile && entryProfile !== 'owner') {
+      const used = loadAiQuotaUsed(entryProfile)
+      if (used >= DAILY_AI_QUOTA) {
+        setAiAvailableThisSession(false)
+      } else {
+        incrementAiQuotaUsed(entryProfile)
+        setAiAvailableThisSession(true)
+      }
+    } else {
+      setAiAvailableThisSession(true)
+    }
   }
 
   function exitSession() {
@@ -3592,7 +3624,9 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
     if (item.expected === null) {
       // Faz 1 pilot: bu konuda Serbest Üretim, kendi kendini değerlendirme
       // yerine AI kapısına gönderilir.
-      const aiEnabled = item.stageKey === 'question' && AI_EVAL_TOPIC_IDS.includes(activeTopicId || '')
+      const activeTopic = topics.find(t => t.id === activeTopicId)
+      const aiEnabled = item.stageKey === 'question' && !!activeTopic?.aiEval && aiAvailableThisSession
+      const topicInfo = { label: activeTopic?.label || '', target: activeTopic?.target || '', notes: activeTopic?.notes || '' }
       if (aiEnabled) {
         if (!given) return
         setAiChecking(true)
@@ -3603,7 +3637,7 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
           const res = await fetch('/.netlify/functions/drill-evaluate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sentence: given, question: item.cue }),
+            body: JSON.stringify({ sentence: given, question: item.cue, topic: topicInfo }),
           })
           const data = await res.json()
 
@@ -3621,7 +3655,7 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
               const revealRes = await fetch('/.netlify/functions/drill-evaluate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sentence: given, question: item.cue, reveal: true }),
+                body: JSON.stringify({ sentence: given, question: item.cue, topic: topicInfo, reveal: true }),
               })
               const revealData = await revealRes.json()
               setAiResult({ karar: revealData.karar, mesaj: revealData.mesaj })
@@ -3785,6 +3819,7 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
           {/* ── Quick mod: Cevabı gör → self-grade ── */}
           {quickMode && !feedback && (
             <DrillRevealBlock
+              key={idx}
               expected={item.expected}
               onCorrect={() => advance(true, item)}
               onWrong={() => advance(false, item)}
@@ -4221,6 +4256,78 @@ export default function App() {
     }
   }, [level, view, selectedUnit, selectedGrammarSlot, selectedQuestionIndex])
 
+  // ── PWA yükleme — Android/Chrome: beforeinstallprompt yakalama ──
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null)
+  useEffect(() => {
+    function onBeforeInstallPrompt(e: any) {
+      e.preventDefault()
+      setDeferredInstallPrompt(e)
+    }
+    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+    return () => window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+  }, [])
+
+  async function handleInstallClick() {
+    if (!deferredInstallPrompt) return
+    deferredInstallPrompt.prompt()
+    await deferredInstallPrompt.userChoice
+    setDeferredInstallPrompt(null)
+  }
+
+  const isAndroidDevice = /android/i.test(navigator.userAgent)
+  const showAndroidInstallButton = isAndroidDevice && !!deferredInstallPrompt
+
+  // ── PWA yükleme — iPhone/Safari: otomatik istem yok, talimat şeridi gösteriyoruz ──
+  const isIOSDevice = /iphone|ipad|ipod/i.test(navigator.userAgent) && !(window as any).MSStream
+  const isSafariBrowser = /^((?!chrome|android|crios|fxios|edgios).)*safari/i.test(navigator.userAgent)
+  const isStandaloneMode = (window.navigator as any).standalone === true || window.matchMedia('(display-mode: standalone)').matches
+  const [iosBannerDismissed, setIosBannerDismissed] = useState<boolean>(() => {
+    try { return sessionStorage.getItem('ios_install_banner_dismissed') === 'true' } catch { return false }
+  })
+  const showIOSInstallBanner = isIOSDevice && isSafariBrowser && !isStandaloneMode && !iosBannerDismissed
+
+  function dismissIOSBanner() {
+    setIosBannerDismissed(true)
+    try { sessionStorage.setItem('ios_install_banner_dismissed', 'true') } catch {}
+  }
+
+  const iosInstallBanner = showIOSInstallBanner ? (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+      background: '#4F46E5', color: '#fff', padding: '10px 16px',
+      display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+    }}>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+        <rect x="7" y="2" width="10" height="17" rx="2" />
+        <path d="M12 13v-7" />
+        <path d="M9.5 8.5L12 6l2.5 2.5" />
+      </svg>
+      <div style={{ flex: 1, lineHeight: 1.4 }}>
+        Uygulama gibi kullanmak için: alttaki <strong>Paylaş</strong> ikonuna dokun, sonra <strong>Ana Ekrana Ekle</strong>'yi seç.
+      </div>
+      <button onClick={dismissIOSBanner} style={{
+        background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '6px',
+        color: '#fff', padding: '5px 10px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+      }}>Anladım</button>
+    </div>
+  ) : null
+
+  const androidInstallButton = showAndroidInstallButton ? (
+    <button onClick={handleInstallClick} style={{
+      background: 'var(--primary)', border: 'none', borderRadius: '7px',
+      padding: '5px 10px', fontSize: '12px', fontWeight: 600, color: '#fff', cursor: 'pointer',
+      display: 'flex', alignItems: 'center', gap: '6px',
+    }}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 3v12" />
+        <path d="M7 10l5 5 5-5" />
+        <path d="M5 19h14" />
+      </svg>
+      Uygulamayı Yükle
+    </button>
+  ) : null
+
   // ── Giriş ekranı profili (bkz. EntryScreen) ──
   const [entryProfile, setEntryProfile] = useState<EntryProfile | null>(() => {
     try {
@@ -4533,6 +4640,7 @@ export default function App() {
   if (!entryProfile) {
     return (
       <>
+        {iosInstallBanner}
         <EntryScreen
           onPickProfile={chooseProfile}
           onPickOwner={() => setShowPasswordModal(true)}
@@ -4550,15 +4658,19 @@ export default function App() {
 
   if (entryProfile === 'child_omur' || entryProfile === 'child_oztug') {
     return (
-      <ChildDashboard
-        childName={entryProfile === 'child_omur' ? 'Ömür' : 'Öztuğ'}
-        onExit={handleExitToEntry}
-      />
+      <>
+        {iosInstallBanner}
+        <ChildDashboard
+          childName={entryProfile === 'child_omur' ? 'Ömür' : 'Öztuğ'}
+          onExit={handleExitToEntry}
+        />
+      </>
     )
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      {iosInstallBanner}
 
       {/* ── Nav ── */}
       <header style={{
@@ -4604,17 +4716,28 @@ export default function App() {
 
           {/* User */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {androidInstallButton}
+            {level === 'P' && privateUnlocked && (
+              <button onClick={handleLockPrivate} title="Kilitle" style={{
+                background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
+                padding: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="5" y="11" width="14" height="10" rx="2" />
+                  <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                </svg>
+              </button>
+            )}
             <button onClick={handleExitToEntry} title="Profili değiştir" style={{
               background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
-              padding: '5px 10px', fontSize: '12px', fontWeight: 600, color: 'var(--foreground)', cursor: 'pointer',
-            }}>Çıkış</button>
-            {level === 'P' && privateUnlocked && (
-              <button onClick={handleLockPrivate} style={{
-                background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
-                padding: '5px 10px', fontSize: '12px', fontWeight: 600, color: 'var(--foreground)', cursor: 'pointer',
-              }}>🔒 Kilitle</button>
-            )}
-            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, #4F46E5, #818CF8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 700, color: '#fff' }}>S</div>
+              padding: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <path d="M16 17l5-5-5-5" />
+                <path d="M21 12H9" />
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -4697,7 +4820,7 @@ export default function App() {
             unit={selectedUnitLive}
             question={selectedQuestion}
             onBack={() => { setView('unit'); setSelectedQuestionIndex(null) }}
-            slideMode={level === 'A1' && selectedUnitLive.id === 1}
+            slideMode={true}
             grammarSlotLabel={(() => {
               if (!grammarSheetData) return undefined
               const unitId = selectedUnitLive.unitId ?? `${level}-U${String(selectedUnitLive.id).padStart(2, '0')}`
@@ -4742,6 +4865,7 @@ export default function App() {
           <DrillView
             unit={selectedUnitLive}
             onBack={() => setView('unit')}
+            entryProfile={entryProfile}
             sheetTopics={
               drillSheetData
                 ? (drillSheetData[
