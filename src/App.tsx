@@ -3411,6 +3411,7 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
   const [feedback, setFeedback] = useState<null | { kind: 'good' | 'bad' | 'free'; expectedHtml?: string; givenHtml?: string }>(null)
   const [aiChecking, setAiChecking] = useState(false)
   const [aiResult, setAiResult] = useState<null | { karar: string; mesaj: string }>(null)
+  const [aiWrongCount, setAiWrongCount] = useState(0)
   const [quickMode, setQuickMode] = useState<boolean>(() => { try { return localStorage.getItem('nc_drill_quick_mode') === '1' } catch { return false } })
   const [summary, setSummary] = useState<null | { correct: number; wrong: number; stageLabel: string; nextReview: number }>(null)
 
@@ -3438,6 +3439,7 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
     setSummary(null)
     setAiChecking(false)
     setAiResult(null)
+    setAiWrongCount(0)
     sheetTopicsAppliedRef.current = false
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drillUnitKey])
@@ -3545,12 +3547,12 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
     setActiveTopicId(topic.id)
     setQueue(q); setIdx(0); setCorrect(0); setWrong(0); setRetryPool([]); setUsedRetry(false)
     setAnswer(''); setFeedback(null); setSummary(null)
-    setAiChecking(false); setAiResult(null)
+    setAiChecking(false); setAiResult(null); setAiWrongCount(0)
   }
 
   function exitSession() {
     setQueue(null); setActiveTopicId(null); setSummary(null)
-    setAiChecking(false); setAiResult(null)
+    setAiChecking(false); setAiResult(null); setAiWrongCount(0)
   }
 
   function finishSession(finalCorrect: number, finalWrong: number) {
@@ -3572,7 +3574,7 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
     const newRetry = isCorrect || usedRetry ? retryPool : [...retryPool, item]
     setCorrect(newCorrect); setWrong(newWrong); setRetryPool(newRetry)
     setAnswer(''); setFeedback(null)
-    setAiChecking(false); setAiResult(null)
+    setAiChecking(false); setAiResult(null); setAiWrongCount(0)
     const nextIdx = idx + 1
     if (queue && nextIdx < queue.length) { setIdx(nextIdx); return }
     if (newRetry.length > 0 && !usedRetry) {
@@ -3595,17 +3597,23 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
         if (!given) return
         setAiChecking(true)
         setAiResult(null)
+        const isRevealAttempt = aiWrongCount >= 2
         try {
           const res = await fetch('/.netlify/functions/drill-evaluate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sentence: given }),
+            body: JSON.stringify({ sentence: given, reveal: isRevealAttempt }),
           })
           const data = await res.json()
           setAiResult({ karar: data.karar, mesaj: data.mesaj })
           if (data.karar === 'dogru') {
+            setAiWrongCount(0)
             setTimeout(() => advance(true, item), 1200)
+          } else if (data.karar === 'gramer_hatasi' || data.karar === 'yapi_eksik') {
+            setAiWrongCount(c => c + 1)
           }
+          // 'aciklama' → kullanıcı "Devam et"e basana kadar bekler.
+          // 'hata' → deneme sayılmaz, aynı hakla tekrar dener.
         } catch {
           setAiResult({ karar: 'hata', mesaj: 'Bir bağlantı sorunu oldu, biraz sonra tekrar dene.' })
         } finally {
@@ -3729,18 +3737,26 @@ function DrillView({ unit, onBack, sheetTopics }: { unit: Unit; onBack: () => vo
           {aiResult && (
             <div>
               <div style={{
-                background: aiResult.karar === 'dogru' ? '#F0FDF4' : (aiResult.karar === 'hata' ? '#FEF3C7' : '#FEF2F2'),
-                border: `1px solid ${aiResult.karar === 'dogru' ? 'rgba(34,197,94,0.3)' : (aiResult.karar === 'hata' ? '#FDE68A' : 'rgba(220,38,38,0.25)')}`,
+                background: aiResult.karar === 'dogru' ? '#F0FDF4' : (aiResult.karar === 'aciklama' ? '#EFF6FF' : (aiResult.karar === 'hata' ? '#FEF3C7' : '#FEF2F2')),
+                border: `1px solid ${aiResult.karar === 'dogru' ? 'rgba(34,197,94,0.3)' : (aiResult.karar === 'aciklama' ? 'rgba(59,130,246,0.3)' : (aiResult.karar === 'hata' ? '#FDE68A' : 'rgba(220,38,38,0.25)'))}`,
                 borderRadius: '9px', padding: '12px 14px', fontSize: '13px', lineHeight: 1.6,
-                color: aiResult.karar === 'dogru' ? '#166534' : (aiResult.karar === 'hata' ? '#92400E' : '#991B1B'),
+                color: aiResult.karar === 'dogru' ? '#166534' : (aiResult.karar === 'aciklama' ? '#1E40AF' : (aiResult.karar === 'hata' ? '#92400E' : '#991B1B')),
               }}>
                 {aiResult.mesaj}
               </div>
               {aiResult.karar !== 'dogru' && (
                 <button
-                  onClick={() => setAiResult(null)}
+                  onClick={() => {
+                    if (aiResult.karar === 'aciklama') {
+                      setAiResult(null)
+                      setAiWrongCount(0)
+                      advance(false, item)
+                    } else {
+                      setAiResult(null)
+                    }
+                  }}
                   style={{ marginTop: '10px', background: accent, color: '#fff', border: 'none', borderRadius: '9px', padding: '10px 16px', fontSize: '13px', cursor: 'pointer' }}
-                >Tekrar dene</button>
+                >{aiResult.karar === 'aciklama' ? 'Devam et' : 'Tekrar dene'}</button>
               )}
             </div>
           )}
