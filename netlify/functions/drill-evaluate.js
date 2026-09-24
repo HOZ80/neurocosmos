@@ -2,18 +2,17 @@
 //
 // Neurocosmos AI Kapısı — "drill_degerlendirme" görev tipi.
 // Faz 1: yalnızca "neither / nor" konusu için test ediliyor.
-// Model: Gemma 4 26B A4B IT (Google AI Studio, ücretsiz katman).
+// Model: Gemma 4 26B A4B IT, OpenRouter üzerinden (ücretsiz, ":free" sürümü).
+// Google'ın kendi API'si (Gemini API) bu proje için erişimi reddettiğinden
+// (403 PERMISSION_DENIED, hesap tarafında bir kısıtlama), aynı modeli
+// tamamen ayrı, bağımsız bir servisten çağırıyoruz.
 //
 // Bu dosya sunucu tarafında çalışır, öğrenci hiçbir zaman içeriğini görmez.
-// API anahtarı Netlify'daki GEMINI_API_KEY ortam değişkeninden okunur —
+// API anahtarı Netlify'daki OPENROUTER_API_KEY ortam değişkeninden okunur —
 // koda hiçbir zaman yazılmaz.
 
-const MODEL_ID = 'gemma-4-26b-a4b-it'
+const MODEL_ID = 'google/gemma-4-26b-a4b-it:free'
 
-// NOT: Gemma modelleri Gemini API'de ayrı bir "system_instruction" alanını
-// desteklemiyor (Google bunu 400 hatasıyla reddediyor: "Developer instruction
-// is not enabled for models/gemma-..."). Bu yüzden sistem talimatını ayrı
-// göndermek yerine, aşağıda öğrencinin cümlesiyle tek mesaj halinde birleştiriyoruz.
 const SYSTEM_PROMPT = `You are a grammar drill assistant for an English language learning platform. Your role is strictly limited to evaluating student responses during structured drills.
 
 YOUR BEHAVIOR RULES:
@@ -57,34 +56,40 @@ exports.handler = async (event) => {
     return { statusCode: 400, body: JSON.stringify({ karar: 'hata', mesaj: 'Cümle boş görünüyor.' }) }
   }
 
-  const apiKey = process.env.GEMINI_API_KEY
+  const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) {
-    console.error('[drill-evaluate] GEMINI_API_KEY tanımlı değil.')
+    console.error('[drill-evaluate] OPENROUTER_API_KEY tanımlı değil.')
     return { statusCode: 500, body: JSON.stringify({ karar: 'hata', mesaj: 'Sunucu tarafında bir ayar eksik. Lütfen daha sonra tekrar dene.' }) }
   }
 
   try {
-    const combinedPrompt = `${SYSTEM_PROMPT}\n\n---\n\nÖğrencinin cümlesi (bunu değerlendir):\n${sentence}`
-
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:generateContent?key=${apiKey}`
-    const res = await fetch(url, {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://neurocosmos.netlify.app',
+        'X-Title': 'Neurocosmos',
+      },
       body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: combinedPrompt }] }],
+        model: MODEL_ID,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: sentence },
+        ],
       }),
     })
 
     if (!res.ok) {
-      // Google'dan hata döndü (kota, geçici sorun vb.) — öğrenciye nötr mesaj.
+      // OpenRouter'dan hata döndü (kota, geçici sorun vb.) — öğrenciye nötr mesaj.
       let errDetail = ''
       try { errDetail = (await res.text()).slice(0, 500) } catch {}
-      console.error('[drill-evaluate] Google hata döndü. status=' + res.status + ' body=' + errDetail)
+      console.error('[drill-evaluate] OpenRouter hata döndü. status=' + res.status + ' body=' + errDetail)
       return { statusCode: 200, body: JSON.stringify({ karar: 'hata', mesaj: 'Şu an kontrol edemedim, biraz sonra tekrar dene.', debug: errDetail }) }
     }
 
     const data = await res.json()
-    const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    const rawText = data?.choices?.[0]?.message?.content || ''
 
     const kararMatch = rawText.match(/KARAR:\s*(dogru|gramer_hatasi|yapi_eksik)/i)
     const mesajMatch = rawText.match(/MESAJ:\s*([\s\S]*)/i)
