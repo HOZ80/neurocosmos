@@ -2087,18 +2087,41 @@ function normalizeAnswer(s: string) {
     .trim()
 }
 
+// Shadowing All / Dictation All gibi "tüm sorular" ekranlarındaki konumu
+// (kaçıncı soruda olunduğunu) adres satırına yazıp okumak için. Bu iki ekran
+// kendi konumunu kendisi yönetir, App bileşenindeki ana adres senkronuna
+// karışmaz — sadece 'ai' (all-index) parametresini ekler/günceller.
+function readAllIndexFromUrl(): number {
+  try {
+    const v = new URLSearchParams(window.location.search).get('ai')
+    const n = v ? parseInt(v, 10) : NaN
+    return Number.isFinite(n) && n >= 0 ? n : 0
+  } catch { return 0 }
+}
+function writeAllIndexToUrl(index: number) {
+  try {
+    const params = new URLSearchParams(window.location.search)
+    params.set('ai', String(index))
+    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`)
+  } catch {}
+}
+
 function DictationAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const items = useMemo(
     () => (unit.questionChain ?? []).filter(q => q.questionAudioUrl && q.answerEn),
     [unit.questionChain]
   )
-  const [index, setIndex] = useState(0)
+  const [index, setIndex] = useState<number>(readAllIndexFromUrl)
   const [typed, setTyped] = useState('')
   const [checked, setChecked] = useState(false)
   const [correct, setCorrect] = useState(false)
   const [score, setScore] = useState(0)
   const [finished, setFinished] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Kaçıncı soruda olunduğunu adres satırına yaz — sayfa yenilenince kaldığın
+  // yerde kalman için.
+  useEffect(() => { writeAllIndexToUrl(index) }, [index])
 
   // Ünite gerçekten değiştiğinde (aynı ekran açık kalıp arkadan ünite
   // değişse bile) konumu sıfırla — geri/ileri ile başka ünitenin
@@ -2238,9 +2261,13 @@ function ShadowingAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
     () => (unit.questionChain ?? []).filter(q => q.questionAudioUrl && q.answerEn),
     [unit.questionChain]
   )
-  const [index, setIndex] = useState(0)
+  const [index, setIndex] = useState<number>(readAllIndexFromUrl)
   const [revealed, setRevealed] = useState(false)
   const [listOpen, setListOpen] = useState(false)
+
+  // Kaçıncı soruda olunduğunu adres satırına yaz — sayfa yenilenince kaldığın
+  // yerde kalman için.
+  useEffect(() => { writeAllIndexToUrl(index) }, [index])
 
   // Ünite gerçekten değiştiğinde (aynı ekran açık kalıp arkadan ünite
   // değişse bile) konumu sıfırla — geri/ileri ile başka ünitenin

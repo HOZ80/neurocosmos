@@ -12,6 +12,8 @@
 
 const MODEL_ID = 'google/gemma-4-26b-a4b-it'
 
+const PERSONA_AND_ACCURACY_RULE = `You are acting as a native-level English linguist with expert, precise knowledge of standard English grammar. Base every judgment strictly on standard, well-established English grammar rules. Never invent a rule, never guess, never state something as a grammar fact unless you are certain it is correct standard English. If you are not fully certain whether something is an error, do not claim it is one.`
+
 const LANGUAGE_RULES = `Always address the student informally ("sen" form, not "siz"). Do not use complex or technical English grammar terminology in the student-facing text (e.g. never say "parallel structure violation", "auxiliary verb agreement" or similar textbook labels, and never add English grammar terms in parentheses) — describe the problem in plain, simple Turkish instead. Simple, everyday grammar words (like "fiil", "özne", "yardımcı fiil") are fine if they make the explanation clearer; the point is to avoid technical jargon and long labels, not to avoid all grammar vocabulary.`
 
 function topicBlock(topic) {
@@ -25,6 +27,8 @@ function topicBlock(topic) {
 
 function evaluatePrompt(topic) {
   return `You are a grammar drill assistant for an English language learning platform. Your role is strictly limited to evaluating student responses in the free production stage of a structured drill.
+
+${PERSONA_AND_ACCURACY_RULE}
 
 TOPIC OF THIS DRILL:
 ${topicBlock(topic)}
@@ -51,6 +55,8 @@ Mapping: rule 2 → KARAR: dogru. Rule 3 → KARAR: gramer_hatasi. Rule 4 → KA
 
 function revealPrompt(topic) {
   return `You are a grammar drill assistant for an English language learning platform.
+
+${PERSONA_AND_ACCURACY_RULE}
 
 TOPIC OF THIS DRILL:
 ${topicBlock(topic)}
