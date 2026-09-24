@@ -2137,7 +2137,12 @@ function DictationAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unitKey])
 
-  const current = items[index]
+  // Adresten gelen konum, veriler henüz (Sheet'ten) tam yüklenmeden önceki
+  // geçici/kısa listeden uzun olabilir — bu durumda listenin son sorusuna
+  // sabitliyoruz ki sayfa çökmesin. Gerçek veri yüklenince (items uzayınca)
+  // kayıtlı konum tekrar geçerli olur.
+  const safeIndex = items.length > 0 ? Math.min(index, items.length - 1) : 0
+  const current = items[safeIndex]
 
   function check() {
     if (!current || checked || !typed.trim()) return
@@ -2199,7 +2204,7 @@ function DictationAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
       ) : (
         <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <p style={{ margin: 0, fontSize: '12px', color: 'var(--muted-foreground)', fontFamily: 'var(--font-mono)' }}>Soru {index + 1} / {items.length}</p>
+            <p style={{ margin: 0, fontSize: '12px', color: 'var(--muted-foreground)', fontFamily: 'var(--font-mono)' }}>Soru {safeIndex + 1} / {items.length}</p>
             <p style={{ margin: 0, fontSize: '12px', color: 'var(--muted-foreground)' }}>Skor: {score}</p>
           </div>
 
@@ -2280,8 +2285,9 @@ function ShadowingAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unitKey])
 
-  const current = items[index]
-  const isLast = index + 1 >= items.length
+  const safeIndex = items.length > 0 ? Math.min(index, items.length - 1) : 0
+  const current = items[safeIndex]
+  const isLast = safeIndex + 1 >= items.length
 
   function jumpTo(i: number) {
     setIndex(i)
@@ -2324,7 +2330,7 @@ function ShadowingAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
       ) : (
         <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <p style={{ margin: 0, fontSize: '12px', color: 'var(--muted-foreground)', fontFamily: 'var(--font-mono)' }}>Soru {index + 1} / {items.length}</p>
+            <p style={{ margin: 0, fontSize: '12px', color: 'var(--muted-foreground)', fontFamily: 'var(--font-mono)' }}>Soru {safeIndex + 1} / {items.length}</p>
           </div>
 
           {/* Soruyu dinle */}
