@@ -2869,13 +2869,21 @@ function GrammarSheetBlockView({ block }: { block: GrammarSheetBlock }) {
             if (!line.trim()) return <br key={li} />
             const imgMatch = line.trim().match(/^\(\(([^\s()]+)\)\)$/)
             if (imgMatch) {
+              // Kart genişliğine göre sabit 3:2 oranlı bir kutu: her görsel bu
+              // orana göre kırpılıp (object-fit: cover) yerleştirilir, hiçbir
+              // zaman esnetilip bozulmaz. 3:2 dışındaki oranlar (yüklenen
+              // görsel daha dar/geniş olursa) kenarlardan kırpılır.
               return (
-                <img
+                <div
                   key={li}
-                  src={imgMatch[1]}
-                  alt=""
-                  style={{ maxWidth: '100%', borderRadius: '12px', margin: '6px 0', display: 'block' }}
-                />
+                  style={{ width: '100%', aspectRatio: '3 / 2', borderRadius: '12px', margin: '6px 0', overflow: 'hidden' }}
+                >
+                  <img
+                    src={imgMatch[1]}
+                    alt=""
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
+                </div>
               )
             }
             return (
@@ -4663,6 +4671,20 @@ export default function App() {
     const allowed = PROFILE_ALLOWED_LEVELS[entryProfile]
     return allowed ? allowed.includes(l) : false
   }
+
+  // Adres çubuğundan (elle yazılıp sayfa yenilenerek, ya da geri/ileri
+  // tuşuyla) profile kapalı bir seviyeye girilmiş olabilir — tab bar'daki
+  // tıklama bunu zaten engelliyor ama URL o kontrolü atlayabiliyor. Böyle bir
+  // durum tespit edilirse profili kendi seviyesine ve dashboard'a geri döndür.
+  useEffect(() => {
+    if (!entryProfile || entryProfile === 'owner' || entryProfile === 'child_omur' || entryProfile === 'child_oztug') return
+    if (isTabAvailable(level)) return
+    const fallback = PROFILE_ALLOWED_LEVELS[entryProfile]?.[0] ?? 'A1'
+    setLevel(fallback)
+    setView('dashboard')
+    setSelectedUnit(null)
+    setSelectedQuestionIndex(null)
+  }, [entryProfile, level])
 
   const breadcrumbs = [
     { label: LEVEL_META[level].code, onClick: () => { setView('dashboard'); setSelectedUnit(null) } },
