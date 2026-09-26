@@ -2079,12 +2079,48 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   )
 }
 
+// İngilizce kısaltmaları açık haline çevirir, sadece cevap KONTROLÜ için
+// (ekranda gösterilen metni değiştirmez). Böylece "hadn't" ile "had not",
+// "don't" ile "do not" vb. öğrencinin cevabı doğru olduğu halde sırf
+// kısaltma yazmadığı/yazdığı için yanlış sayılmaz. "'d" (had/would) ve "'s"
+// (is/has) belirsiz olduğu için kasıtlı olarak bu listeye alınmadı.
+function expandContractions(s: string): string {
+  let out = s.replace(/[’‘]/g, "'")
+  out = out.replace(/\bwon't\b/g, 'will not')
+  out = out.replace(/\bcan't\b/g, 'can not')
+  out = out.replace(/\bcannot\b/g, 'can not')
+  out = out.replace(/\bshan't\b/g, 'shall not')
+  out = out.replace(/n't\b/g, ' not')
+  out = out.replace(/'re\b/g, ' are')
+  out = out.replace(/'ve\b/g, ' have')
+  out = out.replace(/'ll\b/g, ' will')
+  out = out.replace(/'m\b/g, ' am')
+  return out
+}
+
 function normalizeAnswer(s: string) {
-  return s
-    .toLowerCase()
+  return expandContractions(s.toLowerCase())
     .replace(/[.,!?;:"'`()\-_/\\]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+// Bir beklenen-cevap metninde "//" varsa, bunu birden fazla geçerli cevaba
+// ayırır (ör. "Yes she would have.//No she wouldn't have."). Öğrencinin
+// yazdığı bu alternatiflerden HERHANGİ biriyle eşleşirse doğru sayılır.
+// Sitede her cevap kontrolü bu fonksiyonu kullanır (Drill Sheet aşamaları ve
+// 100Q Dictation All dahil).
+function splitAcceptedAnswers(expected: string): string[] {
+  if (!expected.includes('//')) return [expected]
+  const parts = expected.split('//').map(s => s.trim()).filter(Boolean)
+  return parts.length > 0 ? parts : [expected]
+}
+
+// "Beklenen cevap" / "Doğru cevap" kutularında öğrenciye gösterirken "//"
+// ayracını okunaklı bir " / " haline getirir — kontrol mantığını etkilemez,
+// sadece ekrandaki görünümü düzeltir.
+function formatExpectedForDisplay(expected: string): string {
+  return splitAcceptedAnswers(expected).join(' / ')
 }
 
 // Shadowing All / Dictation All gibi "tüm sorular" ekranlarındaki konumu
@@ -2146,7 +2182,8 @@ function DictationAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
 
   function check() {
     if (!current || checked || !typed.trim()) return
-    const ok = normalizeAnswer(typed) === normalizeAnswer(current.answerEn || '')
+    const acceptedAnswers = splitAcceptedAnswers(current.answerEn || '')
+    const ok = acceptedAnswers.some(a => normalizeAnswer(typed) === normalizeAnswer(a))
     setCorrect(ok)
     setChecked(true)
     if (ok) setScore(s => s + 1)
@@ -2238,7 +2275,7 @@ function DictationAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
               <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: correct ? '#059669' : '#DC2626' }}>
                 {correct ? 'Doğru! ✓' : 'Doğru cevap:'}
               </p>
-              {!correct && <p style={{ margin: '4px 0 0', fontSize: '14px', color: '#991B1B' }}>{current.answerEn}</p>}
+              {!correct && <p style={{ margin: '4px 0 0', fontSize: '14px', color: '#991B1B' }}>{formatExpectedForDisplay(current.answerEn || '')}</p>}
             </div>
           )}
 
@@ -3246,7 +3283,7 @@ function DrillInputArea({ answer, onAnswerChange, onCheck, onSkip, expected }: {
               borderRadius: '8px', padding: '10px 14px',
             }}>
               <div style={{ fontSize: '10px', color: '#8B5CF6', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, marginBottom: '4px' }}>Beklenen</div>
-              <div style={{ fontSize: '14px', color: '#1E1B4B', lineHeight: 1.5 }}>{renderInlineMarkup(expected)}</div>
+              <div style={{ fontSize: '14px', color: '#1E1B4B', lineHeight: 1.5 }}>{renderInlineMarkup(formatExpectedForDisplay(expected))}</div>
             </div>
           )}
         </div>
@@ -3290,7 +3327,7 @@ function DrillRevealBlock({ expected, onCorrect, onWrong, accent }: {
           borderRadius: '9px', padding: '12px 16px',
         }}>
           <div style={{ fontSize: '10px', color: accent, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, marginBottom: '5px' }}>Beklenen</div>
-          <div style={{ fontSize: '15px', color: '#1E1B4B', lineHeight: 1.5 }}>{renderInlineMarkup(expected)}</div>
+          <div style={{ fontSize: '15px', color: '#1E1B4B', lineHeight: 1.5 }}>{renderInlineMarkup(formatExpectedForDisplay(expected))}</div>
         </div>
       ) : (
         <div style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>Tek doğru cevap yok — kendi kendini değerlendir.</div>
@@ -3323,7 +3360,7 @@ function DrillRevealInline({ expected, accent }: { expected: string; accent: str
           borderRadius: '8px', padding: '10px 14px',
         }}>
           <div style={{ fontSize: '10px', color: accent, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, marginBottom: '4px' }}>Örnek</div>
-          <div style={{ fontSize: '14px', color: '#1E1B4B', lineHeight: 1.5 }}>{renderInlineMarkup(expected)}</div>
+          <div style={{ fontSize: '14px', color: '#1E1B4B', lineHeight: 1.5 }}>{renderInlineMarkup(formatExpectedForDisplay(expected))}</div>
         </div>
       )}
     </div>
@@ -3355,15 +3392,8 @@ const DRILL_STAGE_ORDER: { key: keyof DrillTopic['stages']; name: string }[] = [
   { key: 'cue_response', name: 'Cue → Response' },
   { key: 'question', name: 'Serbest Üretim' },
 ]
-const DRILL_STAGE_HINTS: Record<string, string> = {
-  substitution: "Ne yapıyoruz: model cümlede sadece cue'nun işaret ettiği kelimeyi değiştir.",
-  transformation: "Ne yapıyoruz: cümleyi cue'nun istediği biçime çevir (negative / question / short answer).",
-  expansion: "Ne yapıyoruz: cümleye cue'yu ekleyerek büyüt, öncekini koru.",
-  cue_response: 'Ne yapıyoruz: model cümle yok, sadece kısa bir cue var — cümleyi hafızandan kur.',
-  question: 'Ne yapıyoruz: gerçek soru — kendi cevabını üret, tek doğru cevap yok, kendi kendini değerlendireceksin.',
-}
 function drillNormalize(s: string): string {
-  return (s || '').toLowerCase().replace(/[.,!?;:"'""'']/g, '').replace(/\s+/g, ' ').trim()
+  return expandContractions((s || '').toLowerCase()).replace(/[.,!?;:"'""'']/g, '').replace(/\s+/g, ' ').trim()
 }
 function drillWordDiff(expected: string, given: string): { expectedHtml: string; givenHtml: string } {
   const e = expected.split(/\s+/), g = given.split(/\s+/)
@@ -3381,6 +3411,24 @@ function drillWordDiff(expected: string, given: string): { expectedHtml: string;
   while (i > 0) { outE.unshift(`<del style="color:#DC2626;text-decoration:line-through;opacity:.7">${e[i - 1]}</del>`); i-- }
   while (j > 0) { outG.unshift(`<ins style="color:#059669;text-decoration:none;font-weight:600">${g[j - 1]}</ins>`); j-- }
   return { expectedHtml: outE.join(' '), givenHtml: outG.join(' ') }
+}
+
+// Birden fazla kabul edilen cevap varsa (bkz. splitAcceptedAnswers), yanlış
+// cevap sonrası "Beklenen / Yazdığın" farkını hepsiyle değil, öğrencinin
+// yazdığına en çok benzeyen tek alternatifle karşılaştırmak için seçim yapar.
+function pickClosestAccepted(accepted: string[], given: string): string {
+  if (accepted.length <= 1) return accepted[0] ?? ''
+  const givenWords = drillNormalize(given).split(' ').filter(Boolean)
+  let best = accepted[0]
+  let bestScore = -1
+  for (const alt of accepted) {
+    const altWords = drillNormalize(alt).split(' ').filter(Boolean)
+    let score = 0
+    const len = Math.min(givenWords.length, altWords.length)
+    for (let i = 0; i < len; i++) if (givenWords[i] === altWords[i]) score++
+    if (score > bestScore) { bestScore = score; best = alt }
+  }
+  return best
 }
 
 type DrillQueueItem = { stageKey: keyof DrillTopic['stages']; stageName: string; cue: string; expected: string | null; resolvedModel?: string }
@@ -3721,11 +3769,14 @@ function DrillView({ unit, onBack, sheetTopics, entryProfile }: { unit: Unit; on
       return
     }
 
-    if (drillNormalize(given) === drillNormalize(item.expected)) {
+    const acceptedAnswers = splitAcceptedAnswers(item.expected)
+    const isCorrect = acceptedAnswers.some(a => drillNormalize(given) === drillNormalize(a))
+    if (isCorrect) {
       setFeedback({ kind: 'good' })
       setTimeout(() => advance(true, item), 450)
     } else {
-      const diff = drillWordDiff(item.expected, given)
+      const closest = pickClosestAccepted(acceptedAnswers, given)
+      const diff = drillWordDiff(closest, given)
       setFeedback({ kind: 'bad', ...diff })
     }
   }
@@ -3779,10 +3830,12 @@ function DrillView({ unit, onBack, sheetTopics, entryProfile }: { unit: Unit; on
             <span style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>{idx + 1} / {queue.length}</span>
           </div>
 
-          {/* Aşama açıklaması */}
-          <div style={{ fontSize: '11px', color: 'var(--muted-foreground)', background: 'var(--secondary)', borderRadius: '7px', padding: '7px 10px', marginBottom: '12px' }}>
-            {renderInlineMarkup(activeTopic?.hints?.[item.stageKey] || DRILL_STAGE_HINTS[item.stageKey])}
-          </div>
+          {/* Aşama açıklaması — sadece Sheet'te bu aşama için bir hint yazılmışsa gösterilir */}
+          {activeTopic?.hints?.[item.stageKey] && (
+            <div style={{ fontSize: '11px', color: 'var(--muted-foreground)', background: 'var(--secondary)', borderRadius: '7px', padding: '7px 10px', marginBottom: '12px' }}>
+              {renderInlineMarkup(activeTopic.hints[item.stageKey])}
+            </div>
+          )}
 
           {activeTopic?.modelMismatchWarning && (
             <div style={{ fontSize: '11px', color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '7px', padding: '7px 10px', marginBottom: '12px' }}>
