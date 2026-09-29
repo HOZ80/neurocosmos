@@ -99,6 +99,7 @@ interface DrillTopic {
   notes: string
   aiEval?: boolean // Sheet'teki ai_eval sütunu TRUE ise Serbest Üretim'de AI değerlendirmesi açık
   modelMismatchWarning?: string // model sayısı ile grup sayısı tutmuyorsa, hangi aşama(lar)da olduğu
+  missingModelWarning?: string  // Substitution/Transformation/Expansion'da ipucu var ama model yoksa, hangi aşama(lar)da olduğu
   hints?: Partial<Record<keyof DrillTopic['stages'], string>> // konuya özel yönlendirme — boşsa sabit genel açıklama kullanılır
 }
 
@@ -3103,11 +3104,6 @@ function parsePairedField(str: string | undefined, audioUrlStr?: string): DrillC
   if (!str) return []
   const audioUrls = audioUrlStr ? audioUrlStr.split('|').map(s => s.trim()) : []
   return str.split('|').map(s => s.trim()).filter(Boolean).map((item, i) => {
-    if (item.startsWith('::')) {
-      // Kendi başına bir işaret satırı — bir cue değil, bundan sonraki cue'lar için
-      // model kutusunu günceller.
-      return { cue: '', expected: null, modelOverride: item.slice(2).trim(), isMarker: true }
-    }
     const idx = item.indexOf(':')
     const audioUrl = audioUrls[i] || undefined
     if (idx === -1) return { cue: item, expected: null, audioUrl }
@@ -3184,6 +3180,16 @@ function rowsToDrillTopics(rows: Record<string, string>[]): DrillTopic[] {
       cueResp.mismatch && 'Cue-Response',
       question.mismatch && 'Question-Answer',
     ].filter(Boolean).join(', ')
+    // Model kutusu her aşamada sadece o aşamanın kendi model hücresinden gelir.
+    // Substitution, Transformation ve Expansion'da ipucu olup model hücresi boşsa
+    // uyarı verilir (hücre yanlışlıkla boş kalmış olabilir). Cue → Response ve
+    // Serbest Üretim'de model bilerek boş bırakıldığı için uyarı yok.
+    const hasCues = (items: DrillCueItem[]) => items.some(it => !it.isMarker)
+    const missingModelWarning = [
+      hasCues(sub.items) && parseModelList(r.substitution_model).length === 0 && 'Substitution',
+      hasCues(trans.items) && parseModelList(r.transformation_model).length === 0 && 'Transformation',
+      hasCues(exp.items) && parseModelList(r.expansion_model).length === 0 && 'Expansion',
+    ].filter(Boolean).join(', ')
     return {
       id: r.topic_id || `t_${Math.random().toString(36).slice(2, 8)}`,
       label: r.topic_label || r.target_structure || 'Adsız konu',
@@ -3200,6 +3206,7 @@ function rowsToDrillTopics(rows: Record<string, string>[]): DrillTopic[] {
       notes: r.notes || '',
       aiEval: ['true', '1', 'evet'].includes((r.ai_eval || '').trim().toLowerCase()),
       modelMismatchWarning: mismatchWarning || undefined,
+      missingModelWarning: missingModelWarning || undefined,
       hints: {
         substitution: r.substitution_hint?.trim() || undefined,
         transformation: r.transformation_hint?.trim() || undefined,
@@ -3638,8 +3645,10 @@ function DrillView({ unit, onBack, sheetTopics, entryProfile }: { unit: Unit; on
 
   function startSession(topic: DrillTopic) {
     const q: DrillQueueItem[] = []
-    let runningModel = topic.model
     DRILL_STAGE_ORDER.forEach(s => {
+      // Her aşama kendi modeliyle başlar — bir önceki aşamanın modeli taşınmaz.
+      // Aşamanın model hücresi boşsa bu aşamada model kutusu hiç görünmez.
+      let runningModel: string | undefined = undefined
       ;(topic.stages[s.key] || []).forEach(item => {
         if (item.isMarker) {
           if (item.modelOverride) runningModel = item.modelOverride
@@ -3843,9 +3852,16 @@ function DrillView({ unit, onBack, sheetTopics, entryProfile }: { unit: Unit; on
             </div>
           )}
 
-          {/* Model cümle — her zaman görünür; bir :: işaretinden sonra değişebilir */}
+          {activeTopic?.missingModelWarning && (
+            <div style={{ fontSize: '11px', color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '7px', padding: '7px 10px', marginBottom: '12px' }}>
+              ⚠ {activeTopic.missingModelWarning}: ipucu var ama model hücresi boş — bu aşamada model görünmeyecek, sheet'i kontrol et.
+            </div>
+          )}
+
+          {/* Model cümle — sadece bu aşamanın kendi model hücresi doluysa görünür.
+              Boşsa hiçbir yerden model çekilmez, kutu gösterilmez. */}
           {(() => {
-            const activeModel = item.resolvedModel || activeTopic?.model || ''
+            const activeModel = item.resolvedModel || ''
             if (!activeModel) return null
             return (
               <div style={{
