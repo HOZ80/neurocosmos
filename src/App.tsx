@@ -58,6 +58,10 @@ interface Unit {
   dictationSegments?: DictationSegment[]
   shadowingAudioUrl?: string   // boşsa audioUrl kullanılır — dictation/shadowing farklı kaynaktan beslenebilsin diye
   shadowingSegments?: DictationSegment[]  // boşsa dictationSegments kullanılır
+  shadowingClips?: string[]      // Sheet: shadowing_clips — tek cümlelik ayrı ses dosyaları (| ile). Doluysa SRT yerine bu kullanılır
+  shadowingClipTexts?: string[]  // Sheet: shadowing_texts — aynı sırayla cümleler (| ile)
+  audioClips?: string[]          // Sheet: audio_clips — Audio kartı için peşpeşe çalan tek cümlelik dosyalar (| ile)
+  audioClipTexts?: string[]      // Sheet: audio_texts — aynı sırayla altyazı cümleleri (| ile)
   mediaUrl?: string  // Audio/Video kartının kendi bağımsız dosyası — dictation/shadowing'den ayrı. Uzantısına göre (.mp4/.mov → video, .mp3 → ses) otomatik gösterilir.
   readingTitle?: string
   grammarPlaceholder?: boolean
@@ -1555,8 +1559,170 @@ function GrammarView({ unit, question, onBack, grammarBlocks, grammarSlotLabel, 
   )
 }
 
+// ─── Klip listesi uyarısı ─────────────────────────────────────────────────────
+// Sheet'te dosya sayısı ile cümle sayısı tutmazsa yanlış eşleştirme yapmak
+// yerine bunu gösteriyoruz (drill'deki eksik model uyarısı gibi).
+function ClipMismatchWarning({ fileCount, textCount, filesColumn, textsColumn }: { fileCount: number; textCount: number; filesColumn: string; textsColumn: string }) {
+  return (
+    <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '14px', padding: '18px 20px', color: '#92400E', fontSize: '14px', lineHeight: 1.6 }}>
+      ⚠️ Ses dosyası sayısı ({fileCount}) ile cümle sayısı ({textCount}) eşit değil. Sheet'te <b>{filesColumn}</b> ve <b>{textsColumn}</b> sütunlarını kontrol et — her ses dosyasının karşısında, aynı sırada bir cümle olmalı.
+    </div>
+  )
+}
+
+// ─── Audio kartı: tek cümlelik kliplerin peşpeşe çalınması ──────────────────────
+// Sheet'te audio_clips doluysa kullanılır. Her klip bitince bir sonraki başlar,
+// çalan klibin cümlesi oynatıcının altında görünür. Her ses kendi cümlesine ait
+// olduğu için altyazı senkronu süre bilgisi olmadan da tam oturur.
+function AudioClipsPlayer({ unit, clips, texts }: { unit: Unit; clips: string[]; texts: string[] }) {
+  const [current, setCurrent] = useState(0)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [speed, setSpeed] = useState(1)
+  const [showSubs, setShowSubs] = useState(true)
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const tokenRef = useRef(0)
+  const speedRef = useRef(speed)
+  speedRef.current = speed
+
+  useEffect(() => () => { tokenRef.current++; audioRef.current?.pause() }, [])
+  useEffect(() => {
+    if (audioRef.current) { audioRef.current.defaultPlaybackRate = speed; audioRef.current.playbackRate = speed }
+  }, [speed])
+  useEffect(() => {
+    itemRefs.current[current]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [current])
+
+  function playFrom(index: number) {
+    const audio = audioRef.current
+    if (!audio || !clips[index]) return
+    tokenRef.current++
+    const token = tokenRef.current
+    audio.pause()
+    audio.src = clips[index]
+    audio.defaultPlaybackRate = speedRef.current
+    audio.playbackRate = speedRef.current
+    audio.onended = () => {
+      if (token !== tokenRef.current) return
+      if (index + 1 < clips.length) playFrom(index + 1)
+      else setIsPlaying(false)
+    }
+    setCurrent(index)
+    setIsPlaying(true)
+    audio.play().catch(() => { if (token === tokenRef.current) setIsPlaying(false) })
+  }
+
+  function togglePlay() {
+    const audio = audioRef.current
+    if (!audio) return
+    if (isPlaying) { audio.pause(); setIsPlaying(false); return }
+    if (audio.src && !audio.ended && audio.currentTime > 0) {
+      setIsPlaying(true)
+      audio.play().catch(() => setIsPlaying(false))
+    } else {
+      playFrom(audio.ended && current === clips.length - 1 ? 0 : current)
+    }
+  }
+
+  const navBtn = (disabled: boolean): React.CSSProperties => ({
+    flex: 1, padding: '9px', borderRadius: '9px', border: '1px solid var(--border)', background: 'var(--secondary)',
+    color: disabled ? 'var(--muted-foreground)' : 'var(--foreground)', fontSize: '13px', fontWeight: 500, cursor: disabled ? 'not-allowed' : 'pointer',
+  })
+
+  return (
+    <>
+      <audio ref={audioRef} preload="none" />
+
+      <div style={{
+        background: 'linear-gradient(135deg, #1E3A8A, #3730A3)', borderRadius: '20px', padding: '28px 24px', color: '#fff',
+        display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center',
+      }}>
+        <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 600, textAlign: 'center' }}>{unit.title}</p>
+        <p style={{ margin: '-10px 0 0', fontSize: '13px', opacity: 0.7, fontFamily: 'var(--font-mono)' }}>{current + 1} / {clips.length}</p>
+
+        <button onClick={togglePlay} aria-label={isPlaying ? 'Pause' : 'Play'} style={{
+          width: '68px', height: '68px', borderRadius: '50%', border: 'none', background: '#fff', color: '#3730A3',
+          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 20px rgba(0,0,0,0.25)',
+        }}>
+          {isPlaying
+            ? <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z" /></svg>
+            : <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: '3px' }}><path d="M8 5v14l11-7z" /></svg>}
+        </button>
+
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', borderRadius: '9px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.3)' }}>
+            {[0.75, 1, 1.25].map(r => (
+              <button key={r} onClick={() => setSpeed(r)} style={{
+                padding: '7px 10px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
+                background: speed === r ? '#fff' : 'transparent', color: speed === r ? '#3730A3' : '#fff',
+              }}>{r}x</button>
+            ))}
+          </div>
+          <button onClick={() => setShowSubs(v => !v)} style={{
+            padding: '7px 12px', borderRadius: '9px', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer',
+            background: showSubs ? '#fff' : 'transparent', color: showSubs ? '#3730A3' : '#fff', fontSize: '13px', fontWeight: 500,
+          }}>{showSubs ? 'Hide subtitles' : 'Show subtitles'}</button>
+        </div>
+      </div>
+
+      {/* Çalan cümlenin altyazısı — mobilde rahat okunsun diye büyük */}
+      <div style={{
+        background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '22px 20px',
+        minHeight: '84px', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center',
+      }}>
+        {showSubs
+          ? <p style={{ margin: 0, fontSize: '20px', lineHeight: 1.5, fontWeight: 600, color: 'var(--foreground)' }}>{texts[current]}</p>
+          : <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>Subtitles hidden — just listen.</p>}
+      </div>
+
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <button onClick={() => playFrom(current - 1)} disabled={current === 0} style={navBtn(current === 0)}>← Previous</button>
+        <button onClick={() => playFrom(current + 1)} disabled={current === clips.length - 1} style={navBtn(current === clips.length - 1)}>Next →</button>
+      </div>
+
+      {showSubs && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '340px', overflowY: 'auto', paddingRight: '4px' }}>
+          {texts.map((t, i) => (
+            <button key={i} ref={el => { itemRefs.current[i] = el }} onClick={() => playFrom(i)} style={{
+              textAlign: 'left', padding: '12px 16px', borderRadius: '12px', flexShrink: 0, cursor: 'pointer',
+              border: `1.5px solid ${i === current ? 'rgba(14,165,233,0.5)' : 'var(--border)'}`,
+              background: i === current ? MODULE_META.audio.bg : 'var(--card)',
+              display: 'flex', alignItems: 'flex-start', gap: '12px',
+            }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: i === current ? MODULE_META.audio.color : 'var(--muted-foreground)', marginTop: '3px' }}>{i + 1}</span>
+              <span style={{ fontSize: '15px', lineHeight: 1.6, color: 'var(--foreground)', fontWeight: i === current ? 600 : 400 }}>{t}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
 function AudioView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const [showTranscript, setShowTranscript] = useState(false)
+
+  // Sheet'te audio_clips doluysa yeni klip oynatıcı açılır; boşsa aşağıdaki
+  // eski davranış (tek dosya ses/video) hiç değişmeden çalışır.
+  const audioClips = unit.audioClips ?? []
+  if (audioClips.length > 0) {
+    const audioTexts = unit.audioClipTexts ?? []
+    return (
+      <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '720px' }}>
+        <BackBtn onClick={onBack} label={unit.title} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.audio.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🎧</div>
+          <div>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: 0 }}>Audio / Video</h2>
+            <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{unit.title} · Listening practice</p>
+          </div>
+        </div>
+        {audioClips.length !== audioTexts.length
+          ? <ClipMismatchWarning fileCount={audioClips.length} textCount={audioTexts.length} filesColumn="audio_clips" textsColumn="audio_texts" />
+          : <AudioClipsPlayer unit={unit} clips={audioClips} texts={audioTexts} />}
+      </div>
+    )
+  }
 
   // Kaynak sırası: önce bağımsız mediaUrl (sheet'ten), yoksa eski
   // videoUrl/passiveVideo alanları — böylece daha önce elle girilmiş
@@ -2492,10 +2658,18 @@ function ShadowingAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
 function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const [pickedAudioUrl, setPickedAudioUrl] = useState<string | null>(null)
   const [pickedSegments, setPickedSegments] = useState<DictationSegment[] | null>(null)
-  const needsPicker = !!unit.freeSourceSelect && (!pickedAudioUrl || !pickedSegments)
+  // Klip modu: Sheet'te shadowing_clips doluysa her cümle kendi ses dosyasından
+  // çalar (süre bilgisi gerekmez). Boşsa aşağıdaki eski SRT yolu hiç değişmeden çalışır.
+  const clips = unit.shadowingClips ?? []
+  const clipTexts = unit.shadowingClipTexts ?? []
+  const clipMode = clips.length > 0
+  const clipMismatch = clipMode && clips.length !== clipTexts.length
+  const needsPicker = !clipMode && !!unit.freeSourceSelect && (!pickedAudioUrl || !pickedSegments)
   const activeAudioUrl = unit.freeSourceSelect ? (pickedAudioUrl ?? undefined) : (unit.shadowingAudioUrl ?? unit.audioUrl)
 
+  const clipTextsKey = clipTexts.join('|')
   const segments = useMemo<DictationSegment[]>(() => {
+    if (clipMode) return clipTextsKey.split('|').map(text => ({ start: 0, end: 0, text }))
     if (unit.freeSourceSelect) return pickedSegments ?? []
     const shadowingOrShared = (unit.shadowingSegments && unit.shadowingSegments.length > 0)
       ? unit.shadowingSegments
@@ -2503,7 +2677,7 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
     return (shadowingOrShared && shadowingOrShared.length > 0)
       ? shadowingOrShared
       : [{ start: 0, end: 0, text: unit.dictationSentence }]
-  }, [unit.freeSourceSelect, unit.shadowingSegments, unit.dictationSegments, unit.dictationSentence, pickedSegments])
+  }, [clipMode, clipTextsKey, unit.freeSourceSelect, unit.shadowingSegments, unit.dictationSegments, unit.dictationSentence, pickedSegments])
 
   const [current, setCurrent] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -2530,7 +2704,34 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   // Stop everything cleanly on unmount.
   useEffect(() => () => { playTokenRef.current++; audioRef.current?.pause() }, [])
 
+  // Klip modunda bir cümleyi çalar: o cümlenin kendi dosyası baştan sona.
+  function playClip(index: number) {
+    const audio = audioRef.current
+    const url = clips[index]
+    if (!audio || !url) return
+    playTokenRef.current++
+    const token = playTokenRef.current
+    audio.pause()
+    const fullUrl = new URL(url, window.location.href).href
+    if (audio.src !== fullUrl) audio.src = url
+    else audio.currentTime = 0
+    audio.defaultPlaybackRate = speed
+    audio.playbackRate = speed
+    const onEnded = () => {
+      audio.removeEventListener('ended', onEnded)
+      if (token !== playTokenRef.current) return
+      setIsPlaying(false)
+      if (loopRef.current) {
+        setTimeout(() => { if (token === playTokenRef.current) playClip(index) }, 400)
+      }
+    }
+    audio.addEventListener('ended', onEnded)
+    audio.play().catch(() => { if (token === playTokenRef.current) setIsPlaying(false) })
+    setIsPlaying(true)
+  }
+
   function playSegment(index: number) {
+    if (clipMode) { playClip(index); return }
     const audio = audioRef.current
     if (!audio || !activeAudioUrl) return
     const seg = segments[index]
@@ -2590,7 +2791,9 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   return (
     <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '680px' }}>
       <BackBtn onClick={onBack} label={unit.title} />
-      {activeAudioUrl && <audio ref={audioRef} src={activeAudioUrl} preload="metadata" />}
+      {clipMode
+        ? <audio ref={audioRef} preload="none" />
+        : activeAudioUrl && <audio ref={audioRef} src={activeAudioUrl} preload="metadata" />}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.shadowing.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🎙️</div>
@@ -2606,6 +2809,8 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
           accentColor={MODULE_META.shadowing.color}
           onLoaded={(audioUrl, segs) => { setPickedAudioUrl(audioUrl); setPickedSegments(segs) }}
         />
+      ) : clipMismatch ? (
+        <ClipMismatchWarning fileCount={clips.length} textCount={clipTexts.length} filesColumn="shadowing_clips" textsColumn="shadowing_texts" />
       ) : (
         <>
           {/* Playback controls — kept at the top so they never scroll out of view */}
@@ -2995,6 +3200,10 @@ interface UnitRow {
   shadowing_audio_url: string
   shadowing_srt_url: string
   audio_video_url: string
+  shadowing_clips: string
+  shadowing_texts: string
+  audio_clips: string
+  audio_texts: string
 }
 
 interface UnitsSheetData {
@@ -3007,6 +3216,20 @@ interface UnitsSheetData {
 // model_audio_url | substitution_audio_urls | transformation_audio_urls |
 // expansion_audio_urls | cue_response_audio_urls
 type DrillSheetData = Record<string, DrillTopic[]>  // unit_id → DrillTopic[]
+
+// ─── Tek cümlelik klip listeleri (Units Sheet) ─────────────────────────────────
+// shadowing_clips / audio_clips: dosya adları | ile ayrılır. Başında / yoksa
+// eklenir — yani "A1-U01_Audio_01.mp3" de "/A1-U01_Audio_01.mp3" de çalışır.
+// shadowing_texts / audio_texts: cümleler aynı sırayla | ile ayrılır.
+function splitClipList(str: string): string[] {
+  if (!str) return []
+  return str.split('|').map(x => x.trim()).filter(Boolean)
+    .map(x => (/^(https?:)?\/\//i.test(x) || x.startsWith('/')) ? x : `/${x}`)
+}
+function splitClipTexts(str: string): string[] {
+  if (!str) return []
+  return str.split('|').map(x => x.trim()).filter(Boolean)
+}
 
 function parseUnitsSheet(rows: Record<string, string>[]): UnitsSheetData {
   const unitsMap = new Map<string, UnitRow>()
@@ -3030,6 +3253,10 @@ function parseUnitsSheet(rows: Record<string, string>[]): UnitsSheetData {
         shadowing_audio_url: r.shadowing_audio_url?.trim() || '',
         shadowing_srt_url: r.shadowing_srt_url?.trim() || '',
         audio_video_url: r.audio_video_url?.trim() || '',
+        shadowing_clips: r.shadowing_clips?.trim() || '',
+        shadowing_texts: r.shadowing_texts?.trim() || '',
+        audio_clips: r.audio_clips?.trim() || '',
+        audio_texts: r.audio_texts?.trim() || '',
       })
     }
   })
@@ -4663,12 +4890,17 @@ export default function App() {
         shadowingAudioUrl: u.shadowing_audio_url || undefined,
         shadowingSegments: shadowingSrtByUnit[unitId] ?? undefined,
         mediaUrl: u.audio_video_url || undefined,
+        shadowingClips: splitClipList(u.shadowing_clips),
+        shadowingClipTexts: splitClipTexts(u.shadowing_texts),
+        audioClips: splitClipList(u.audio_clips),
+        audioClipTexts: splitClipTexts(u.audio_texts),
         unitLabel: `Unit ${i + 1}`,
         unitId,  // sheet'ten gelen gerçek unit_id — drillTopicsByUnit lookup için
         hiddenModules: [],  // 5 kart her zaman görünür; drill verisi yoksa moduleLocks kilitler
         moduleLocks: {
           dictation: !u.dictation_sentence,
-          shadowing: !u.dictation_transcript,
+          // Klip listesi doluysa Shadowing transcript olmasa da açılır; boşsa eski kural aynen geçerli
+          shadowing: !u.dictation_transcript && splitClipList(u.shadowing_clips).length === 0,
           drill: !hasDrill,  // sheet'te drill verisi yoksa kilitli, gelince açılır
           scene: allScenes.filter(sc => !sc.locked && [unitId.toLowerCase(), (u.unit_title || '').trim().toLowerCase()].includes(sc.unit.trim().toLowerCase())).length === 0,
         },
