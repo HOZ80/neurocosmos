@@ -2622,8 +2622,15 @@ function ShadowingAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
   )
 }
 
+const shadowingVideoStyle: React.CSSProperties = {
+  width: '100%', borderRadius: '16px', background: '#000', display: 'block',
+}
+
 function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const [pickedAudioUrl, setPickedAudioUrl] = useState<string | null>(null)
+  // Ses dosyası yerine video dosyası verilmişse (uzantıdan anlaşılır) aynı akışta
+  // kesintisiz izlenebilsin diye <audio> yerine <video> render edilir — oynatma,
+  // tekrar, hız, cümleye tıklama mantığının tamamı aynı kalır, yalnızca etiket değişir.
   const [pickedSegments, setPickedSegments] = useState<DictationSegment[] | null>(null)
   // Klip modu: Sheet'te shadowing_clips doluysa her cümle kendi ses dosyasından
   // çalar (süre bilgisi gerekmez). Boşsa aşağıdaki eski SRT yolu hiç değişmeden çalışır.
@@ -2633,6 +2640,9 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const clipMismatch = clipMode && clips.length !== clipTexts.length
   const needsPicker = !clipMode && !!unit.freeSourceSelect && (!pickedAudioUrl || !pickedSegments)
   const activeAudioUrl = unit.freeSourceSelect ? (pickedAudioUrl ?? undefined) : (unit.fromSheet ? unit.shadowingAudioUrl : (unit.shadowingAudioUrl ?? unit.audioUrl))
+  const isVideoSrc = (u?: string) => !!u && /\.(mp4|mov|webm)$/i.test(u)
+  // Klip modunda ilk klibin uzantısına bakılır (bir ünitede ses/video karışık olmaz, hepsi aynı kaynaktan gelir)
+  const isVideo = clipMode ? isVideoSrc(clips[0]) : isVideoSrc(activeAudioUrl)
 
   const clipTextsKey = clipTexts.join('|')
   const segments = useMemo<DictationSegment[]>(() => {
@@ -2652,7 +2662,7 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
   const [loop, setLoop] = useState(false)
-  const audioRef = useRef<HTMLAudioElement>(null)
+  const audioRef = useRef<HTMLMediaElement>(null)  // <audio> ya da <video> — ikisi de aynı oynatma API'sini paylaşır
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
   const loopRef = useRef(loop)
   loopRef.current = loop
@@ -2761,8 +2771,12 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
     <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '680px' }}>
       <BackBtn onClick={onBack} label={unit.title} />
       {clipMode
-        ? <audio ref={audioRef} preload="none" />
-        : activeAudioUrl && <audio ref={audioRef} src={activeAudioUrl} preload="metadata" />}
+        ? (isVideo
+            ? <video ref={audioRef as React.RefObject<HTMLVideoElement>} preload="none" playsInline controls={false} style={shadowingVideoStyle} />
+            : <audio ref={audioRef} preload="none" />)
+        : activeAudioUrl && (isVideo
+            ? <video ref={audioRef as React.RefObject<HTMLVideoElement>} src={activeAudioUrl} preload="metadata" playsInline controls={false} style={shadowingVideoStyle} />
+            : <audio ref={audioRef} src={activeAudioUrl} preload="metadata" />)}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.shadowing.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🎙️</div>
