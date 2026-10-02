@@ -2628,6 +2628,7 @@ const shadowingVideoStyle: React.CSSProperties = {
 
 function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const [pickedAudioUrl, setPickedAudioUrl] = useState<string | null>(null)
+  const [listOpen, setListOpen] = useState(false)  // Cümle listesi: varsayılan kapalı, istenince açılır
   // Ses dosyası yerine video dosyası verilmişse (uzantıdan anlaşılır) aynı akışta
   // kesintisiz izlenebilsin diye <audio> yerine <video> render edilir — oynatma,
   // tekrar, hız, cümleye tıklama mantığının tamamı aynı kalır, yalnızca etiket değişir.
@@ -2677,8 +2678,8 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   }, [segments])
 
   useEffect(() => {
-    itemRefs.current[current]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  }, [current])
+    if (listOpen) itemRefs.current[current]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [current, listOpen])
 
   // Stop everything cleanly on unmount.
   useEffect(() => () => { playTokenRef.current++; audioRef.current?.pause() }, [])
@@ -2859,9 +2860,21 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
             </div>
           </div>
 
-          {/* Sentence list — fixed height, scrolls independently, auto-scrolls active line into view */}
+          {/* Sentence list — varsayılan kapalı; düğmeyle açılır. Açıkken sabit yükseklikte, kendi içinde kayar */}
+          <div>
+            <button
+              onClick={() => setListOpen(o => !o)}
+              style={{
+                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                fontSize: '13px', fontWeight: 600, color: MODULE_META.shadowing.color,
+                display: 'flex', alignItems: 'center', gap: '6px',
+              }}
+            >
+              Cümle listesi {listOpen ? '▴' : '▾'}
+            </button>
+            {listOpen && (
           <div style={{
-            display: 'flex', flexDirection: 'column', gap: '8px',
+            display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px',
             maxHeight: '340px', overflowY: 'auto', paddingRight: '4px',
           }}>
             {sentences.map((s, i) => (
@@ -2888,6 +2901,8 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
                 <span style={{ fontSize: '14px', lineHeight: 1.6, color: i === current ? '#3730A3' : 'var(--foreground)', fontWeight: i === current ? 500 : 400 }}>{s}</span>
               </button>
             ))}
+          </div>
+            )}
           </div>
 
           {unit.freeSourceSelect && (
