@@ -2622,8 +2622,12 @@ function ShadowingAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
   )
 }
 
+// Video ekranın üstünde sabit kalır; sayfa kaysa bile görünür. Arkasındaki düz renk,
+// altından kayan içeriğin videonun üstünde görünmesini engeller.
 const shadowingVideoStyle: React.CSSProperties = {
   width: '100%', borderRadius: '16px', background: '#000', display: 'block',
+  position: 'sticky', top: 0, zIndex: 20, maxHeight: '40vh', objectFit: 'contain',
+  boxShadow: '0 0 0 8px var(--background)',
 }
 
 function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
@@ -2665,6 +2669,7 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const [loop, setLoop] = useState(false)
   const audioRef = useRef<HTMLMediaElement>(null)  // <audio> ya da <video> — ikisi de aynı oynatma API'sini paylaşır
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const listRef = useRef<HTMLDivElement>(null)  // Cümle listesi kutusu — kaydırma yalnızca bunun içinde olur
   const loopRef = useRef(loop)
   loopRef.current = loop
   // Bumped on every navigation/stop so stale timeupdate/timeout callbacks from a
@@ -2678,7 +2683,13 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   }, [segments])
 
   useEffect(() => {
-    if (listOpen) itemRefs.current[current]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    // Sayfayı değil, yalnızca liste kutusunun içini kaydır: video yerinde kalır, sayfa oynamaz.
+    if (!listOpen) return
+    const box = listRef.current
+    const el = itemRefs.current[current]
+    if (!box || !el) return
+    if (el.offsetTop < box.scrollTop) box.scrollTo({ top: Math.max(0, el.offsetTop - 8), behavior: 'smooth' })
+    else if (el.offsetTop + el.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTo({ top: el.offsetTop + el.offsetHeight - box.clientHeight + 8, behavior: 'smooth' })
   }, [current, listOpen])
 
   // Stop everything cleanly on unmount.
@@ -2873,7 +2884,8 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
               Cümle listesi {listOpen ? '▴' : '▾'}
             </button>
             {listOpen && (
-          <div style={{
+          <div ref={listRef} style={{
+            position: 'relative',
             display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px',
             maxHeight: '340px', overflowY: 'auto', paddingRight: '4px',
           }}>
