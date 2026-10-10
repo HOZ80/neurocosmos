@@ -1,13 +1,19 @@
-import { useState, useRef, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react'
+import { useState, useRef, useEffect, useMemo, forwardRef, useImperativeHandle, lazy, Suspense } from 'react'
 import PrivateShadowing from './PrivateShadowing'
 import PrivateDictation from './PrivateDictation'
 import SceneView, { parseSceneRows, parseCharacterRows, FALLBACK_SCENE_DATA } from './SceneView'
 import type { Scene, SceneCharacter } from './SceneView'
+import { parseMemoryRows, parseMemoryStudents, UnitMemorySection } from './memoryShared'
+import type { MemoryItem, MemoryStudent } from './memoryShared'
+import { useUnutmama, UnutmamaView, UnutmamaStrip, UNUTMAMA_STUDENT_NAME } from './UnutmamaView'
+
+// Hafıza beyni (three.js içerir) — sadece Memory sayfası açılınca yüklenir.
+const MemoryBrain = lazy(() => import('./MemoryBrain'))
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Level = 'A1' | 'A2' | 'B1' | 'B2' | 'P'
-type View = 'dashboard' | 'unit' | 'grammar' | 'audio' | 'dictation' | 'shadowing' | 'dictationAll' | 'shadowingAll' | 'drill' | 'scene'
+type View = 'dashboard' | 'unit' | 'grammar' | 'audio' | 'dictation' | 'shadowing' | 'dictationAll' | 'shadowingAll' | 'drill' | 'scene' | 'memory' | 'unutmama'
 
 interface DictationSegment {
   start: number
@@ -977,21 +983,43 @@ function EntryScreen({ onPickProfile, onPickOwner }: {
   )
 }
 
-function DashboardView({ level, units, onSelectUnit }: {
+function DashboardView({ level, units, onSelectUnit, onMemory, memoryCounts, unutmama }: {
   level: Level
   units: Unit[]
   onSelectUnit: (u: Unit) => void
+  onMemory?: () => void
+  memoryCounts?: Record<string, number>
+  unutmama?: { status: 'loading' | 'ok' | 'error'; due: number; onClick: () => void }
 }) {
   return (
     <div className="anim-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-      <div>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '28px', fontWeight: 700, margin: '0 0 4px', color: 'var(--foreground)' }}>
-          {LEVEL_META[level].label}
-        </h1>
-        <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>
-          {units.filter(u => u.completed).length} of {units.length} units completed · {Math.round(units.filter(u => u.completed).length / units.length * 100)}% progress
-        </p>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+        <div>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '28px', fontWeight: 700, margin: '0 0 4px', color: 'var(--foreground)' }}>
+            {LEVEL_META[level].label}
+          </h1>
+          <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>
+            {units.filter(u => u.completed).length} of {units.length} units completed · {Math.round(units.filter(u => u.completed).length / units.length * 100)}% progress
+          </p>
+        </div>
+        {onMemory && (
+          <button onClick={onMemory} style={{
+            flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px',
+            background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '8px',
+            padding: '6px 12px', fontSize: '13px', fontWeight: 600, color: 'var(--primary)', cursor: 'pointer',
+          }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9.5 3.5c-1.8 0-3.2 1.3-3.4 3-1.4.4-2.4 1.7-2.4 3.2 0 .7.2 1.3.6 1.9-.5.6-.8 1.4-.8 2.2 0 1.6 1.1 2.9 2.6 3.3.1 1.7 1.5 3 3.2 3 .7 0 1.3-.2 1.8-.5" />
+              <path d="M12 4.3v14.9" />
+              <path d="M14.5 3.5c1.8 0 3.2 1.3 3.4 3 1.4.4 2.4 1.7 2.4 3.2 0 .7-.2 1.3-.6 1.9.5.6.8 1.4.8 2.2 0 1.6-1.1 2.9-2.6 3.3-.1 1.7-1.5 3-3.2 3-.7 0-1.3-.2-1.8-.5" />
+            </svg>
+            Memory
+          </button>
+        )}
       </div>
+
+      {/* Unutmama (tekrar) şeridi — sadece Kişisel (P) bölümünde */}
+      {unutmama && <UnutmamaStrip status={unutmama.status} due={unutmama.due} onClick={unutmama.onClick} />}
 
       {/* Overall progress bar */}
       <div style={{ height: '6px', background: 'var(--muted)', borderRadius: '6px', overflow: 'hidden' }}>
@@ -1068,6 +1096,19 @@ function DashboardView({ level, units, onSelectUnit }: {
                 ))}
               </div>
 
+              {/* Memory: bu üniteye ait hafıza öğesi sayısı */}
+              {(memoryCounts?.[unit.unitId ?? ''] ?? 0) > 0 && (
+                <div style={{ display: 'flex' }}>
+                  <span style={{
+                    fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 500,
+                    color: 'var(--primary)', background: 'rgba(79,70,229,0.08)',
+                    padding: '2px 8px', borderRadius: '999px', letterSpacing: '0.04em',
+                  }}>
+                    Memory · {memoryCounts?.[unit.unitId ?? '']} {memoryCounts?.[unit.unitId ?? ''] === 1 ? 'item' : 'items'}
+                  </span>
+                </div>
+              )}
+
               {/* Progress bar */}
               {unit.progress > 0 && (
                 <div style={{ height: '3px', background: 'var(--muted)', borderRadius: '3px', overflow: 'hidden' }}>
@@ -1082,7 +1123,7 @@ function DashboardView({ level, units, onSelectUnit }: {
   )
 }
 
-function UnitDetailView({ unit, level, onBack, onModule, onGrammar, onQuestion, onDictationAll, onShadowingAll, onDrill, onScene, grammarSlots }: {
+function UnitDetailView({ unit, level, onBack, onModule, onGrammar, onQuestion, onDictationAll, onShadowingAll, onDrill, onScene, grammarSlots, memoryItems }: {
   unit: Unit
   level: Level
   onBack: () => void
@@ -1094,6 +1135,7 @@ function UnitDetailView({ unit, level, onBack, onModule, onGrammar, onQuestion, 
   onDrill: () => void
   onScene: () => void
   grammarSlots: GrammarSlotMeta[] | null  // null = sheet yok, tek kart fallback
+  memoryItems?: MemoryItem[]  // bu üniteye ait hafıza öğeleri (yoksa bölüm görünmez)
 }) {
   return (
     <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -1294,6 +1336,9 @@ function UnitDetailView({ unit, level, onBack, onModule, onGrammar, onQuestion, 
 
         </div>
       )}
+
+      {/* Memory: bu ünitenin hafıza öğeleri */}
+      <UnitMemorySection items={memoryItems ?? []} />
 
     </div>
   )
@@ -2989,6 +3034,14 @@ const GRAMMAR_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/
 // SAHNE TABLOSU — Sahneler sekmesi ve Karakterler sekmesi ayri ayri publish edilir.
 // Bos birakilirsa kod SceneView icindeki Tesla sahnesini kullanir (test icin).
 const SCENE_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRaUcai7WmP71DGXSTRXK95Tw1TLG0LlPvwM6Om7B5jq3wZPEdk3HimYd0hMTTgSw/pub?gid=1604637706&single=true&output=csv'
+// HAFIZA BEYNİ — Öğrenciler tablosu (student_name, profile, sheet_csv_url, active).
+// Her öğrencinin hafıza tablosunun bağlantısı bu tablodaki sheet_csv_url sütunundan okunur.
+const MEMORY_STUDENTS_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSoeVcC7FNlHGg-KUB7qDtQDuNmcnVv-D_6wXi1DHiaUjBcC5IBJTmjAYss2ZdyRbH4gZX1noopNBfJ/pub?gid=1004484577&single=true&output=csv'
+const EMPTY_MEMORY_ITEMS: MemoryItem[] = []
+
+// UNUTMAMA kartları (Google Sheets → Web'de yayınla → CSV). Sadece Owner için okunur.
+const UNUTMAMA_CARDS_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vT2iIiqRiYKYBagNxc1w_cc29wrCVlcaEjvLWze1MYNcBAUlNI54jlwAOaU7PTvoKZaKhMoODeb21Ws/pub?output=csv'
+
 const SCENE_CHARACTERS_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRaUcai7WmP71DGXSTRXK95Tw1TLG0LlPvwM6Om7B5jq3wZPEdk3HimYd0hMTTgSw/pub?gid=943347820&single=true&output=csv'
 
 // ─── Grammar Sheet types & parser ────────────────────────────────────────────
@@ -4553,7 +4606,7 @@ function ChildDashboard({ childName, onExit }: { childName: string; onExit: () =
 // mevcut ekran (seviye, görünüm, ünite, gramer sekmesi, soru) adres satırına
 // yazılır; sayfa yeniden yüklendiğinde ya da geri/ileri tuşuna basıldığında
 // buradan okunup ekran o hale geri getirilir.
-const VALID_VIEWS: View[] = ['dashboard', 'unit', 'grammar', 'audio', 'dictation', 'shadowing', 'dictationAll', 'shadowingAll', 'drill', 'scene']
+const VALID_VIEWS: View[] = ['dashboard', 'unit', 'grammar', 'audio', 'dictation', 'shadowing', 'dictationAll', 'shadowingAll', 'drill', 'scene', 'memory', 'unutmama']
 function getUrlParam(name: string): string | null {
   try { return new URLSearchParams(window.location.search).get(name) } catch { return null }
 }
@@ -4860,6 +4913,65 @@ export default function App() {
       .catch(() => { /* fallback: drill kartları kilitli görünür */ })
   }, [])
 
+  // ── Memory (hafıza beyni): Öğrenciler tablosu + seçili öğrencinin kendi hafıza tablosu ──
+  const [memoryStudents, setMemoryStudents] = useState<MemoryStudent[] | null>(null)
+  const [memoryStudentName, setMemoryStudentName] = useState<string | null>(null)
+  const [memoryLoad, setMemoryLoad] = useState<{ url: string; status: 'loading' | 'ok' | 'error'; items: MemoryItem[]; skipped: number } | null>(null)
+  const memoryEnabled = entryProfile === 'A1' || entryProfile === 'A2' || entryProfile === 'owner'
+  const unut = useUnutmama(UNUTMAMA_CARDS_SHEET_CSV_URL, entryProfile === 'owner')
+
+  useEffect(() => {
+    if (!MEMORY_STUDENTS_SHEET_CSV_URL || !memoryEnabled || memoryStudents) return
+    const bustedUrl = `${MEMORY_STUDENTS_SHEET_CSV_URL}${MEMORY_STUDENTS_SHEET_CSV_URL.includes('?') ? '&' : '?'}t=${Date.now()}`
+    fetch(bustedUrl, { cache: 'no-store' })
+      .then(res => res.text())
+      .then(text => setMemoryStudents(parseMemoryStudents(parseCSV(text))))
+      .catch(() => { /* Memory butonu görünmez, site etkilenmez */ })
+  }, [memoryEnabled])
+
+  // Bu giriş profilinin görebileceği öğrenciler: Owner hepsini (aktif olanları), diğerleri
+  // sadece profile sütunu kendi grubuyla aynı olan aktif öğrenciyi görür.
+  const memoryProfileLabel = entryProfile === 'A1' || entryProfile === 'A2' ? LEVEL_META[entryProfile].label : null
+  const visibleMemoryStudents: MemoryStudent[] = [
+    ...(memoryStudents ?? []).filter(s =>
+      s.active && (entryProfile === 'owner' || (memoryProfileLabel !== null && s.profile.trim().toLowerCase() === memoryProfileLabel.toLowerCase()))
+    ),
+    // Owner için, öğrencilerin ardına: kendi Unutmama kartlarından çıkan beyin
+    ...(entryProfile === 'owner' && unut.status === 'ok' && unut.cards.length > 0
+      ? [{ name: UNUTMAMA_STUDENT_NAME, profile: 'Owner', url: '', active: true }]
+      : []),
+  ]
+  const currentMemoryStudent = visibleMemoryStudents.find(s => s.name === memoryStudentName) ?? visibleMemoryStudents[0] ?? null
+  const isUnutStudent = currentMemoryStudent?.name === UNUTMAMA_STUDENT_NAME
+  const currentMemoryUrl = currentMemoryStudent && !isUnutStudent ? currentMemoryStudent.url : null
+
+  useEffect(() => {
+    if (!currentMemoryUrl) return
+    let cancelled = false
+    setMemoryLoad({ url: currentMemoryUrl, status: 'loading', items: EMPTY_MEMORY_ITEMS, skipped: 0 })
+    const bustedUrl = `${currentMemoryUrl}${currentMemoryUrl.includes('?') ? '&' : '?'}t=${Date.now()}`
+    fetch(bustedUrl, { cache: 'no-store' })
+      .then(res => { if (!res.ok) throw new Error('bad status'); return res.text() })
+      .then(text => {
+        if (cancelled) return
+        const { items, skipped } = parseMemoryRows(parseCSV(text))
+        setMemoryLoad({ url: currentMemoryUrl, status: 'ok', items, skipped })
+      })
+      .catch(() => { if (!cancelled) setMemoryLoad({ url: currentMemoryUrl, status: 'error', items: EMPTY_MEMORY_ITEMS, skipped: 0 }) })
+    return () => { cancelled = true }
+  }, [currentMemoryUrl])
+
+  const memoryReady = !!memoryLoad && memoryLoad.url === currentMemoryUrl
+  const memoryStatus: 'loading' | 'ok' | 'error' = isUnutStudent ? unut.status : (memoryReady ? memoryLoad!.status : 'loading')
+  const memoryItems: MemoryItem[] = isUnutStudent ? unut.memoryItems : (memoryReady ? memoryLoad!.items : EMPTY_MEMORY_ITEMS)
+  const memorySkipped = isUnutStudent ? 0 : (memoryReady ? memoryLoad!.skipped : 0)
+  const memoryCounts: Record<string, number> = {}
+  memoryItems.forEach(it => { memoryCounts[it.unit] = (memoryCounts[it.unit] ?? 0) + 1 })
+  const memoryUnitTitles: Record<string, string> = {}
+  if (unitsSheetData) {
+    Object.values(unitsSheetData.unitsByLevel).flat().forEach(u => { if (u.unit_id && u.unit_title) memoryUnitTitles[u.unit_id] = u.unit_title })
+  }
+
   // ── Scene Sheet: sahneler + karakterler ────────────────────────────
   // URL boşsa ya da fetch düşerse SceneView içindeki Tesla sahnesi kullanılır.
   const [sceneRows, setSceneRows] = useState<Scene[] | null>(null)
@@ -5023,6 +5135,8 @@ export default function App() {
   function goShadowingAll() { setSelectedQuestionIndex(null); setView('shadowingAll') }
   function goDrill() { setSelectedQuestionIndex(null); setView('drill') }
   function goScene() { setSelectedQuestionIndex(null); setView('scene') }
+  function goMemory() { setSelectedUnit(null); setSelectedQuestionIndex(null); setView('memory') }
+  function goUnutmama() { setSelectedUnit(null); setSelectedQuestionIndex(null); setView('unutmama') }
   function goHome() { setView('dashboard'); setSelectedUnit(null); setSelectedQuestionIndex(null) }
   function goBack() {
     if (view === 'dashboard') return
@@ -5062,7 +5176,7 @@ export default function App() {
   const breadcrumbs = [
     { label: LEVEL_META[level].code, onClick: () => { setView('dashboard'); setSelectedUnit(null) } },
     ...(selectedUnitLive ? [{ label: selectedUnitLive.unitLabel ?? `Unit ${selectedUnitLive.id}`, onClick: () => { setView('unit'); setSelectedQuestionIndex(null) } }] : []),
-    ...(view !== 'dashboard' && view !== 'unit' ? [{ label: view === 'dictationAll' ? 'Dictation All' : view === 'shadowingAll' ? 'Shadowing All' : view === 'drill' ? 'Drill' : view === 'scene' ? 'Scene' : (selectedQuestion?.label ?? MODULE_META[view as keyof typeof MODULE_META]?.label) }] : []),
+    ...(view !== 'dashboard' && view !== 'unit' ? [{ label: view === 'dictationAll' ? 'Dictation All' : view === 'shadowingAll' ? 'Shadowing All' : view === 'drill' ? 'Drill' : view === 'scene' ? 'Scene' : view === 'memory' ? 'Memory' : view === 'unutmama' ? 'Unutmama' : (selectedQuestion?.label ?? MODULE_META[view as keyof typeof MODULE_META]?.label) }] : []),
   ]
 
   if (!entryProfile) {
@@ -5215,7 +5329,14 @@ export default function App() {
       {/* ── Main content ── */}
       <main style={{ flex: 1, overflowY: 'auto', padding: '32px 28px 48px' }}>
         {view === 'dashboard' && (
-          <DashboardView level={level} units={units} onSelectUnit={goUnit} />
+          <DashboardView
+            level={level}
+            units={units}
+            onSelectUnit={goUnit}
+            onMemory={currentMemoryStudent ? goMemory : undefined}
+            memoryCounts={memoryCounts}
+            unutmama={level === 'P' && entryProfile === 'owner' ? { status: unut.status, due: unut.dueCount, onClick: goUnutmama } : undefined}
+          />
         )}
         {view === 'unit' && selectedUnitLive && (
           <UnitDetailView
@@ -5229,6 +5350,7 @@ export default function App() {
             onShadowingAll={goShadowingAll}
             onDrill={goDrill}
             onScene={goScene}
+            memoryItems={selectedUnitLive.unitId ? memoryItems.filter(m => m.unit === selectedUnitLive.unitId) : undefined}
             grammarSlots={(() => {
               if (!grammarSheetData) return null
               const unitId = selectedUnitLive.unitId ?? `${level}-U${String(selectedUnitLive.id).padStart(2, '0')}`
@@ -5236,6 +5358,35 @@ export default function App() {
               return grammarSheetData[unitKey] ?? null
             })()}
           />
+        )}
+        {view === 'memory' && (
+          <div className="anim-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <BackBtn onClick={goHome} label="Dashboard" />
+            {currentMemoryStudent ? (
+              <Suspense fallback={<p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>Loading…</p>}>
+                <MemoryBrain
+                  students={visibleMemoryStudents.map(s => s.name)}
+                  studentName={currentMemoryStudent.name}
+                  onSelectStudent={setMemoryStudentName}
+                  items={memoryItems}
+                  skipped={memorySkipped}
+                  showDiagnostics={entryProfile === 'owner'}
+                  status={memoryStatus}
+                  unitTitles={memoryUnitTitles}
+                />
+              </Suspense>
+            ) : (
+              <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>
+                {memoryStudents === null ? 'Loading…' : 'No memory to show yet.'}
+              </p>
+            )}
+          </div>
+        )}
+        {view === 'unutmama' && entryProfile === 'owner' && (
+          <div className="anim-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <BackBtn onClick={goHome} label="Dashboard" />
+            <UnutmamaView unut={unut} />
+          </div>
         )}
         {view === 'dictationAll' && selectedUnitLive && (
           <DictationAllView unit={selectedUnitLive} onBack={() => setView('unit')} />

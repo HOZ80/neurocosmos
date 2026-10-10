@@ -1,4 +1,4 @@
-const CACHE_NAME = "neurocosmos-cache-v1";
+const CACHE_NAME = "neurocosmos-cache-v2";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
