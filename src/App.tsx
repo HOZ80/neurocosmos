@@ -1003,17 +1003,17 @@ function DashboardView({ level, units, onSelectUnit, onMemory, memoryCounts, unu
           </p>
         </div>
         {onMemory && (
-          <button onClick={onMemory} style={{
-            flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px',
-            background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '8px',
-            padding: '6px 12px', fontSize: '13px', fontWeight: 600, color: 'var(--primary)', cursor: 'pointer',
+          <button onClick={onMemory} className="nc-mybrain-btn" style={{
+            flexShrink: 0, display: 'flex', alignItems: 'center', gap: '7px',
+            background: 'var(--primary)', border: 0, borderRadius: '999px',
+            padding: '8px 16px', fontSize: '13px', fontWeight: 700, color: '#fff', cursor: 'pointer',
           }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9.5 3.5c-1.8 0-3.2 1.3-3.4 3-1.4.4-2.4 1.7-2.4 3.2 0 .7.2 1.3.6 1.9-.5.6-.8 1.4-.8 2.2 0 1.6 1.1 2.9 2.6 3.3.1 1.7 1.5 3 3.2 3 .7 0 1.3-.2 1.8-.5" />
               <path d="M12 4.3v14.9" />
               <path d="M14.5 3.5c1.8 0 3.2 1.3 3.4 3 1.4.4 2.4 1.7 2.4 3.2 0 .7-.2 1.3-.6 1.9.5.6.8 1.4.8 2.2 0 1.6-1.1 2.9-2.6 3.3-.1 1.7-1.5 3-3.2 3-.7 0-1.3-.2-1.8-.5" />
             </svg>
-            Memory
+            My Brain
           </button>
         )}
       </div>
@@ -1104,7 +1104,7 @@ function DashboardView({ level, units, onSelectUnit, onMemory, memoryCounts, unu
                     color: 'var(--primary)', background: 'rgba(79,70,229,0.08)',
                     padding: '2px 8px', borderRadius: '999px', letterSpacing: '0.04em',
                   }}>
-                    Memory · {memoryCounts?.[unit.unitId ?? '']} {memoryCounts?.[unit.unitId ?? ''] === 1 ? 'item' : 'items'}
+                    My Brain · {memoryCounts?.[unit.unitId ?? '']} {memoryCounts?.[unit.unitId ?? ''] === 1 ? 'item' : 'items'}
                   </span>
                 </div>
               )}
@@ -5176,7 +5176,7 @@ export default function App() {
   const breadcrumbs = [
     { label: LEVEL_META[level].code, onClick: () => { setView('dashboard'); setSelectedUnit(null) } },
     ...(selectedUnitLive ? [{ label: selectedUnitLive.unitLabel ?? `Unit ${selectedUnitLive.id}`, onClick: () => { setView('unit'); setSelectedQuestionIndex(null) } }] : []),
-    ...(view !== 'dashboard' && view !== 'unit' ? [{ label: view === 'dictationAll' ? 'Dictation All' : view === 'shadowingAll' ? 'Shadowing All' : view === 'drill' ? 'Drill' : view === 'scene' ? 'Scene' : view === 'memory' ? 'Memory' : view === 'unutmama' ? 'Unutmama' : (selectedQuestion?.label ?? MODULE_META[view as keyof typeof MODULE_META]?.label) }] : []),
+    ...(view !== 'dashboard' && view !== 'unit' ? [{ label: view === 'dictationAll' ? 'Dictation All' : view === 'shadowingAll' ? 'Shadowing All' : view === 'drill' ? 'Drill' : view === 'scene' ? 'Scene' : view === 'memory' ? 'My Brain' : view === 'unutmama' ? 'Memory' : (selectedQuestion?.label ?? MODULE_META[view as keyof typeof MODULE_META]?.label) }] : []),
   ]
 
   if (!entryProfile) {

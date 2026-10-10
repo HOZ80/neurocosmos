@@ -691,7 +691,7 @@ export default function MemoryBrain({ students, studentName, onSelectStudent, it
   return (
     <div className="mb-scope mb-root">
       <MemoryStyles />
-      <h1>Your Memory</h1>
+      <h1>My Brain</h1>
       <p className="mb-sub">Every word and structure you learn lights up a neuron here.</p>
 
       {students.length > 1 && (

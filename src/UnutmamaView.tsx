@@ -10,7 +10,7 @@ import type { UnutCard, UnutProgressMap, UnutResult } from './unutmamaLogic'
 import type { MemoryItem } from './memoryShared'
 
 // Memory sayfasındaki öğrenci seçiminde bu ad görünür (sadece Owner).
-export const UNUTMAMA_STUDENT_NAME = 'Unutmama'
+export const UNUTMAMA_STUDENT_NAME = 'Memory'
 
 const PROGRESS_KEY = 'nc_unutmama_progress_v1'
 const CARDS_CACHE_KEY = 'nc_unutmama_cards_v1'
@@ -200,7 +200,7 @@ export function UnutmamaView({ unut }: { unut: UnutState }) {
 
   const header = (
     <div>
-      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '28px', fontWeight: 700, margin: '0 0 4px', color: 'var(--foreground)' }}>Unutmama</h1>
+      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '28px', fontWeight: 700, margin: '0 0 4px', color: 'var(--foreground)' }}>Memory</h1>
       <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>
         {status === 'ok' ? <><b>{dueCount}</b> kart hazır</> : ' '}
       </p>
@@ -266,20 +266,22 @@ export function UnutmamaView({ unut }: { unut: UnutState }) {
   )
 }
 
-// P dashboard'unun üstündeki şerit: bugün kaç kart hazır.
+// P dashboard'unun üstündeki şerit: bugün kaç kart hazır. İçeriği kadar küçük, sağa yaslı.
 export function UnutmamaStrip({ status, due, onClick }: { status: UnutStatus; due: number; onClick: () => void }) {
   const right = status === 'ok' ? `Tekrar: ${due}` : status === 'loading' ? '…' : 'yüklenemedi'
   return (
-    <button type="button" onClick={onClick} style={{
-      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
-      textAlign: 'left', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px',
-      padding: '12px 16px', cursor: 'pointer', boxShadow: '0 1px 4px rgba(15,23,42,0.06)',
-    }}>
-      <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--foreground)' }}>Unutmama</span>
-      <span style={{
-        fontSize: '13px', fontWeight: 700, color: 'var(--primary)', background: 'rgba(79,70,229,0.08)',
-        padding: '4px 12px', borderRadius: '999px',
-      }}>{right}</span>
-    </button>
+    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <button type="button" onClick={onClick} style={{
+        display: 'inline-flex', alignItems: 'center', gap: '10px', textAlign: 'left',
+        background: 'rgba(79,70,229,0.08)', border: '1px solid rgba(79,70,229,0.35)', borderRadius: '12px',
+        padding: '7px 8px 7px 14px', cursor: 'pointer',
+      }}>
+        <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--primary)' }}>Memory</span>
+        <span style={{
+          fontSize: '12px', fontWeight: 700, color: 'var(--primary)', background: '#fff',
+          padding: '3px 10px', borderRadius: '999px',
+        }}>{right}</span>
+      </button>
+    </div>
   )
 }

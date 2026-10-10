@@ -153,7 +153,7 @@ export function UnitMemorySection({ items }: { items: MemoryItem[] }) {
       <MemoryStyles />
       <div className="mb-unit">
         <div className="mb-unit-head">
-          Memory
+          My Brain
           <span>{items.length} {items.length === 1 ? 'item' : 'items'}, {fmtDate(latest)}</span>
         </div>
         {STATUS_ORDER.map(k => {
