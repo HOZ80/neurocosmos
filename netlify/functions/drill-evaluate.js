@@ -77,7 +77,7 @@ OUTPUT FORMAT (mandatory, exactly this shape, nothing else before or after):
 Doğru hali: "<the corrected sentence in English>." Burada <what was wrong, in a few plain words> — <the rule, in one clause>.`
 }
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ karar: 'hata', mesaj: 'Desteklenmeyen istek türü.' }) }
   }

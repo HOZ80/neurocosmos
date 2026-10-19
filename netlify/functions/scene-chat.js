@@ -37,7 +37,7 @@ function sureYaz(baslik, baslangic, ek) {
   console.log('[SURE] ' + baslik + ': ' + gecen + ' ms' + (ek ? ' — ' + ek : ''));
 }
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   const handlerBaslangic = Date.now();
 
   if (event.httpMethod !== 'POST') {
