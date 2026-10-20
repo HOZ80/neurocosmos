@@ -1,0 +1,175 @@
+﻿1
+00:00:00,000 --> 00:00:02,520
+The Rebrand I Wish I Could Redo.
+
+2
+00:00:02,520 --> 00:00:06,600
+Last year, I worked on a rebranding project for a small coffee company.
+
+3
+00:00:06,600 --> 00:00:10,440
+Looking back, I wish I had listened to my instincts from the beginning.  
+
+4
+00:00:10,440 --> 00:00:13,000
+If I had asked more questions in the first meeting,
+
+5
+00:00:13,000 --> 00:00:15,520
+I would have understood what the client really wanted.
+
+6
+00:00:15,520 --> 00:00:19,840
+Instead, I opened Illustrator and designed a logo in two days.
+
+7
+00:00:19,840 --> 00:00:22,880
+When I presented it, the client looked confused.
+
+8
+00:00:22,880 --> 00:00:26,360
+"It's beautiful,". she said,
+
+9
+00:00:26,360 --> 00:00:28,040
+"but it doesn't feel like us.".
+
+10
+00:00:28,040 --> 00:00:29,960
+"What do you mean?" I asked.
+
+11
+00:00:29,960 --> 00:00:34,360
+"If you had visited our shop, you would have seen that we are warm and old-fashioned.
+
+12
+00:00:34,360 --> 00:00:37,000
+This design looks cold and modern.".
+
+13
+00:00:37,000 --> 00:00:38,680
+I felt terrible.
+
+14
+00:00:38,680 --> 00:00:41,600
+If only I had spent one afternoon in her shop,
+
+15
+00:00:41,600 --> 00:00:43,840
+I would have saved us all a lot of time.
+
+16
+00:00:43,840 --> 00:00:47,160
+Without a proper brief, I had worked completely in the dark.
+
+17
+00:00:47,160 --> 00:00:50,400
+I had even chosen the colors without checking her brand guidelines.
+
+18
+00:00:50,400 --> 00:00:52,080
+I should have asked for them first,
+
+19
+00:00:52,080 --> 00:00:54,600
+otherwise the colors would never match her packaging,
+
+20
+00:00:54,600 --> 00:00:56,280
+and of course they didn't.
+
+21
+00:00:56,280 --> 00:00:58,880
+That evening, I called my colleague Deniz. 
+
+22
+00:00:58,880 --> 00:01:01,640
+"I wish I hadn't rushed," I told him.
+
+23
+00:01:01,640 --> 00:01:04,680
+"Don't be so hard on yourself,". he said.
+
+24
+00:01:04,680 --> 00:01:07,000
+“But you should have shown her some sketches first.
+
+25
+00:01:07,000 --> 00:01:08,880
+If you had shared early ideas,
+
+26
+00:01:08,880 --> 00:01:12,920
+she could have corrected you before you spent two days on the final file.".
+
+27
+00:01:12,920 --> 00:01:13,880
+"I know.
+
+28
+00:01:13,880 --> 00:01:15,760
+I wish I had been more patient.".
+
+29
+00:01:15,760 --> 00:01:17,120
+"Well, it's not too late.
+
+30
+00:01:17,120 --> 00:01:18,400
+Let's fix it together.".
+
+31
+00:01:18,400 --> 00:01:20,200
+We worked all weekend.
+
+32
+00:01:20,200 --> 00:01:22,880
+But for Deniz, I would have missed the new deadline.
+
+33
+00:01:22,880 --> 00:01:27,960
+He reorganized my layers, and he reminded me to export every file in the right format.
+
+34
+00:01:27,960 --> 00:01:31,880
+If he hadn't done that, the developer wouldn't have been able to use my assets,
+
+35
+00:01:31,880 --> 00:01:33,960
+and we would have lost another week.
+
+36
+00:01:33,960 --> 00:01:37,000
+In the end, the client loved the new version.
+
+37
+00:01:37,000 --> 00:01:39,320
+She even said it was better than she had imagined.
+
+38
+00:01:39,320 --> 00:01:42,760
+Still, I can't stop thinking about the first mistake.
+
+39
+00:01:42,760 --> 00:01:47,080
+If I had taken the time to listen, I wouldn't have wasted so much energy.
+
+40
+00:01:47,080 --> 00:01:49,320
+Now, before every project,
+
+41
+00:01:49,320 --> 00:01:51,000
+I ask for a clear brief,
+
+42
+00:01:51,000 --> 00:01:52,600
+I look at the brand guidelines,
+
+43
+00:01:52,600 --> 00:01:54,160
+and I show early sketches.
+
+44
+00:01:54,160 --> 00:01:57,440
+Otherwise, I know I will repeat the same mistake.
