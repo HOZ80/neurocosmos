@@ -728,7 +728,7 @@ export default function PrivateDictation({ unitTitle, onBack }: {
                 onChange={e => { setTyped(e.target.value); setChecked(false); setReadyForNext(false) }}
                 placeholder="Duyduğun cümleyi buraya yaz…"
                 rows={4}
-                disabled={checked && allCorrect}
+                readOnly={checked && allCorrect}
                 style={{
                   width: '100%', resize: 'vertical', padding: '16px 18px',
                   fontFamily: 'var(--font-body)', fontSize: '16px', lineHeight: 1.7,

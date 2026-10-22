@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, forwardRef, useImperativeHandle, lazy, Suspense } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, forwardRef, useImperativeHandle, lazy, Suspense } from 'react'
 import PrivateShadowing from './PrivateShadowing'
 import PrivateDictation from './PrivateDictation'
 import SceneView, { parseSceneRows, parseCharacterRows, FALLBACK_SCENE_DATA } from './SceneView'
@@ -2047,7 +2047,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
               onChange={e => { setTyped(e.target.value); setChecked(false); setReadyForNext(false) }}
               placeholder="Type the sentence you hear from the audio…"
               rows={4}
-              disabled={checked && allCorrect}
+              readOnly={checked && allCorrect}
               style={{
                 width: '100%', resize: 'vertical',
                 padding: '16px 56px 16px 18px',
@@ -4623,6 +4623,13 @@ function unitFromUrl(v: string | null): Unit | null {
   return { id, title: '', topic: '', grammar: '', completed: false, locked: false, progress: 0, dictationSentence: '', translation: '', transcript: '' } as Unit
 }
 
+// Ekranların "derinliği": geri dönüşte (derinlik azalırken) önceki kaydırma yeri geri yüklenir.
+function screenDepth(v: View): number {
+  if (v === 'dashboard') return 0
+  if (v === 'unit' || v === 'memory' || v === 'unutmama') return 1
+  return 2
+}
+
 export default function App() {
   const [level, setLevel] = useState<Level>(() => levelFromUrl(getUrlParam('lvl')))
   const [view, setView] = useState<View>(() => viewFromUrl(getUrlParam('view')))
@@ -4676,6 +4683,35 @@ export default function App() {
       window.history.pushState(null, '', newUrl)
     }
   }, [level, view, selectedUnit, selectedGrammarSlot, selectedQuestionIndex])
+
+  // ── Geri dönüşte kaydırma yerini koru ──
+  // Her ekranda ne kadar aşağı kaydırıldığı ekran bazında hatırlanır. Bir üst
+  // ekrana geri dönüldüğünde (geri ok, breadcrumb, tarayıcı geri tuşu) o ekran
+  // en son bırakıldığı kaydırma yerinde açılır. İleri girişlere dokunulmaz.
+  const mainRef = useRef<HTMLElement>(null)
+  const scrollPosRef = useRef<Record<string, number>>({})
+  const prevScreenRef = useRef<{ key: string; depth: number } | null>(null)
+  const screenKey = [level, view, selectedUnit?.id ?? '', view === 'grammar' ? selectedGrammarSlot : '', selectedQuestionIndex ?? ''].join('|')
+  useLayoutEffect(() => {
+    const depth = screenDepth(view)
+    const prev = prevScreenRef.current
+    prevScreenRef.current = { key: screenKey, depth }
+    if (!prev || prev.key === screenKey) return undefined
+    if (depth >= prev.depth) return undefined
+    const target = scrollPosRef.current[screenKey]
+    const el = mainRef.current
+    if (!el || !target) return undefined
+    el.scrollTop = target
+    if (Math.abs(el.scrollTop - target) < 2) return undefined
+    // İçerik (ör. Sheet'ten gelen liste) henüz tam yüklenmemiş olabilir — kısa süre tekrar dene.
+    let tries = 0
+    const t = window.setInterval(() => {
+      tries++
+      el.scrollTop = target
+      if (Math.abs(el.scrollTop - target) < 2 || tries >= 30) window.clearInterval(t)
+    }, 50)
+    return () => window.clearInterval(t)
+  }, [screenKey])
 
   // ── PWA yükleme — Android/Chrome: beforeinstallprompt yakalama ──
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null)
@@ -5327,7 +5363,11 @@ export default function App() {
       </header>
 
       {/* ── Main content ── */}
-      <main style={{ flex: 1, overflowY: 'auto', padding: '32px 28px 48px' }}>
+      <main
+        ref={mainRef}
+        onScroll={e => { scrollPosRef.current[screenKey] = e.currentTarget.scrollTop }}
+        style={{ flex: 1, overflowY: 'auto', padding: '32px 28px 48px' }}
+      >
         {view === 'dashboard' && (
           <DashboardView
             level={level}
