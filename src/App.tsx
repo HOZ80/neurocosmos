@@ -6,6 +6,10 @@ import type { Scene, SceneCharacter } from './SceneView'
 import { parseMemoryRows, parseMemoryStudents, UnitMemorySection } from './memoryShared'
 import type { MemoryItem, MemoryStudent } from './memoryShared'
 import { useUnutmama, UnutmamaView, UnutmamaStrip, UNUTMAMA_STUDENT_NAME } from './UnutmamaView'
+import { restoreSession, getCachedAccount, signOut, canUseArea } from './auth'
+import type { Account, AreaId } from './auth'
+import LoginScreen from './LoginScreen'
+import StudentAdmin from './StudentAdmin'
 
 // Hafıza beyni (three.js içerir) — sadece Memory sayfası açılınca yüklenir.
 const MemoryBrain = lazy(() => import('./MemoryBrain'))
@@ -818,24 +822,15 @@ function PasswordModal({ onSubmit, onClose, error, title }: {
   )
 }
 
-function EntryScreen({ onPickProfile, onPickOwner }: {
+function EntryScreen({ onPickProfile, onPickOwner, canUse, greetingName, isTeacher, onLogout, onAdmin }: {
   onPickProfile: (p: 'A1' | 'A2' | 'child_omur' | 'child_oztug') => void
   onPickOwner: () => void
+  canUse: (area: AreaId) => boolean
+  greetingName: string
+  isTeacher: boolean
+  onLogout: () => void
+  onAdmin: () => void
 }) {
-  // Hangi profil için şifre modalı açık — null ise kapalı
-  const [pendingProfile, setPendingProfile] = useState<'A1' | 'A2' | 'child_omur' | 'child_oztug' | null>(null)
-  const [profilePwError, setProfilePwError] = useState(false)
-
-  function handleProfilePw(pw: string) {
-    if (!pendingProfile) return
-    if (pw === PROFILE_PASSWORDS[pendingProfile]) {
-      setProfilePwError(false)
-      setPendingProfile(null)
-      onPickProfile(pendingProfile)
-    } else {
-      setProfilePwError(true)
-    }
-  }
   // Bu ekran bilinçli olarak sitenin geri kalanından (light tema) bağımsız,
   // sabit bir koyu palet kullanır — var(--...) yerine düz hex değerler.
   const dark = {
@@ -849,6 +844,8 @@ function EntryScreen({ onPickProfile, onPickOwner }: {
     padding: '22px 22px', cursor: 'pointer', textAlign: 'left', width: '100%',
     transition: 'all 0.15s',
   }
+  // Bu hesaba açık olmayan kartlar: görünür ama soluk ve kilitli.
+  const lockedCard: React.CSSProperties = { ...cardBase, opacity: 0.4, cursor: 'not-allowed' }
   const screen = (
     <div style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -877,16 +874,17 @@ function EntryScreen({ onPickProfile, onPickOwner }: {
         fontFamily: "'Baloo 2', var(--font-display)", fontWeight: 700,
         fontSize: 'clamp(24px, 5.5vw, 30px)', textAlign: 'center', margin: '0 0 32px',
         color: dark.text, maxWidth: '380px',
-      }}>Merhaba! Hadi başlayalım</h1>
+      }}>Merhaba {greetingName}! Hadi başlayalım</h1>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', width: '100%', maxWidth: '400px' }}>
 
         <button
-          onClick={() => { setProfilePwError(false); setPendingProfile('child_omur') }}
-          style={cardBase}
+          onClick={() => { if (canUse('child_omur')) onPickProfile('child_omur') }}
+          disabled={!canUse('child_omur')}
+          style={canUse('child_omur') ? cardBase : lockedCard}
         >
           <div>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: dark.text }}>Ömür</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: dark.text }}>{!canUse('child_omur') && '🔒 '}Ömür</div>
             <span style={{
               display: 'inline-block', marginTop: '8px', fontFamily: "'IBM Plex Mono', var(--font-mono)", fontSize: '11px',
               letterSpacing: '0.05em', color: dark.spark, background: `${dark.spark}33`, border: `1px solid ${dark.spark}`,
@@ -897,11 +895,12 @@ function EntryScreen({ onPickProfile, onPickOwner }: {
         </button>
 
         <button
-          onClick={() => { setProfilePwError(false); setPendingProfile('child_oztug') }}
-          style={cardBase}
+          onClick={() => { if (canUse('child_oztug')) onPickProfile('child_oztug') }}
+          disabled={!canUse('child_oztug')}
+          style={canUse('child_oztug') ? cardBase : lockedCard}
         >
           <div>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: dark.text }}>Öztuğ</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: dark.text }}>{!canUse('child_oztug') && '🔒 '}Öztuğ</div>
             <span style={{
               display: 'inline-block', marginTop: '8px', fontFamily: "'IBM Plex Mono', var(--font-mono)", fontSize: '11px',
               letterSpacing: '0.05em', color: dark.spark, background: `${dark.spark}33`, border: `1px solid ${dark.spark}`,
@@ -912,11 +911,12 @@ function EntryScreen({ onPickProfile, onPickOwner }: {
         </button>
 
         <button
-          onClick={() => { setProfilePwError(false); setPendingProfile('A1') }}
-          style={cardBase}
+          onClick={() => { if (canUse('A1')) onPickProfile('A1') }}
+          disabled={!canUse('A1')}
+          style={canUse('A1') ? cardBase : lockedCard}
         >
           <div>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: dark.text }}>Ayşe / Fatma</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: dark.text }}>{!canUse('A1') && '🔒 '}Ayşe / Fatma</div>
             <span style={{
               display: 'inline-block', marginTop: '8px', fontFamily: "'IBM Plex Mono', var(--font-mono)", fontSize: '11px',
               letterSpacing: '0.05em', color: dark.accent, background: dark.accentSoft, border: `1px solid ${dark.accent}`,
@@ -927,11 +927,12 @@ function EntryScreen({ onPickProfile, onPickOwner }: {
         </button>
 
         <button
-          onClick={() => { setProfilePwError(false); setPendingProfile('A2') }}
-          style={cardBase}
+          onClick={() => { if (canUse('A2')) onPickProfile('A2') }}
+          disabled={!canUse('A2')}
+          style={canUse('A2') ? cardBase : lockedCard}
         >
           <div>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: dark.text }}>Hatice</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: dark.text }}>{!canUse('A2') && '🔒 '}Hatice</div>
             <span style={{
               display: 'inline-block', marginTop: '8px', fontFamily: "'IBM Plex Mono', var(--font-mono)", fontSize: '11px',
               letterSpacing: '0.05em', color: dark.accent, background: dark.accentSoft, border: `1px solid ${dark.accent}`,
@@ -942,8 +943,9 @@ function EntryScreen({ onPickProfile, onPickOwner }: {
         </button>
 
         <button
-          onClick={onPickOwner}
-          style={{ ...cardBase, borderStyle: 'dashed' }}
+          onClick={() => { if (canUse('owner')) onPickOwner() }}
+          disabled={!canUse('owner')}
+          style={{ ...(canUse('owner') ? cardBase : lockedCard), borderStyle: 'dashed' }}
         >
           <div>
             <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: dark.text, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -958,29 +960,27 @@ function EntryScreen({ onPickProfile, onPickOwner }: {
           <span style={{ color: dark.textMuted, fontSize: '18px' }}>→</span>
         </button>
 
+        {isTeacher && (
+          <button onClick={onAdmin} style={{ ...cardBase, background: dark.accentSoft, borderColor: dark.accent }}>
+            <div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: dark.text }}>Öğrencileri yönet</div>
+              <div style={{ marginTop: '6px', fontSize: '13px', color: dark.textMuted }}>Öğrenci ekle, alan aç, şifre değiştir</div>
+            </div>
+            <span style={{ color: dark.text, fontSize: '18px' }}>→</span>
+          </button>
+        )}
+
+        <button onClick={onLogout} style={{
+          marginTop: '10px', alignSelf: 'center', background: 'none', border: 'none',
+          color: dark.textMuted, fontSize: '14px', fontWeight: 600, cursor: 'pointer', padding: '10px 14px',
+          textDecoration: 'underline', textUnderlineOffset: '3px',
+        }}>Çıkış yap</button>
+
       </div>
     </div>
   )
 
-  return (
-    <>
-      {screen}
-      {/* Profil şifre modalı — A1/A2 kartına basılınca açılır */}
-      {pendingProfile && (
-        <PasswordModal
-          title={
-            pendingProfile === 'A1' ? 'English Group A'
-            : pendingProfile === 'A2' ? 'English Group B'
-            : pendingProfile === 'child_omur' ? 'Ömür'
-            : 'Öztuğ'
-          }
-          error={profilePwError}
-          onSubmit={handleProfilePw}
-          onClose={() => { setPendingProfile(null); setProfilePwError(false) }}
-        />
-      )}
-    </>
-  )
+  return screen
 }
 
 function DashboardView({ level, units, onSelectUnit, onMemory, memoryCounts, unutmama }: {
@@ -2984,32 +2984,16 @@ const LEVEL_META: Record<Level, { code: string; label: string; color: string; di
   A2: { code: 'H',  label: 'English Group B', color: '#0EA5E9' },
   B1: { code: 'B1', label: 'Others',          color: '#8B5CF6', disabled: true },
   B2: { code: 'B2', label: 'Coming soon',     color: '#94A3B8', disabled: true },
-  // 'P': başkalarına her zaman kilitli görünür (🔒). Sadece doğru şifre
-  // girilince açılır — bkz. PRIVATE_PASSWORD ve tab bar'daki tıklama mantığı.
+  // 'P': başkalarına her zaman kilitli görünür (🔒). Yalnızca öğretmen
+  // hesabına açılır — bkz. isTabAvailable.
   P:  { code: 'P',  label: 'Kişisel',          color: '#F59E0B', disabled: true, private: true },
 }
 
-// ─── Kişisel alan (sadece sana özel) ───────────────────────────────────────────
-// Bu sekme başkalarına hep kilitli/pasif görünür. Sen şifreyi girince açılır ve
-// tarayıcında hatırlanır (tekrar şifre girmen gerekmez, aynı cihaz/tarayıcıda).
-//
-// ÖNEMLİ: Aşağıdaki şifreyi kendi seçtiğin bir şeyle değiştir. Bu şifre kod
-// içinde düz yazıyor — yani "birisi kaynağa bakarsa görebilir" seviyesinde bir
-// koruma. Gerçek bir gizlilik/güvenlik önlemi değil, sadece rastgele birinin
-// linke tıklayıp tesadüfen görmesini engelliyor.
-const PRIVATE_PASSWORD = '87654321'
-const PRIVATE_UNLOCK_KEY = 'nc_private_unlocked'
-
-// Her profil için şifre — ileride kullanıcı eklenirse buraya satır eklenir.
-// EntryProfile tipi ve PROFILE_PASSWORDS senkronize tutulmalı.
-const PROFILE_PASSWORDS: Record<string, string> = {
-  A1: '1234',
-  A2: '1234',
-  // Çocuk profilleri — bunlar geçici PIN'ler, kendi seçtiğin 4 haneli
-  // sayılarla değiştir.
-  child_omur: '1111',
-  child_oztug: '2222',
-}
+// ─── Giriş ───────────────────────────────────────────────────────────────────
+// Eski sabit şifreler (kart şifreleri ve Kişisel alan şifresi) kaldırıldı.
+// Artık herkes kendi giriş adı ve şifresiyle girer (bkz. auth.ts). Hangi
+// kartlara girebileceği Supabase'deki profilinin alan listesinden gelir;
+// öğretmen hesabı her şeye erişir. Kişisel (P) alan yalnızca öğretmene açık.
 
 // ─── Giriş ekranı (EntryScreen) ────────────────────────────────────────────────
 // Dashboard'dan önce gösterilen "kim çalışıyor" ekranı. Seçim sessionStorage'da
@@ -4785,7 +4769,27 @@ export default function App() {
     </button>
   ) : null
 
+  // ── Hesap (Supabase girişi, bkz. auth.ts) ──
+  // Telefonda kayıtlı oturum varsa önce onunla açılır, arka planda doğrulanır.
+  const [account, setAccount] = useState<Account | null>(() => getCachedAccount())
+  const [authChecked, setAuthChecked] = useState(false)
+  const [showStudentAdmin, setShowStudentAdmin] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    restoreSession().then(a => {
+      if (cancelled) return
+      setAccount(a)
+      setAuthChecked(true)
+    })
+    // Eski Kişisel alan kilidinin tarayıcıda kalan izi temizlenir.
+    try { localStorage.removeItem('nc_private_unlocked') } catch {}
+    return () => { cancelled = true }
+  }, [])
+  const isTeacher = !!account && account.active && account.role === 'teacher'
+
   // ── Giriş ekranı profili (bkz. EntryScreen) ──
+  // Hangi kartla çalışıldığı. Sekme açık kaldıkça hatırlanır; kartın bu hesaba
+  // açık olup olmadığı her zaman hesabın alan listesinden kontrol edilir.
   const [entryProfile, setEntryProfile] = useState<EntryProfile | null>(() => {
     try {
       const v = sessionStorage.getItem(ENTRY_PROFILE_KEY)
@@ -4793,7 +4797,17 @@ export default function App() {
     } catch { return null }
   })
 
+  // Hesap değişirse ya da kart artık bu hesaba açık değilse kart ekranına dön.
+  useEffect(() => {
+    if (!entryProfile) return
+    if (!account || !canUseArea(account, entryProfile)) {
+      setEntryProfile(null)
+      try { sessionStorage.removeItem(ENTRY_PROFILE_KEY) } catch {}
+    }
+  }, [account, entryProfile])
+
   function chooseProfile(p: 'A1' | 'A2' | 'child_omur' | 'child_oztug') {
+    if (!canUseArea(account, p)) return
     setEntryProfile(p)
     try { sessionStorage.setItem(ENTRY_PROFILE_KEY, p) } catch {}
     // Çocuk profilleri Level/dashboard makinesinden geçmiyor — ayrı bir
@@ -4804,32 +4818,12 @@ export default function App() {
     }
   }
 
-  // ── Kişisel alan kilidi ──
-  const [privateUnlocked, setPrivateUnlocked] = useState<boolean>(() => {
-    try { return localStorage.getItem(PRIVATE_UNLOCK_KEY) === 'true' } catch { return false }
-  })
-  const [showPasswordModal, setShowPasswordModal] = useState(false)
-  const [passwordError, setPasswordError] = useState(false)
-
-  function handlePasswordSubmit(pw: string) {
-    if (pw === PRIVATE_PASSWORD) {
-      setPrivateUnlocked(true)
-      try { localStorage.setItem(PRIVATE_UNLOCK_KEY, 'true') } catch {}
-      setShowPasswordModal(false)
-      setPasswordError(false)
-      setEntryProfile('owner')
-      try { sessionStorage.setItem(ENTRY_PROFILE_KEY, 'owner') } catch {}
-      setLevel('P')
-      setSelectedUnit(null)
-    } else {
-      setPasswordError(true)
-    }
-  }
-
-  function handleLockPrivate() {
-    setPrivateUnlocked(false)
-    try { localStorage.removeItem(PRIVATE_UNLOCK_KEY) } catch {}
-    setLevel('A1')
+  // Owner kartı: yalnızca öğretmen hesabına açık, ayrı şifre yok.
+  function chooseOwner() {
+    if (!canUseArea(account, 'owner')) return
+    setEntryProfile('owner')
+    try { sessionStorage.setItem(ENTRY_PROFILE_KEY, 'owner') } catch {}
+    setLevel('P')
     setSelectedUnit(null)
   }
 
@@ -4839,6 +4833,14 @@ export default function App() {
     try { sessionStorage.removeItem(ENTRY_PROFILE_KEY) } catch {}
     setSelectedUnit(null)
     setView('dashboard')
+  }
+
+  // Hesaptan tamamen çıkış — telefon artık hatırlamaz, giriş ekranı gelir.
+  function handleLogout() {
+    handleExitToEntry()
+    setShowStudentAdmin(false)
+    setAccount(null)
+    signOut()
   }
 
   // Sheet-backed 100Q data. Starts null (meaning: "use the hardcoded fallback
@@ -5188,11 +5190,14 @@ export default function App() {
     A2:    ['A2'],
     // İleride: B1: ['B1'], B2: ['B2'] gibi genişletilir
   }
+  // Öğretmen → her sekme açık. Öğrenci → hesabının alan listesindeki
+  // gruplar (A1/A2) açık; B1, B2 ve Kişisel (P) kilitli görünür.
   function isTabAvailable(l: Level): boolean {
-    if (entryProfile === 'owner') return true
-    if (!entryProfile) return false
-    const allowed = PROFILE_ALLOWED_LEVELS[entryProfile]
-    return allowed ? allowed.includes(l) : false
+    if (!entryProfile || !account) return false
+    if (isTeacher) return true
+    if (l === 'P') return canUseArea(account, 'owner')
+    if (l === 'A1' || l === 'A2') return canUseArea(account, l)
+    return false
   }
 
   // Adres çubuğundan (elle yazılıp sayfa yenilenerek, ya da geri/ileri
@@ -5207,7 +5212,7 @@ export default function App() {
     setView('dashboard')
     setSelectedUnit(null)
     setSelectedQuestionIndex(null)
-  }, [entryProfile, level])
+  }, [entryProfile, level, account])
 
   const breadcrumbs = [
     { label: LEVEL_META[level].code, onClick: () => { setView('dashboard'); setSelectedUnit(null) } },
@@ -5215,21 +5220,37 @@ export default function App() {
     ...(view !== 'dashboard' && view !== 'unit' ? [{ label: view === 'dictationAll' ? 'Dictation All' : view === 'shadowingAll' ? 'Shadowing All' : view === 'drill' ? 'Drill' : view === 'scene' ? 'Scene' : view === 'memory' ? 'My Brain' : view === 'unutmama' ? 'Memory' : (selectedQuestion?.label ?? MODULE_META[view as keyof typeof MODULE_META]?.label) }] : []),
   ]
 
+  // Giriş yapılmamış: telefonda kayıtlı oturum kontrol edilirken kısa bir
+  // bekleme ekranı, ardından giriş ekranı.
+  if (!account) {
+    if (!authChecked) {
+      return <div style={{ minHeight: '100vh', background: '#0F0B1E' }} />
+    }
+    return (
+      <>
+        {iosInstallBanner}
+        <LoginScreen onSignedIn={a => { setAccount(a); setAuthChecked(true) }} />
+      </>
+    )
+  }
+
+  if (showStudentAdmin && isTeacher) {
+    return <StudentAdmin onClose={() => setShowStudentAdmin(false)} />
+  }
+
   if (!entryProfile) {
     return (
       <>
         {iosInstallBanner}
         <EntryScreen
           onPickProfile={chooseProfile}
-          onPickOwner={() => setShowPasswordModal(true)}
+          onPickOwner={chooseOwner}
+          canUse={area => canUseArea(account, area)}
+          greetingName={account.displayName.split(' ')[0]}
+          isTeacher={isTeacher}
+          onLogout={handleLogout}
+          onAdmin={() => setShowStudentAdmin(true)}
         />
-        {showPasswordModal && (
-          <PasswordModal
-            error={passwordError}
-            onSubmit={handlePasswordSubmit}
-            onClose={() => { setShowPasswordModal(false); setPasswordError(false) }}
-          />
-        )}
       </>
     )
   }
@@ -5295,14 +5316,16 @@ export default function App() {
           {/* User */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {androidInstallButton}
-            {level === 'P' && privateUnlocked && (
-              <button onClick={handleLockPrivate} title="Kilitle" style={{
+            {isTeacher && (
+              <button onClick={() => setShowStudentAdmin(true)} title="Öğrencileri yönet" aria-label="Öğrencileri yönet" style={{
                 background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
                 padding: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
               }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="5" y="11" width="14" height="10" rx="2" />
-                  <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
                 </svg>
               </button>
             )}
@@ -5496,14 +5519,6 @@ export default function App() {
           />
         )}
       </main>
-
-      {showPasswordModal && (
-        <PasswordModal
-          error={passwordError}
-          onSubmit={handlePasswordSubmit}
-          onClose={() => { setShowPasswordModal(false); setPasswordError(false) }}
-        />
-      )}
     </div>
   )
 }
