@@ -159,7 +159,7 @@ export const handler = async (event) => {
       if (!LOGIN_NAME_RE.test(loginName)) {
         return json(400, { error: 'Giriş adı 2-30 karakter olmalı; yalnızca harf, rakam, nokta, alt çizgi ve tire kullanılabilir.' })
       }
-      if (loginName === 'ogretmen') return json(400, { error: 'Bu giriş adı kullanılamaz.' })
+      if (loginName === 'admin') return json(400, { error: 'Bu giriş adı kullanılamaz.' })
       if (!displayName) return json(400, { error: 'Görünen adı yaz.' })
       if (password.length < 6) return json(400, { error: 'Şifre en az 6 karakter olmalı.' })
       if (!areas) return json(400, { error: 'Alan seçimi geçersiz.' })
