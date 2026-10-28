@@ -198,6 +198,8 @@ export async function loadContent(): Promise<Content> {
 }
 
 export function fileUrl(name: string): string {
+  // "/kitaplar/..." gibi site içi yol ya da tam adres verilmişse olduğu gibi kullan
+  if (name.startsWith('/') || /^https?:\/\//i.test(name)) return name
   return `${SUPABASE_URL}/storage/v1/object/public/kitaplar/${encodeURIComponent(name)}`
 }
 

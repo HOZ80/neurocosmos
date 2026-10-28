@@ -3,7 +3,7 @@
 // işaretleri Supabase'ten gelir. Öğretmen hesabı "önizleme" olarak girer:
 // bütün kitaplar açık görünür, hiçbir şey veritabanına yazılmaz.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Account } from './auth'
 import { READER_CSS } from './readerStyles'
 import {
@@ -20,6 +20,7 @@ const LAYOUT_KEY = 'nc_reader_layout'
 
 const ICON_PLAY = <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
 const ICON_PAUSE = <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4.5" height="14" rx="1.2" /><rect x="13.5" y="5" width="4.5" height="14" rx="1.2" /></svg>
+const ICON_HOME = <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11.5 12 4l9 7.5" /><path d="M5.5 10v9.5h13V10" /><path d="M10 19.5v-5h4v5" /></svg>
 const ICON_SPK = <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 9v6h4l5 4V5L8 9z" /><path d="M16.5 8.5a5 5 0 010 7" /></svg>
 
 // Tarayıcının kendi sesi (ücretsiz, hesap gerektirmez). Yalnızca kelime kartında.
@@ -67,6 +68,46 @@ export default function ChildReaderApp({ account, childName, group, onExit }: {
   const [loading, setLoading] = useState(true)
   const [screen, setScreen] = useState<{ kind: 'list' } | { kind: 'book'; code: string } | { kind: 'check' }>({ kind: 'list' })
 
+  // Telefonun/tarayıcının geri tuşu: kitaptan listeye, listeden ana sayfaya.
+  const depth = useRef(0)
+  const mounted = useRef(true)
+  const onExitRef = useRef(onExit)
+  onExitRef.current = onExit
+  const leaving = useRef(false)
+  useEffect(() => {
+    mounted.current = true
+    // Sitenin kendi adres takibi açılışta adres kaydını yeniler; kendi geri
+    // adımımızı ondan sonra ekleyelim ki üzerine yazılmasın.
+    const t = window.setTimeout(() => {
+      try { window.history.pushState({ ncReader: 'list' }, ''); depth.current = 1 } catch {}
+    }, 0)
+    const onPop = () => {
+      if (!mounted.current) return
+      if (leaving.current || depth.current <= 1) { depth.current = 0; onExitRef.current(); return }
+      depth.current = 1
+      setScreen({ kind: 'list' })
+    }
+    window.addEventListener('popstate', onPop)
+    return () => { window.clearTimeout(t); mounted.current = false; window.removeEventListener('popstate', onPop) }
+  }, [])
+  const openScreen = (sc: { kind: 'book'; code: string } | { kind: 'check' }) => {
+    try { window.history.pushState({ ncReader: sc.kind }, ''); depth.current = 2 } catch {}
+    setScreen(sc)
+  }
+  const backToList = () => {
+    if (depth.current >= 2) { try { window.history.back(); return } catch {} }
+    setScreen({ kind: 'list' })
+  }
+  const goHome = () => {
+    const n = depth.current
+    if (n > 0) {
+      leaving.current = true
+      try { window.history.go(-n) } catch {}
+      // Tarayıcı geri adımı tetiklemezse yine de ana sayfaya dön.
+      window.setTimeout(() => { if (mounted.current) { depth.current = 0; onExitRef.current() } }, 450)
+    } else onExit()
+  }
+
   const load = useCallback(async () => {
     setLoading(true); setError('')
     try {
@@ -113,12 +154,13 @@ export default function ChildReaderApp({ account, childName, group, onExit }: {
           preview={preview}
           sd={sd}
           setSd={setSd}
-          onClose={() => setScreen({ kind: 'list' })}
+          onClose={backToList}
+          onHome={goHome}
         />
       </div>
     )
   } else if (content && screen.kind === 'check') {
-    body = <ContentCheck content={content} onBack={() => setScreen({ kind: 'list' })} />
+    body = <ContentCheck content={content} onBack={backToList} />
   } else if (content && screen.kind !== 'check') {
     const stateOf = new Map(sd.states.map(s => [s.book_code, s]))
     body = (
@@ -138,7 +180,7 @@ export default function ChildReaderApp({ account, childName, group, onExit }: {
               const canOpen = open && pages.length > 0
               return (
                 <button key={b.code} className={'rd-card' + (open ? '' : ' locked')} disabled={!canOpen}
-                  onClick={() => setScreen({ kind: 'book', code: b.code })}
+                  onClick={() => openScreen({ kind: 'book', code: b.code })}
                   aria-label={b.title + (open ? '' : ' (kilitli)')}>
                   <div className="rd-cover" style={{ background: coverColor(b.code) }}>
                     {b.cover ? <img src={fileUrl(b.cover)} alt="" onError={e => { e.currentTarget.style.display = 'none' }} /> : null}
@@ -170,17 +212,15 @@ export default function ChildReaderApp({ account, childName, group, onExit }: {
       <div className="rd-app">
         <header className="rd-top">
           <div className="rd-brand">
-            {onList
-              ? <div className="rd-mark" aria-hidden="true">{childName[0]}</div>
-              : <button className="rd-btn" onClick={() => setScreen({ kind: 'list' })}>‹ Kitaplar</button>}
+            <button className="rd-home" onClick={goHome} aria-label="Ana sayfaya dön">{ICON_HOME}<span>Ana sayfa</span></button>
+            {!onList && <button className="rd-btn" onClick={backToList}>‹ Kitaplar</button>}
             <div style={{ minWidth: 0 }}>
               <h1>{onList ? `Merhaba ${childName}` : 'İçerik kontrolü'}</h1>
               {onList && <p>Bir kitap seç, okumaya başla</p>}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {onList && preview && content && <button className="rd-btn" onClick={() => setScreen({ kind: 'check' })}>İçerik kontrolü</button>}
-            {onList && <button className="rd-btn" onClick={onExit}>Çıkış</button>}
+            {onList && preview && content && <button className="rd-btn" onClick={() => openScreen({ kind: 'check' })}>İçerik kontrolü</button>}
           </div>
         </header>
         <main className="rd-stage">{body}</main>
@@ -239,7 +279,7 @@ function locate(tm: PageTiming, t: number, duration: number): { si: number; wi: 
   return { si, wi }
 }
 
-function BookReader({ book, content, account, preview, sd, setSd, onClose }: {
+function BookReader({ book, content, account, preview, sd, setSd, onClose, onHome }: {
   book: Book
   content: Content
   account: Account
@@ -247,6 +287,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose }: {
   sd: StudentData
   setSd: React.Dispatch<React.SetStateAction<StudentData>>
   onClose: () => void
+  onHome: () => void
 }) {
   const studentId = account.id
   const allPages = useMemo(() => sortedBookPages(content, book.code), [content, book.code])
@@ -480,21 +521,92 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose }: {
     seekTo(sentStart(n) + 0.01, playing)
   }
 
+  // ── Sayfa çevirme efekti ──────────────────────────────────────────────
+  // Giden sayfanın kopyası cilt çizgisi etrafında döner; çift sayfada ardından
+  // yeni sayfa diğer taraftan inerek yerine oturur.
+  const bookRef = useRef<HTMLDivElement | null>(null)
+  const flip = useRef<{ dir: 1 | -1; clone: HTMLElement; timer: number } | null>(null)
+  const canAnimate = () => typeof Element !== 'undefined' && typeof (Element.prototype as any).animate === 'function' &&
+    !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+  const placeClone = (el: HTMLElement, book: HTMLElement) => {
+    const r = el.getBoundingClientRect(), br = book.getBoundingClientRect()
+    const c = el.cloneNode(true) as HTMLElement
+    c.querySelectorAll('[id]').forEach(x => x.removeAttribute('id'))
+    c.classList.add('rd-flipclone')
+    c.style.left = (r.left - br.left) + 'px'; c.style.top = (r.top - br.top) + 'px'
+    c.style.width = r.width + 'px'; c.style.height = r.height + 'px'
+    book.appendChild(c)
+    return c
+  }
+  const cancelFlip = () => {
+    if (!flip.current) return
+    window.clearTimeout(flip.current.timer)
+    flip.current.clone.remove()
+    flip.current = null
+  }
+  const startFlip = (dir: 1 | -1) => {
+    cancelFlip()
+    const book = bookRef.current
+    if (!book || !canAnimate()) return
+    const spread = book.querySelector('.rd-spread, .rd-solo') as HTMLElement | null
+    if (!spread) return
+    const isSpread = spread.classList.contains('rd-spread') && double
+    const target = isSpread ? (spread.querySelector(dir > 0 ? '.rd-text' : '.rd-art') as HTMLElement | null) : spread
+    if (!target) return
+    const clone = placeClone(target, book)
+    // Bir şey ters giderse kopya ekranda kalmasın
+    const timer = window.setTimeout(() => { clone.remove(); if (flip.current?.clone === clone) flip.current = null }, 2000)
+    flip.current = { dir, clone, timer }
+  }
+  useLayoutEffect(() => {
+    const f = flip.current
+    const book = bookRef.current
+    if (!f || !book) return
+    flip.current = null
+    const { dir, clone } = f
+    const spread = book.querySelector(':scope > .rd-spread, :scope > .rd-solo') as HTMLElement | null
+    const twoPhase = !!spread && spread.classList.contains('rd-spread') && double
+    const incoming = twoPhase ? (spread!.querySelector(dir > 0 ? '.rd-art' : '.rd-text') as HTMLElement | null) : null
+    if (incoming) incoming.style.visibility = 'hidden'
+    const origin1 = twoPhase ? (dir > 0 ? 'left center' : 'right center') : (dir > 0 ? 'left center' : 'right center')
+    clone.style.transformOrigin = origin1
+    const a1 = clone.animate(
+      [{ transform: 'perspective(1600px) rotateY(0deg)', filter: 'brightness(1)' },
+       { transform: `perspective(1600px) rotateY(${dir > 0 ? -90 : 90}deg)`, filter: 'brightness(.72)' }],
+      { duration: twoPhase ? 300 : 420, easing: 'cubic-bezier(.45,0,.75,.4)', fill: 'forwards' })
+    const done1 = () => {
+      window.clearTimeout(f.timer)
+      clone.remove()
+      if (!incoming) return
+      const c2 = placeClone(incoming, book)
+      incoming.style.visibility = ''
+      c2.style.transformOrigin = dir > 0 ? 'right center' : 'left center'
+      const a2 = c2.animate(
+        [{ transform: `perspective(1600px) rotateY(${dir > 0 ? 90 : -90}deg)`, filter: 'brightness(.72)' },
+         { transform: 'perspective(1600px) rotateY(0deg)', filter: 'brightness(1)' }],
+        { duration: 300, easing: 'cubic-bezier(.25,.6,.55,1)', fill: 'forwards' })
+      const done2 = () => c2.remove()
+      a2.onfinish = done2; a2.oncancel = done2
+    }
+    a1.onfinish = done1; a1.oncancel = done1
+  }, [pageKey, pos.bitti])  // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Sayfa gezintisi ───────────────────────────────────────────────────
   const firstPageNo = (sec: number) => pagesOf(sec)[0]?.page ?? 1
 
   const enterBitti = async () => {
     stopAudio()
-    if (justDone.current.has(pos.section)) { setPos(p => ({ ...p, bitti: true })); return }
+    if (justDone.current.has(pos.section)) { startFlip(1); setPos(p => ({ ...p, bitti: true })); return }
     const missing = secPages.filter(p => !visited.includes(p.page))
     if (missing.length) {
       setNotice('Atladığın bir sayfa var. Oradan devam edelim.')
+      startFlip(-1)
       commit(pos.section, secPages.indexOf(missing[0]), visited)
       return
     }
     if (!preview) {
       try { await addReading(studentId, book.code, pos.section) }
-      catch { notify('Okuma kaydedilemedi. İnternetini kontrol edip tekrar dene.'); return }
+      catch { cancelFlip(); notify('Okuma kaydedilemedi. İnternetini kontrol edip tekrar dene.'); return }
     }
     setSd(p => ({ ...p, readings: preview ? p.readings : [...p.readings, { book_code: book.code, section_no: pos.section }] }))
     justDone.current.add(pos.section)
@@ -502,34 +614,60 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose }: {
     const target = ns ?? pos.section
     setVisited([])
     persistState(target, firstPageNo(target), [])
+    startFlip(1)
     setPos(p => ({ ...p, bitti: true }))
   }
 
   const goNext = () => {
     setNotice('')
-    if (pos.idx < secPages.length - 1) commit(pos.section, pos.idx + 1, visited)
+    if (pos.idx < secPages.length - 1) { startFlip(1); commit(pos.section, pos.idx + 1, visited) }
     else enterBitti()
     window.scrollTo({ top: 0 })
   }
   const goPrev = () => {
     setNotice('')
-    if (pos.bitti) { commit(pos.section, secPages.length - 1, visited); return }
-    if (pos.idx > 0) commit(pos.section, pos.idx - 1, visited)
+    if (pos.bitti) { startFlip(-1); commit(pos.section, secPages.length - 1, visited); return }
+    if (pos.idx > 0) { startFlip(-1); commit(pos.section, pos.idx - 1, visited) }
     window.scrollTo({ top: 0 })
   }
   const nextSection = sections[sections.indexOf(pos.section) + 1]
   const goNextSection = () => {
     if (nextSection == null) return
     setNotice('')
+    startFlip(1)
     commit(nextSection, 0, [])
     window.scrollTo({ top: 0 })
   }
   const rereadSection = () => {
     justDone.current.delete(pos.section)
     setNotice('')
+    startFlip(1)
     commit(pos.section, 0, [])
     window.scrollTo({ top: 0 })
   }
+
+  const touch = useRef<{ x: number; y: number } | null>(null)
+  const onTouchStart = (e: React.TouchEvent) => { const t = e.touches[0]; touch.current = { x: t.clientX, y: t.clientY } }
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const s0 = touch.current; touch.current = null
+    if (!s0 || pos.bitti) return
+    const t = e.changedTouches[0]
+    const dx = t.clientX - s0.x, dy = t.clientY - s0.y
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return
+    if (dx < 0) goNext(); else if (pos.idx > 0) goPrev()
+  }
+  const keyNav = useRef({ next: () => {}, prev: () => {} })
+  keyNav.current = { next: () => { if (!pos.bitti) goNext() }, prev: () => { if (pos.bitti || pos.idx > 0) goPrev() } }
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null
+      if (el && el.closest && el.closest('input,textarea')) return
+      if (e.key === 'ArrowRight') keyNav.current.next()
+      else if (e.key === 'ArrowLeft') keyNav.current.prev()
+    }
+    window.addEventListener('keydown', k)
+    return () => window.removeEventListener('keydown', k)
+  }, [])
 
   const hasAudio = !!page?.audio
   const effHl = timing.exact && hl === 'word' ? 'word' : 'sent'
@@ -618,14 +756,15 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose }: {
     <div className="rd-app">
       <header className="rd-top">
         <div className="rd-brand">
-          <button className="rd-btn" onClick={() => { stopAudio(); onClose() }} aria-label="Kitap listesine dön">‹ Kitaplar</button>
-          <div style={{ minWidth: 0 }}>
-            <h1>{book.title}</h1>
-            <p>Bölüm {pos.section}{sections.length > 1 ? ` / ${sections.length}` : ''}{preview ? ' · önizleme' : ''}</p>
-          </div>
+          <button className="rd-home" onClick={() => { stopAudio(); onHome() }} aria-label="Ana sayfaya dön">{ICON_HOME}<span>Ana sayfa</span></button>
+          <button className="rd-btn rd-nowrap" onClick={() => { stopAudio(); onClose() }} aria-label="Kitap listesine dön">‹ Kitaplar</button>
         </div>
-        <button className="rd-btn" onClick={() => setDrawer(true)} aria-label="Kelime listesini aç">
-          Kelimelerim <span className="rd-cnt k">{counts.k}</span><span className="rd-cnt l">{counts.l}</span>
+        <div className="rd-titlebox">
+          <h1 className="rd-title">{book.title}</h1>
+          <p>Bölüm {pos.section}{sections.length > 1 ? ` / ${sections.length}` : ''}{preview ? ' · önizleme' : ''}</p>
+        </div>
+        <button className="rd-btn rd-vocabbtn" onClick={() => setDrawer(true)} aria-label="Kelime listesini aç">
+          <span className="rd-vicon" aria-hidden="true">📖</span><span className="rd-vlabel">Kelimeler</span> <span className="rd-cnt k">{counts.k}</span><span className="rd-cnt l">{counts.l}</span>
         </button>
       </header>
 
@@ -664,6 +803,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose }: {
       {notice && <div className="rd-note">{notice}</div>}
 
       <main className="rd-stage">
+        <div className="rd-book" ref={bookRef} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {pos.bitti ? (
           <div className="rd-solo">
             <h2>{nextSection == null ? 'Kitap bitti!' : 'Bölüm bitti!'}</h2>
@@ -677,16 +817,21 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose }: {
             </div>
           </div>
         ) : page ? (
-          <div className={'rd-spread' + (double ? ' dbl' : '') + (page.image ? ' has-art' : '')}>
-            {page.image && (
-              <div className="rd-art">
-                <img src={fileUrl(page.image)} alt="Sayfa resmi" onError={e => { e.currentTarget.style.display = 'none' }} />
+          <div className={'rd-spread' + (double ? ' dbl' : '')}>
+            <div className="rd-art">
+              <div className="rd-frame">
+                {page.image
+                  ? <img src={fileUrl(page.image)} alt="Sayfa resmi" onError={e => { e.currentTarget.style.display = 'none' }} />
+                  : <div className="rd-ph"><span>🖼️</span>Resim yakında</div>}
               </div>
-            )}
+            </div>
             <div className="rd-text">
               <div className="rd-pghead">
-                <span>Sayfa {pos.idx + 1} / {secPages.length}</span>
-                {hasAudio && !audioError && <span className="rd-muted">Cümleye dokun: ses oradan başlar</span>}
+                <span className="rd-dots" aria-label={`Sayfa ${pos.idx + 1} / ${secPages.length}`}>
+                  {secPages.map((_, i) => <i key={i} className={i === pos.idx ? 'on' : i < pos.idx ? 'past' : ''} />)}
+                  <b>Sayfa {pos.idx + 1} / {secPages.length}</b>
+                </span>
+                {hasAudio && !audioError && <span className="rd-muted rd-hint">Cümleye dokun: ses oradan başlar</span>}
               </div>
               <div className="rd-body">
                 {textMode === 'hide' ? (
@@ -729,9 +874,11 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose }: {
                 <button className="rd-btn" onClick={goPrev} disabled={pos.idx === 0}>‹ Önceki sayfa</button>
                 <button className="rd-btn primary" onClick={goNext}>{pos.idx === secPages.length - 1 ? 'Bitir ›' : 'Sonraki sayfa ›'}</button>
               </div>
+              <button className="rd-curl" onClick={goNext} aria-label="Sayfayı çevir" title="Sayfayı çevir" />
             </div>
           </div>
         ) : <div className="rd-note">Bu bölümde sayfa yok.</div>}
+        </div>
       </main>
 
       {hasAudio && !pos.bitti && (
@@ -741,11 +888,11 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose }: {
           ) : (
             <>
               <div className="rd-tp">
-                <button className="rd-btn" onClick={() => seekTo(time - 5, playing)} aria-label="5 saniye geri">−5</button>
+                <button className="rd-btn rd-skip" onClick={() => seekTo(time - 5, playing)} aria-label="5 saniye geri">−5</button>
                 <button className="rd-btn" onClick={prevSentence} aria-label="Önceki cümle">‹ Cümle</button>
                 <button className="rd-play" onClick={togglePlay} aria-label={playing ? 'Duraklat' : 'Oynat'}>{playing ? ICON_PAUSE : ICON_PLAY}</button>
                 <button className="rd-btn" onClick={nextSentence} aria-label="Sonraki cümle">Cümle ›</button>
-                <button className="rd-btn" onClick={() => seekTo(time + 5, playing)} aria-label="5 saniye ileri">+5</button>
+                <button className="rd-btn rd-skip" onClick={() => seekTo(time + 5, playing)} aria-label="5 saniye ileri">+5</button>
               </div>
               <div className="rd-scrub">
                 <span>{fmt(time)}</span>
@@ -753,7 +900,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose }: {
                   onChange={e => seekTo(parseFloat(e.target.value), playing)} aria-label="Ses konumu" />
                 <span>{fmt(duration)}</span>
               </div>
-              <div className="rd-seg" aria-label="Hız">
+              <div className="rd-seg rd-rate" aria-label="Hız">
                 {[0.75, 1, 1.25].map(r => <button key={r} aria-pressed={rate === r} onClick={() => setRate(r)}>{r}×</button>)}
               </div>
             </>
