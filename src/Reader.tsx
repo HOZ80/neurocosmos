@@ -1062,9 +1062,11 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
                 <div className="rd-seg rd-rate" aria-label="Hız">
                   {[0.75, 1, 1.25].map(r => <button key={r} aria-pressed={rate === r} onClick={() => setRate(r)}>{r}×</button>)}
                 </div>
-                <button className="rd-tgl" aria-pressed={voiceOn}
-                  title="Gerçek ses dosyası gelene kadar tarayıcının yedek sesi"
-                  onClick={() => { if (voiceOn) stopSpeech(); demo.current.spoken = -1; setVoiceOn(v => !v) }}><i />Demo sesi</button>
+                {!hasReal && (
+                  <button className="rd-tgl" aria-pressed={voiceOn}
+                    title="Gerçek ses dosyası gelene kadar tarayıcının yedek sesi"
+                    onClick={() => { if (voiceOn) stopSpeech(); demo.current.spoken = -1; setVoiceOn(v => !v) }}><i />Demo sesi</button>
+                )}
                 {preview && (
                   <label className="rd-btn rd-file" title="Kendi ses dosyanla dene: bu sayfanın süresine uyarlanır">MP3 dene
                     <input type="file" accept="audio/*" onChange={onPickAudio} />
