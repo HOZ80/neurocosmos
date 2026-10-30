@@ -66,6 +66,7 @@ export const READER_CSS = `
 .rd-art{padding:14px 14px 4px;display:flex;align-items:center;justify-content:center;background:var(--page)}
 .rd-frame{width:100%;aspect-ratio:4/3;border-radius:14px;overflow:hidden;background:#F1ECFF;box-shadow:inset 0 0 0 1.5px rgba(40,25,100,.10),0 2px 8px rgba(40,25,100,.10)}
 .rd-frame img{width:100%;height:100%;object-fit:cover;display:block}
+.rd-spread:not(.dbl) .rd-frame{width:min(100%,520px);margin:0 auto}
 .rd-ph{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--ink2);font-size:15px;border:2px dashed var(--line);border-radius:14px}
 .rd-ph span{font-size:34px;opacity:.6}
 .rd-text{position:relative;padding:16px 18px 14px;display:flex;flex-direction:column;gap:10px;background:var(--page);min-height:300px}
@@ -128,13 +129,15 @@ export const READER_CSS = `
 .rd-solo .row{display:flex;gap:10px;flex-wrap:wrap}
 
 /* ses çubuğu */
-.rd-bar{position:sticky;bottom:0;z-index:20;background:var(--paper);border:1.5px solid var(--line);border-bottom:0;border-radius:18px 18px 0 0;box-shadow:0 -8px 24px rgba(40,25,100,.10);padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.rd-bar{margin-top:auto;position:sticky;bottom:0;z-index:20;background:var(--paper);border:1.5px solid var(--line);border-bottom:0;border-radius:18px 18px 0 0;box-shadow:0 -8px 24px rgba(40,25,100,.10);padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
 .rd-tp{display:flex;align-items:center;gap:6px}
 .rd-tp .rd-btn{padding:8px 10px}
 .rd-play{width:54px;height:54px;border-radius:16px;border:0;background:var(--brand);color:var(--brand-ink);display:grid;place-items:center}
 .rd-scrub{flex:1;min-width:200px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink2)}
 .rd-scrub input{flex:1;accent-color:var(--brand);height:28px}
 .rd-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.rd-file{position:relative;overflow:hidden;cursor:pointer}
+.rd-file input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
 
 /* kelime çekmecesi */
 .rd-scrim{position:fixed;inset:0;background:rgba(10,6,40,.45);z-index:40;opacity:0;pointer-events:none;transition:opacity .2s}

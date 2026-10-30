@@ -203,6 +203,13 @@ export function fileUrl(name: string): string {
   return `${SUPABASE_URL}/storage/v1/object/public/kitaplar/${encodeURIComponent(name)}`
 }
 
+// Düz dosya adı (ör. k001-1.mp3) Supabase'te bulunamazsa sitenin kendi kitaplar
+// klasörüne bakılır. "/" ya da "http" ile başlayan değerlerin yedeği yoktur.
+export function fileUrlFallback(name: string): string | null {
+  if (name.startsWith('/') || /^https?:\/\//i.test(name)) return null
+  return `/kitaplar/${encodeURIComponent(name)}`
+}
+
 // ─── Metin işleme ────────────────────────────────────────────────────────────
 // Bir belirteci (boşlukla ayrılmış parça) karşılaştırma için sadeleştirir.
 export function normToken(t: string): string {
@@ -291,6 +298,47 @@ export function buildTiming(page: PageRow, duration: number): PageTiming {
   let acc = 0
   const starts = lens.map(l => { const s = dur * (acc / total); acc += l; return s })
   return { exact: false, starts, words: [] }
+}
+
+// ─── Demo sesi için tahmini zamanlama ───────────────────────────────────────
+// Ses dosyası yokken tarayıcının sesi cümleleri okur; süreler kelime sayısı ve
+// harf uzunluğundan tahmin edilir (prototipteki hesapla aynı).
+export interface DemoPlan {
+  timing: PageTiming // exact: true (tahmini kelime başlangıçları)
+  ends: number[] // her cümlenin tahmini bitişi
+  duration: number // toplam süre
+}
+
+export function buildDemoPlan(page: PageRow): DemoPlan {
+  let t = 0.5
+  const starts: number[] = []
+  const ends: number[] = []
+  const words: number[][] = []
+  for (const sentence of page.sentences) {
+    const toks = tokenize(sentence)
+    const n = Math.max(1, toks.length)
+    const wt = toks.map(k => Math.max(2, normToken(k).length) + 1.5)
+    const sum = wt.reduce((a, b) => a + b, 0) || 1
+    const dur = 0.42 * n + 0.7
+    const start = t
+    const end = t + dur
+    let c = start + 0.05
+    const ws = toks.map((_, i) => { const s = c; c += ((dur - 0.2) * wt[i]) / sum; return s })
+    starts.push(start); ends.push(end); words.push(ws)
+    t = end + 0.35
+  }
+  return { timing: { exact: true, starts, words }, ends, duration: t }
+}
+
+// Öğretmenin "MP3 dene" ile yüklediği dosyanın süresine göre ölçekler
+export function scalePlan(p: DemoPlan, duration: number): DemoPlan {
+  if (!(duration > 0) || !(p.duration > 0)) return p
+  const k = duration / p.duration
+  return {
+    timing: { exact: true, starts: p.timing.starts.map(x => x * k), words: p.timing.words.map(w => w.map(x => x * k)) },
+    ends: p.ends.map(x => x * k),
+    duration,
+  }
 }
 
 // ─── İçerik kontrolü (yalnızca öğretmen ekranı) ─────────────────────────────

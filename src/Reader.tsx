@@ -7,8 +7,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { Account } from './auth'
 import { READER_CSS } from './readerStyles'
 import {
-  type Book, type Content, type PageRow, type VocabEntry, type PageTiming, type Issue,
-  loadContent, fileUrl, tokenize, buildFormIndex, findSpans, buildTiming, checkContent,
+  type Book, type Content, type PageRow, type VocabEntry, type PageTiming, type Issue, type DemoPlan,
+  loadContent, fileUrl, fileUrlFallback, tokenize, buildFormIndex, findSpans, buildTiming, checkContent,
+  buildDemoPlan, scalePlan,
 } from './readerData'
 import {
   type StudentData, loadStudentData, saveBookState, addReading, saveWordMark, deleteWordMark,
@@ -32,6 +33,30 @@ function speakWord(text: string) {
     u.lang = 'en-US'; u.rate = 0.8
     window.speechSynthesis.speak(u)
   } catch {}
+}
+
+// Demo sesi: ses dosyası olmayan sayfada tarayıcının ücretsiz sesi cümleyi okur.
+function speakSentence(text: string, rate: number) {
+  try {
+    if (!('speechSynthesis' in window)) return
+    window.speechSynthesis.cancel()
+    const u = new SpeechSynthesisUtterance(text.replace(/[“”]/g, ''))
+    u.lang = 'en-US'; u.rate = rate
+    window.speechSynthesis.speak(u)
+  } catch {}
+}
+function stopSpeech() {
+  try { if ('speechSynthesis' in window) window.speechSynthesis.cancel() } catch {}
+}
+
+// Resim: düz dosya adı önce Supabase'ten, bulunamazsa sitenin kitaplar klasöründen yüklenir.
+function SmartImg({ name, className, alt }: { name: string; className?: string; alt?: string }) {
+  const [stage, setStage] = useState(0) // 0 Supabase, 1 site klasörü, 2 bulunamadı
+  useEffect(() => { setStage(0) }, [name])
+  const fb = fileUrlFallback(name)
+  if (stage >= 2) return null
+  return <img className={className} alt={alt ?? ''} src={stage === 0 ? fileUrl(name) : (fb as string)}
+    onError={() => setStage(s => (s === 0 && fb ? 1 : 2))} />
 }
 
 function fmt(x: number) {
@@ -183,7 +208,7 @@ export default function ChildReaderApp({ account, childName, group, onExit }: {
                   onClick={() => openScreen({ kind: 'book', code: b.code })}
                   aria-label={b.title + (open ? '' : ' (kilitli)')}>
                   <div className="rd-cover" style={{ background: coverColor(b.code) }}>
-                    {b.cover ? <img src={fileUrl(b.cover)} alt="" onError={e => { e.currentTarget.style.display = 'none' }} /> : null}
+                    {b.cover ? <SmartImg name={b.cover} /> : null}
                     {!b.cover && (open ? b.title[0] : '🔒')}
                   </div>
                   <div style={{ minWidth: 0 }}>
@@ -317,11 +342,11 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   const [hl, setHl] = useState<'word' | 'sent'>('word')
   const [shadow, setShadow] = useState(false)
   const [rate, setRate] = useState(1)
-  const [showTr, setShowTr] = useState(true)
+  const [showTr, setShowTr] = useState(false)
   const [trPage, setTrPage] = useState(false)
-  const [layout, setLayout] = useState<'single' | 'double' | null>(() => {
-    try { const v = localStorage.getItem(LAYOUT_KEY); return v === 'single' || v === 'double' ? v : null } catch { return null }
-  })
+  // Sayfa düzeni artık hatırlanmaz: webde her açılışta çift sayfa başlar.
+  const [layout, setLayout] = useState<'single' | 'double' | null>(null)
+  useEffect(() => { try { localStorage.removeItem(LAYOUT_KEY) } catch {} }, [])
   const [vw, setVw] = useState(() => window.innerWidth)
   useEffect(() => {
     const f = () => setVw(window.innerWidth)
@@ -408,6 +433,9 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   const sentSpans = useMemo(() => sentTokens.map(t => findSpans(t, formIndex)), [sentTokens, formIndex])
 
   // ── Ses ────────────────────────────────────────────────────────────────
+  // Sayfada ses dosyası varsa o çalar. Yoksa Demo sesi (tarayıcının ücretsiz sesi)
+  // cümleleri okur ve kelime vurgusu tahmini zamanlamayla yürür. Öğretmen
+  // önizlemesinde "MP3 dene" ile geçici bir dosya da denenebilir.
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const [duration, setDuration] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -415,21 +443,47 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   const [time, setTime] = useState(0)
   const [active, setActive] = useState({ si: -1, wi: -1 })
   const [waiting, setWaiting] = useState(-1)
+  const [voiceOn, setVoiceOn] = useState(true)
+  const [override, setOverride] = useState<{ key: string; url: string } | null>(null)
+  const ovRef = useRef(override)
+  ovRef.current = override
+  useEffect(() => () => { if (ovRef.current) URL.revokeObjectURL(ovRef.current.url); stopSpeech() }, [])
   const prevSi = useRef(-1)
-  const timing = useMemo(() => (page ? buildTiming(page, duration) : { exact: false, starts: [], words: [] }), [page, duration])
-  const live = useRef({ shadow, timing, duration, rate, nSent: 0 })
-  live.current = { shadow, timing, duration, rate, nSent: page ? page.sentences.length : 0 }
+  const demo = useRef({ t: 0, last: 0, spoken: -1 })
+  const overrideActive = !!override && override.key === pageKey
+  const realSrc = !page ? '' : overrideActive ? override!.url : page.audio ? fileUrl(page.audio) : ''
+  const hasReal = !!realSrc
+  const plan: DemoPlan | null = useMemo(() => {
+    if (!page) return null
+    const d = buildDemoPlan(page)
+    if (!hasReal) return d
+    return overrideActive ? scalePlan(d, duration) : null
+  }, [page, hasReal, overrideActive, duration])
+  const timing: PageTiming = useMemo(
+    () => (plan ? plan.timing : page ? buildTiming(page, duration) : { exact: false, starts: [], words: [] }),
+    [plan, page, duration])
+  const live = useRef({ shadow, timing, duration, rate, nSent: 0, ends: undefined as number[] | undefined, demo: false, voice: true, sentences: [] as string[] })
+  live.current = { shadow, timing, duration, rate, nSent: page ? page.sentences.length : 0, ends: plan?.ends, demo: !hasReal, voice: voiceOn, sentences: page ? page.sentences : [] }
 
   useEffect(() => {
+    stopSpeech()
+    demo.current = { t: 0, last: 0, spoken: -1 }
     setPlaying(false); setTime(0); setDuration(0); setAudioError(false)
     setActive({ si: -1, wi: -1 }); setWaiting(-1); setSel(null); setTrPage(false); prevSi.current = -1
-    if (!page || !page.audio) return
+    if (!page) return
+    if (!realSrc) { setDuration(buildDemoPlan(page).duration); return }
+    // Düz dosya adı Supabase'te bulunamazsa sitenin kitaplar klasörüne bakılır
+    const fb = !overrideActive && page.audio ? fileUrlFallback(page.audio) : null
+    let usedFb = false
     const a = new Audio()
     a.preload = 'auto'
-    a.src = fileUrl(page.audio)
+    a.src = realSrc
     a.playbackRate = live.current.rate
     a.onloadedmetadata = () => setDuration(isFinite(a.duration) ? a.duration : 0)
-    a.onerror = () => setAudioError(true)
+    a.onerror = () => {
+      if (!usedFb && fb) { usedFb = true; a.src = fb; a.load(); return }
+      setAudioError(true)
+    }
     a.onended = () => {
       setPlaying(false)
       setActive({ si: -1, wi: -1 })
@@ -440,21 +494,37 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
       a.onloadedmetadata = null; a.onerror = null; a.onended = null
       a.pause(); a.removeAttribute('src'); a.load(); audioRef.current = null
     }
-  }, [pageKey])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pageKey, realSrc])  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { if (audioRef.current) audioRef.current.playbackRate = rate }, [rate])
 
-  // Oynarken: konumu izle, kelime/cümle vurgusu, gölgeleme duraklaması
+  // Oynarken: konumu izle, kelime/cümle vurgusu, gölgeleme duraklaması, demo sesi
   useEffect(() => {
     if (!playing) return
+    if (live.current.demo) demo.current.last = performance.now()
     let raf = 0
     let lastShown = -1
-    const loop = () => {
-      const a = audioRef.current
-      if (!a) return
+    const loop = (ts: number) => {
       const L = live.current
-      const t = a.currentTime
-      const dur = L.duration || a.duration || 0
+      const a = audioRef.current
+      const d = demo.current
+      let t: number
+      if (L.demo) {
+        const dt = Math.min(0.25, Math.max(0, (ts - d.last) / 1000))
+        d.last = ts
+        t = d.t + dt * L.rate
+        d.t = t
+      } else {
+        if (!a) return
+        t = a.currentTime
+      }
+      const dur = L.duration || (a ? a.duration : 0) || 0
+      if (L.demo && dur > 0 && t >= dur) {
+        d.t = dur
+        setTime(dur); setPlaying(false); setActive({ si: -1, wi: -1 })
+        if (L.shadow && L.nSent > 0) setWaiting(L.nSent - 1)
+        return
+      }
       const { si, wi } = locate(L.timing, t, dur)
       setActive(prev => (prev.si === si && prev.wi === wi ? prev : { si, wi }))
       if (Math.abs(t - lastShown) > 0.2) { lastShown = t; setTime(t) }
@@ -463,18 +533,23 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
       const before = prevSi.current
       prevSi.current = si
       if (L.shadow && before >= 0 && si > before) {
-        a.pause()
+        if (a) a.pause()
         setPlaying(false); setTime(t); setWaiting(before)
         prevSi.current = -1
         return
       }
       if (L.shadow && si >= 0) {
-        const end = si + 1 < L.timing.starts.length ? L.timing.starts[si + 1] : dur
+        const end = L.ends ? L.ends[si] : si + 1 < L.timing.starts.length ? L.timing.starts[si + 1] : dur
         if (end > 0 && t >= end - 0.05) {
-          a.pause()
+          if (a) a.pause()
           setPlaying(false); setTime(t); setWaiting(si)
           return
         }
+      }
+      // Demo sesi: yeni cümleye girildiğinde tarayıcının sesi o cümleyi okur
+      if (L.demo && L.voice && si >= 0 && si !== d.spoken && (!L.ends || t < L.ends[si])) {
+        d.spoken = si
+        speakSentence(L.sentences[si] ?? '', Math.min(1.6, 0.85 * L.rate))
       }
       raf = requestAnimationFrame(loop)
     }
@@ -482,32 +557,69 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
     return () => cancelAnimationFrame(raf)
   }, [playing])
 
-  const seekTo = useCallback((t: number, play: boolean) => {
+  const startPlay = useCallback(() => {
+    if (live.current.demo) { demo.current.last = performance.now(); setPlaying(true); return }
     const a = audioRef.current
-    if (!a) return
-    const dur = live.current.duration || a.duration || 0
-    const nt = Math.max(0, dur > 0 ? Math.min(t, dur) : t)
-    a.currentTime = nt
-    setTime(nt)
-    setWaiting(-1)
-    const loc = locate(live.current.timing, nt, dur)
-    setActive(loc)
-    prevSi.current = loc.si
-    if (play) a.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
+    if (a) a.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
   }, [])
 
-  const togglePlay = () => {
+  const seekTo = useCallback((t: number, play: boolean) => {
+    const L = live.current
     const a = audioRef.current
-    if (!a) return
-    if (playing) { a.pause(); setPlaying(false); return }
-    const dur = live.current.duration || a.duration || 0
+    const dur = L.duration || (a ? a.duration : 0) || 0
+    const nt = Math.max(0, dur > 0 ? Math.min(t, dur) : t)
+    if (L.demo) { demo.current.t = nt; demo.current.spoken = -1; stopSpeech() }
+    else if (a) a.currentTime = nt
+    else return
+    setTime(nt)
     setWaiting(-1)
+    const loc = locate(L.timing, nt, dur)
+    setActive(loc)
+    prevSi.current = loc.si
+    if (play) startPlay()
+  }, [startPlay])
+
+  const togglePlay = () => {
+    const L = live.current
+    const a = audioRef.current
+    if (playing) {
+      if (a) a.pause()
+      if (L.demo) stopSpeech()
+      setPlaying(false)
+      return
+    }
+    const dur = L.duration || (a ? a.duration : 0) || 0
+    setWaiting(-1)
+    if (L.demo) {
+      if (dur > 0 && demo.current.t >= dur - 0.3) demo.current.t = 0
+      demo.current.spoken = -1
+      prevSi.current = locate(L.timing, demo.current.t, dur).si
+      startPlay()
+      return
+    }
+    if (!a) return
     if (dur > 0 && a.currentTime >= dur - 0.2) a.currentTime = 0
-    prevSi.current = locate(live.current.timing, a.currentTime, dur).si
-    a.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
+    prevSi.current = locate(L.timing, a.currentTime, dur).si
+    startPlay()
   }
 
-  const stopAudio = () => { const a = audioRef.current; if (a) a.pause(); setPlaying(false) }
+  const stopAudio = () => {
+    const a = audioRef.current
+    if (a) a.pause()
+    stopSpeech()
+    setPlaying(false)
+  }
+
+  // Öğretmen önizlemesi: kendi ses dosyanla dene (yalnızca bu sayfa için, kaydedilmez)
+  const onPickAudio = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files && e.target.files[0]
+    e.target.value = ''
+    if (!f || !page) return
+    stopAudio()
+    if (override) URL.revokeObjectURL(override.url)
+    setOverride({ key: pageKey, url: URL.createObjectURL(f) })
+    notify('Ses yüklendi. Zamanlama bu sayfaya tahmini olarak uyarlandı.')
+  }
 
   const sentStart = (i: number) => timing.starts[i] ?? 0
   const currentSent = () => Math.max(0, locate(timing, time, duration).si)
@@ -669,7 +781,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
     return () => window.removeEventListener('keydown', k)
   }, [])
 
-  const hasAudio = !!page?.audio
+  const canPlay = !!page
   const effHl = timing.exact && hl === 'word' ? 'word' : 'sent'
 
   // ── Kelime sayıları ve çekmece ─────────────────────────────────────────
@@ -691,10 +803,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
     return true
   })
 
-  const setLayoutPref = (v: 'single' | 'double') => {
-    setLayout(v)
-    try { localStorage.setItem(LAYOUT_KEY, v) } catch {}
-  }
+  const setLayoutPref = (v: 'single' | 'double') => setLayout(v)
 
   // ── Cümleleri çiz ──────────────────────────────────────────────────────
   const renderSentence = (i: number) => {
@@ -742,7 +851,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
       <div key={i} className={'rd-sent' + (isActive ? ' act' : '') + (blurred ? ' blur' : '') + (blurred && isRev ? ' rev' : '')}
         onClick={() => {
           if (blurred && !isRev) { setRevealed(r => ({ ...r, [key]: true })); return }
-          if (hasAudio && !audioError) seekTo(sentStart(i) + 0.01, true)
+          if (canPlay && !audioError) seekTo(sentStart(i) + 0.01, true)
         }}>
         <div className="rd-line">{els}</div>
         {showTrLine ? <div className="rd-tr">{page.translations[i]}</div> : null}
@@ -776,7 +885,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
                 <button key={v} aria-pressed={textMode === v} onClick={() => setTextMode(v)}>{l}</button>)}
             </div>
           </div>
-          {hasAudio && timing.exact && (
+          {canPlay && timing.exact && (
             <div className="rd-grp"><span>Vurgu</span>
               <div className="rd-seg">
                 <button aria-pressed={hl === 'word'} onClick={() => setHl('word')}>Kelime</button>
@@ -784,7 +893,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
               </div>
             </div>
           )}
-          {hasAudio && (
+          {canPlay && (
             <button className="rd-tgl" aria-pressed={shadow} onClick={() => { setShadow(s => !s); setWaiting(-1) }}
               title="Her cümleden sonra durur, sıra sana gelir"><i />Gölgeleme modu</button>
           )}
@@ -821,7 +930,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
             <div className="rd-art">
               <div className="rd-frame">
                 {page.image
-                  ? <img src={fileUrl(page.image)} alt="Sayfa resmi" onError={e => { e.currentTarget.style.display = 'none' }} />
+                  ? <SmartImg name={page.image} alt="Sayfa resmi" />
                   : <div className="rd-ph"><span>🖼️</span>Resim yakında</div>}
               </div>
             </div>
@@ -831,7 +940,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
                   {secPages.map((_, i) => <i key={i} className={i === pos.idx ? 'on' : i < pos.idx ? 'past' : ''} />)}
                   <b>Sayfa {pos.idx + 1} / {secPages.length}</b>
                 </span>
-                {hasAudio && !audioError && <span className="rd-muted rd-hint">Cümleye dokun: ses oradan başlar</span>}
+                {canPlay && !audioError && <span className="rd-muted rd-hint">Cümleye dokun: ses oradan başlar</span>}
               </div>
               <div className="rd-body">
                 {textMode === 'hide' ? (
@@ -861,7 +970,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
                     <div><div className="wd">{sel.word}</div>{sel.phonetic && <div className="ph">{sel.phonetic}</div>}</div>
                     <button className="rd-x" onClick={() => setSel(null)} aria-label="Kapat">×</button>
                   </div>
-                  {sel.image && <img className="rd-wc-img" src={fileUrl(sel.image)} alt="" onError={e => { e.currentTarget.style.display = 'none' }} />}
+                  {sel.image && <SmartImg className="rd-wc-img" name={sel.image} />}
                   {sel.example && <div className="rd-wc-ex">“{sel.example}”</div>}
                   <div className="rd-wc-act">
                     <button className="rd-b-known" onClick={() => markWord(sel, 'known')}>{selMark === 'known' ? '✓ ' : ''}Biliyorum</button>
@@ -881,7 +990,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
         </div>
       </main>
 
-      {hasAudio && !pos.bitti && (
+      {canPlay && !pos.bitti && (
         <nav className="rd-bar" aria-label="Ses kontrolleri">
           {audioError ? (
             <span className="rd-muted">Bu sayfanın sesi açılamadı.</span>
@@ -900,8 +1009,18 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
                   onChange={e => seekTo(parseFloat(e.target.value), playing)} aria-label="Ses konumu" />
                 <span>{fmt(duration)}</span>
               </div>
-              <div className="rd-seg rd-rate" aria-label="Hız">
-                {[0.75, 1, 1.25].map(r => <button key={r} aria-pressed={rate === r} onClick={() => setRate(r)}>{r}×</button>)}
+              <div className="rd-tools">
+                <div className="rd-seg rd-rate" aria-label="Hız">
+                  {[0.75, 1, 1.25].map(r => <button key={r} aria-pressed={rate === r} onClick={() => setRate(r)}>{r}×</button>)}
+                </div>
+                <button className="rd-tgl" aria-pressed={voiceOn}
+                  title="Gerçek ses dosyası gelene kadar tarayıcının yedek sesi"
+                  onClick={() => { if (voiceOn) stopSpeech(); demo.current.spoken = -1; setVoiceOn(v => !v) }}><i />Demo sesi</button>
+                {preview && (
+                  <label className="rd-btn rd-file" title="Kendi ses dosyanla dene: bu sayfanın süresine uyarlanır">MP3 dene
+                    <input type="file" accept="audio/*" onChange={onPickAudio} />
+                  </label>
+                )}
               </div>
             </>
           )}
