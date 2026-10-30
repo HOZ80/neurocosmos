@@ -41,6 +41,7 @@ export interface VocabEntry {
   key: string // saklama anahtarı: küçük harf
   forms: string[] // kendisi + çekimli halleri
   phonetic: string
+  meaning: string // Türkçe anlam (Kelimeler sekmesindeki "anlam" sütunu)
   example: string
   image: string
 }
@@ -152,6 +153,7 @@ function build(t: { books: string; pages: string; vocab: string; questions: stri
       key: r['kelime'].trim().toLowerCase(),
       forms: [r['kelime'], ...splitBar(r['cekimli_haller'])].filter(Boolean),
       phonetic: r['okunus'] || '',
+      meaning: r['anlam'] || '',
       example: r['ornek_cumle'] || '',
       image: r['gorsel'] || '',
     }))
@@ -423,7 +425,7 @@ export function checkContent(c: Content): Issue[] {
     }
   }
 
-  // Sorular (şimdilik yalnızca kontrol edilir, öğrenciye gösterilmez)
+  // Sorular
   for (const q of c.questions) {
     const where = `Sorular · bölüm ${q.section} · ${q.question.slice(0, 40)}`
     if (!bookCodes.has(q.book)) { add('hata', q.book, where, 'Bu kitap kodu Kitaplar sekmesinde yok.'); continue }

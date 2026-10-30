@@ -93,7 +93,7 @@ export const READER_CSS = `
 .rd-sent.act{background:var(--sent);border-left-color:var(--brand)}
 .rd-sent.blur .rd-line{filter:blur(7px);user-select:none}
 .rd-sent.blur.rev .rd-line{filter:none}
-.rd-tr{margin-top:2px;font-size:clamp(15px,3.8vw,18px);color:var(--ink2);font-weight:600}
+.rd-tr{margin-top:2px;font-size:clamp(15px,3.8vw,18px);color:#8480A0;font-weight:500;font-style:italic}
 .rd-w{border-radius:8px;padding:0 .08em;transition:background .12s,color .12s}
 .rd-w.done{color:var(--brand)}
 .rd-w.v{cursor:pointer;border-bottom:2px dotted var(--ink2)}
@@ -208,4 +208,23 @@ export const READER_CSS = `
   .rd-dots b{font-size:12px}
 }
 @media (prefers-reduced-motion: reduce){.rd *{transition:none!important;animation:none!important}}
+
+/* sorular */
+.rd-quiz{display:flex;flex-direction:column;gap:14px}
+.rd-qhead{display:flex;align-items:center;justify-content:space-between;gap:10px;color:var(--ink2);font-size:14px}
+.rd-qdots{display:flex;gap:6px}
+.rd-qdots i{width:10px;height:10px;border-radius:50%;background:var(--line);display:block}
+.rd-qdots i.on{background:var(--brand);width:26px;border-radius:6px}
+.rd-qdots i.done{background:var(--brand);opacity:.45}
+.rd-solo .rd-qtext{margin:0;font-size:clamp(22px,5.6vw,30px);line-height:1.3;font-weight:700}
+.rd-opts{display:flex;flex-direction:column;gap:10px}
+.rd-opt{text-align:left;width:100%;border:2px solid var(--line);background:var(--paper);border-radius:16px;padding:14px 16px;font-size:clamp(17px,4.4vw,21px);font-weight:600;min-height:56px}
+.rd-opt:hover:not(:disabled){border-color:var(--brand)}
+.rd .rd-opt:disabled{opacity:1;cursor:default}
+.rd-opt.good{background:var(--known);border-color:var(--good);color:var(--known-ink)}
+.rd-opt.bad{background:#FBE3EA;border-color:var(--bad);color:#7A1B38}
+.rd .rd-opt.dim:disabled{opacity:.55}
+.rd-qexp{background:var(--sent);border:1.5px solid var(--brand);border-radius:14px;padding:12px 14px;font-size:16px;line-height:1.45}
+.rd-qexp b{display:block;margin-bottom:2px}
+.rd-wc-mean{font-size:19px;font-weight:700;margin-top:2px}
 `

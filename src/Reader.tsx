@@ -368,10 +368,18 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
     toastTimer.current = window.setTimeout(() => setToast(''), 3200)
   }, [])
   const [notice, setNotice] = useState('')
+  // Bölüm sonu soruları: bölümü bitirince tek tek gösterilir, hiçbir yere kaydedilmez.
+  const [quiz, setQuiz] = useState<{ qi: number; picked: string | null; correct: number; done: boolean } | null>(null)
 
   const secPages = useMemo(() => pagesOf(pos.section), [pagesOf, pos.section])
   const page: PageRow | undefined = pos.bitti ? undefined : secPages[pos.idx]
   const pageKey = page ? `${page.section}:${page.page}` : 'bitti'
+  const sectionQs = useMemo(
+    () => content.questions.filter(q =>
+      q.book === book.code && q.section === pos.section && q.question.trim() &&
+      q.options.length >= 2 && q.options.some(o => o.trim() === q.answer.trim())),
+    [content.questions, book.code, pos.section])
+  const startQuiz = () => setQuiz(sectionQs.length ? { qi: 0, picked: null, correct: 0, done: false } : null)
 
   // ── Kayıt ───────────────────────────────────────────────────────────────
   const persistState = useCallback((section: number, pageNo: number, vis: number[]) => {
@@ -708,7 +716,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
 
   const enterBitti = async () => {
     stopAudio()
-    if (justDone.current.has(pos.section)) { startFlip(1); setPos(p => ({ ...p, bitti: true })); return }
+    if (justDone.current.has(pos.section)) { startQuiz(); startFlip(1); setPos(p => ({ ...p, bitti: true })); return }
     const missing = secPages.filter(p => !visited.includes(p.page))
     if (missing.length) {
       setNotice('Atladığın bir sayfa var. Oradan devam edelim.')
@@ -726,8 +734,20 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
     const target = ns ?? pos.section
     setVisited([])
     persistState(target, firstPageNo(target), [])
+    startQuiz()
     startFlip(1)
     setPos(p => ({ ...p, bitti: true }))
+  }
+
+  const pickAnswer = (o: string) => {
+    setQuiz(p => (p && p.picked === null ? { ...p, picked: o, correct: p.correct + (o.trim() === sectionQs[p.qi]?.answer.trim() ? 1 : 0) } : p))
+  }
+  const nextQuestion = () => {
+    setQuiz(p => {
+      if (!p) return p
+      return p.qi + 1 < sectionQs.length ? { qi: p.qi + 1, picked: null, correct: p.correct, done: false } : { ...p, done: true }
+    })
+    window.scrollTo({ top: 0 })
   }
 
   const goNext = () => {
@@ -913,10 +933,38 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
 
       <main className="rd-stage">
         <div className="rd-book" ref={bookRef} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-        {pos.bitti ? (
+        {pos.bitti && quiz && !quiz.done && sectionQs[quiz.qi] ? (
+          <div className="rd-solo rd-quiz">
+            <div className="rd-qhead">
+              <span>Soru {quiz.qi + 1} / {sectionQs.length}</span>
+              <div className="rd-qdots">{sectionQs.map((_, i) => <i key={i} className={i === quiz.qi ? 'on' : i < quiz.qi ? 'done' : ''} />)}</div>
+            </div>
+            <h2 className="rd-qtext">{sectionQs[quiz.qi].question}</h2>
+            <div className="rd-opts">
+              {sectionQs[quiz.qi].options.map(o => {
+                const answered = quiz.picked !== null
+                const isAns = o.trim() === sectionQs[quiz.qi].answer.trim()
+                const cls = !answered ? '' : isAns ? ' good' : o === quiz.picked ? ' bad' : ' dim'
+                return <button key={o} className={'rd-opt' + cls} disabled={answered} onClick={() => pickAnswer(o)}>{o}</button>
+              })}
+            </div>
+            {quiz.picked !== null && (
+              <>
+                <div className="rd-qexp">
+                  <b>{quiz.picked.trim() === sectionQs[quiz.qi].answer.trim() ? 'Doğru!' : `Doğru cevap: ${sectionQs[quiz.qi].answer}`}</b>
+                  {sectionQs[quiz.qi].explanation}
+                </div>
+                <div className="row">
+                  <button className="rd-btn primary" onClick={nextQuestion}>{quiz.qi + 1 < sectionQs.length ? 'Sonraki soru ›' : 'Sonucu gör ›'}</button>
+                </div>
+              </>
+            )}
+          </div>
+        ) : pos.bitti ? (
           <div className="rd-solo">
             <h2>{nextSection == null ? 'Kitap bitti!' : 'Bölüm bitti!'}</h2>
             <p>Bu bölümü okudun.{!preview && readCount(pos.section) === 1 && !book.noTranslation ? ' Artık istersen Türkçesini görebilirsin.' : ''}</p>
+            {quiz && quiz.done && <p>Sorular: {quiz.correct} / {sectionQs.length} doğru.</p>}
             <p className="rd-muted">{counts.k} kelimeyi biliyorsun, {counts.l} kelimeyi öğreneceksin.</p>
             <div className="row">
               {nextSection != null && <button className="rd-btn primary" onClick={goNextSection}>Sonraki bölüm ›</button>}
@@ -970,6 +1018,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
                     <div><div className="wd">{sel.word}</div>{sel.phonetic && <div className="ph">{sel.phonetic}</div>}</div>
                     <button className="rd-x" onClick={() => setSel(null)} aria-label="Kapat">×</button>
                   </div>
+                  {sel.meaning && <div className="rd-wc-mean">{sel.meaning}</div>}
                   {sel.image && <SmartImg className="rd-wc-img" name={sel.image} />}
                   {sel.example && <div className="rd-wc-ex">“{sel.example}”</div>}
                   <div className="rd-wc-act">
