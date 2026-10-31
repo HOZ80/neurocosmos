@@ -16,7 +16,7 @@ const SUPABASE_URL = 'https://enacdiolibbxakxoslla.supabase.co'
 const PUBLISHABLE_KEY = 'sb_publishable_dx8Rx1zdfhvhg6G0TEZUHQ_JSQg-Z-Q'
 const LOGIN_DOMAIN = 'giris.neurocosmos.tr'
 
-const STUDENT_AREAS = ['A1', 'A2', 'child_omur', 'child_oztug']
+const STUDENT_AREAS = ['A1', 'A2', 'child_omur', 'child_oztug', 'library']
 const BAN_FOREVER = '876000h' // ~100 yıl: hesap kapalı
 const LOGIN_NAME_RE = /^[a-z0-9][a-z0-9._-]{1,29}$/
 
