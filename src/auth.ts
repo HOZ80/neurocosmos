@@ -16,7 +16,7 @@ const LOGIN_DOMAIN = 'giris.neurocosmos.tr'
 // Telefonda kalıcı oturum (çıkış yapılana kadar).
 const SESSION_KEY = 'nc_auth_session'
 
-export type AreaId = 'A1' | 'A2' | 'child_omur' | 'child_oztug' | 'owner'
+export type AreaId = 'A1' | 'A2' | 'child_omur' | 'child_oztug' | 'library' | 'owner'
 
 export interface Account {
   id: string

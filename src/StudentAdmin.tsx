@@ -6,7 +6,7 @@ import { getAccessToken, normalizeLoginName } from './auth'
 // Bütün işler Netlify'daki "ogrenci-yonetimi" görevinden geçer; o görev
 // çağıranın öğretmen olduğunu her seferinde kendisi doğrular.
 
-type StudentArea = 'A1' | 'A2' | 'child_omur' | 'child_oztug'
+type StudentArea = 'A1' | 'A2' | 'child_omur' | 'child_oztug' | 'library'
 
 interface Student {
   id: string
@@ -21,6 +21,7 @@ const AREAS: { id: StudentArea; label: string }[] = [
   { id: 'A2', label: 'English Group B' },
   { id: 'child_omur', label: 'Ömür paneli' },
   { id: 'child_oztug', label: 'Öztuğ paneli' },
+  { id: 'library', label: 'Kitaplık' },
 ]
 
 async function call(islem: string, payload: Record<string, unknown> = {}): Promise<any> {

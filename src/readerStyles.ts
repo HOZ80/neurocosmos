@@ -91,8 +91,6 @@ export const READER_CSS = `
 .rd-body{flex:1;display:flex;flex-direction:column;justify-content:center}
 .rd-sent{padding:.3em .55em;margin:.1em 0;border-radius:14px;cursor:pointer;line-height:1.5;font-size:clamp(21px,5.2vw,28px);border-left:4px solid transparent;transition:background .2s}
 .rd-sent.act{background:var(--sent);border-left-color:var(--brand)}
-.rd-sent.blur .rd-line{filter:blur(7px);user-select:none}
-.rd-sent.blur.rev .rd-line{filter:none}
 .rd-tr{margin-top:2px;font-size:clamp(15px,3.8vw,18px);color:#8480A0;font-weight:500;font-style:italic}
 .rd-w{border-radius:8px;padding:0 .08em;transition:background .12s,color .12s}
 .rd-w.done{color:var(--brand)}
@@ -123,7 +121,10 @@ export const READER_CSS = `
 .rd-foot{display:flex;justify-content:space-between;gap:8px;padding:8px 52px 0 0;border-top:1.5px solid var(--line)}
 
 /* bitti */
-.rd-solo{background:var(--paper);border:1.5px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:24px 20px;min-height:340px;display:flex;flex-direction:column;gap:14px;justify-content:center}
+.rd-solo{background:var(--page);border:1px solid #E6DECB;border-radius:20px;box-sizing:border-box;
+  box-shadow:0 2px 0 #EFE8D8,0 4px 0 #FBF7EE,0 5px 0 #E6DCC8,0 7px 0 #F7F1E5,0 8px 0 #DED3BD,0 22px 44px rgba(40,25,100,.22);
+  padding:24px 20px;min-height:340px;display:flex;flex-direction:column;gap:14px;justify-content:center}
+@media (min-width:860px){.rd-solo{padding:32px clamp(30px,6vw,80px)}}
 .rd-solo h2{margin:0;font-size:26px}
 .rd-solo p{margin:0;font-size:18px;line-height:1.45}
 .rd-solo .row{display:flex;gap:10px;flex-wrap:wrap}

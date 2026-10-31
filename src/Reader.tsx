@@ -338,7 +338,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   const justDone = useRef<Set<number>>(new Set())
 
   // Ekran ayarları
-  const [textMode, setTextMode] = useState<'show' | 'blur' | 'hide'>('show')
+  const [textMode, setTextMode] = useState<'show' | 'hide'>('show')
   const [hl, setHl] = useState<'word' | 'sent'>('word')
   const [shadow, setShadow] = useState(false)
   const [rate, setRate] = useState(1)
@@ -356,7 +356,6 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   const wide = vw >= 700
   const double = wide && (layout ? layout === 'double' : vw >= 860)
 
-  const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   const [sel, setSel] = useState<VocabEntry | null>(null)
   const [drawer, setDrawer] = useState(false)
   const [filter, setFilter] = useState<'all' | 'page' | 'learning' | 'known'>('all')
@@ -598,6 +597,17 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
     }
     const dur = L.duration || (a ? a.duration : 0) || 0
     setWaiting(-1)
+    // Gölgeleme: bir cümlenin sonunda durmuşken oynata basılırsa sıradaki
+    // cümleden devam et (yoksa aynı yerde hemen yeniden durur).
+    if (L.shadow) {
+      const now = L.demo ? demo.current.t : a ? a.currentTime : 0
+      const cur = locate(L.timing, now, dur).si
+      const n = L.timing.starts.length
+      if (cur >= 0 && cur + 1 < n) {
+        const end = L.ends ? L.ends[cur] : L.timing.starts[cur + 1]
+        if (end > 0 && now >= end - 0.05) { seekTo(L.timing.starts[cur + 1] + 0.01, true); return }
+      }
+    }
     if (L.demo) {
       if (dur > 0 && demo.current.t >= dur - 0.3) demo.current.t = 0
       demo.current.spoken = -1
@@ -645,6 +655,16 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   // Giden sayfanın kopyası cilt çizgisi etrafında döner; çift sayfada ardından
   // yeni sayfa diğer taraftan inerek yerine oturur.
   const bookRef = useRef<HTMLDivElement | null>(null)
+  // Son görünen kitap sayfasının yüksekliği: soru ve bölüm sonu ekranları aynı
+  // boyutta açılsın, kutu büyükten küçüğe zıplamasın.
+  const spreadH = useRef(0)
+  const ctrlRef = useRef<HTMLElement | null>(null)
+  const ctrlH = useRef(0)
+  useLayoutEffect(() => {
+    const el = bookRef.current?.querySelector('.rd-spread') as HTMLElement | null
+    if (el) spreadH.current = el.getBoundingClientRect().height
+    if (ctrlRef.current && !pos.bitti) ctrlH.current = ctrlRef.current.getBoundingClientRect().height
+  })
   const flip = useRef<{ dir: 1 | -1; clone: HTMLElement; timer: number } | null>(null)
   const canAnimate = () => typeof Element !== 'undefined' && typeof (Element.prototype as any).animate === 'function' &&
     !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
@@ -831,9 +851,6 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
     const toks = sentTokens[i]
     const spans = sentSpans[i]
     const isActive = active.si === i
-    const key = `${pageKey}:${i}`
-    const blurred = textMode === 'blur'
-    const isRev = !!revealed[key]
     const els: React.ReactNode[] = []
     const wordCls = (from: number, to: number) => {
       if (!(effHl === 'word' && isActive && timing.exact)) return ''
@@ -851,7 +868,6 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
             role="button" tabIndex={0}
             onClick={e => {
               e.stopPropagation()
-              if (blurred && !isRev) { setRevealed(r => ({ ...r, [key]: true })); return }
               stopAudio(); setSel(sp.entry)
             }}
             onKeyDown={e => { if (e.key === 'Enter') { stopAudio(); setSel(sp.entry) } }}>
@@ -868,9 +884,8 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
     const showTrLine = !book.noTranslation && textMode === 'show' && page.translations[i] &&
       ((trState === 'free' && showTr) || (trState === 'hint' && trPage))
     return (
-      <div key={i} className={'rd-sent' + (isActive ? ' act' : '') + (blurred ? ' blur' : '') + (blurred && isRev ? ' rev' : '')}
+      <div key={i} className={'rd-sent' + (isActive ? ' act' : '')}
         onClick={() => {
-          if (blurred && !isRev) { setRevealed(r => ({ ...r, [key]: true })); return }
           if (canPlay && !audioError) seekTo(sentStart(i) + 0.01, true)
         }}>
         <div className="rd-line">{els}</div>
@@ -897,11 +912,12 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
         </button>
       </header>
 
-      {!pos.bitti && (
-        <section className="rd-controls" aria-label="Okuma ayarları">
+      {(
+        <section className="rd-controls" aria-label="Okuma ayarları" ref={ctrlRef}
+          style={pos.bitti ? { visibility: 'hidden', minHeight: ctrlH.current || undefined, boxSizing: 'border-box' } : undefined} aria-hidden={pos.bitti || undefined} inert={pos.bitti || undefined}>
           <div className="rd-grp"><span>Metin</span>
             <div className="rd-seg">
-              {([['show', 'Açık'], ['blur', 'Buzlu'], ['hide', 'Gizli']] as const).map(([v, l]) =>
+              {([['show', 'Açık'], ['hide', 'Gizli']] as const).map(([v, l]) =>
                 <button key={v} aria-pressed={textMode === v} onClick={() => setTextMode(v)}>{l}</button>)}
             </div>
           </div>
@@ -934,7 +950,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
       <main className="rd-stage">
         <div className="rd-book" ref={bookRef} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {pos.bitti && quiz && !quiz.done && sectionQs[quiz.qi] ? (
-          <div className="rd-solo rd-quiz">
+          <div className="rd-solo rd-quiz" style={spreadH.current ? { minHeight: spreadH.current } : undefined}>
             <div className="rd-qhead">
               <span>Soru {quiz.qi + 1} / {sectionQs.length}</span>
               <div className="rd-qdots">{sectionQs.map((_, i) => <i key={i} className={i === quiz.qi ? 'on' : i < quiz.qi ? 'done' : ''} />)}</div>
@@ -961,7 +977,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
             )}
           </div>
         ) : pos.bitti ? (
-          <div className="rd-solo">
+          <div className="rd-solo" style={spreadH.current ? { minHeight: spreadH.current } : undefined}>
             <h2>{nextSection == null ? 'Kitap bitti!' : 'Bölüm bitti!'}</h2>
             <p>Bu bölümü okudun.{!preview && readCount(pos.section) === 1 && !book.noTranslation ? ' Artık istersen Türkçesini görebilirsin.' : ''}</p>
             {quiz && quiz.done && <p>Sorular: {quiz.correct} / {sectionQs.length} doğru.</p>}

@@ -824,7 +824,7 @@ function PasswordModal({ onSubmit, onClose, error, title }: {
 }
 
 function EntryScreen({ onPickProfile, onPickOwner, canUse, greetingName, isTeacher, onLogout, onAdmin }: {
-  onPickProfile: (p: 'A1' | 'A2' | 'child_omur' | 'child_oztug') => void
+  onPickProfile: (p: 'A1' | 'A2' | 'child_omur' | 'child_oztug' | 'library') => void
   onPickOwner: () => void
   canUse: (area: AreaId) => boolean
   greetingName: string
@@ -910,6 +910,21 @@ function EntryScreen({ onPickProfile, onPickOwner, canUse, greetingName, isTeach
           </div>
           <span style={{ color: dark.textMuted, fontSize: '18px' }}>→</span>
         </button>
+
+        {/* Kitaplık: yalnızca bu alanı açık olan hesaplarda görünür. */}
+        {canUse('library') && (
+          <button onClick={() => onPickProfile('library')} style={cardBase}>
+            <div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: dark.text }}>📚 Kitaplık</div>
+              <span style={{
+                display: 'inline-block', marginTop: '8px', fontFamily: "'IBM Plex Mono', var(--font-mono)", fontSize: '11px',
+                letterSpacing: '0.05em', color: dark.spark, background: `${dark.spark}33`, border: `1px solid ${dark.spark}`,
+                borderRadius: '100px', padding: '3px 10px',
+              }}>Okuma Paneli</span>
+            </div>
+            <span style={{ color: dark.textMuted, fontSize: '18px' }}>→</span>
+          </button>
+        )}
 
         <button
           onClick={() => { if (canUse('A1')) onPickProfile('A1') }}
@@ -3000,7 +3015,7 @@ const LEVEL_META: Record<Level, { code: string; label: string; color: string; di
 // Dashboard'dan önce gösterilen "kim çalışıyor" ekranı. Seçim sessionStorage'da
 // tutulur — yani sekme kapanmadan tekrar sorulmaz, ama yeni sekme/oturumda
 // (veya tarayıcı tamamen kapatılıp açıldığında) tekrar EntryScreen görünür.
-type EntryProfile = 'A1' | 'A2' | 'owner' | 'child_omur' | 'child_oztug'
+type EntryProfile = 'A1' | 'A2' | 'owner' | 'child_omur' | 'child_oztug' | 'library'
 const ENTRY_PROFILE_KEY = 'nc_entry_profile'
 
 // ─── Sheets-backed content loading (100Q) ──────────────────────────────────────
@@ -4488,9 +4503,111 @@ function DrillView({ unit, onBack, sheetTopics, entryProfile }: { unit: Unit; on
 
 // ─── Çocuk Paneli (ChildDashboard) ─────────────────────────────────────────────
 // Ömür ve Öztuğ için ayrı, sade panel. Level/dashboard/modül makinesinden
-// tamamen bağımsız. İçeriği (kitap listesi ve Okuyucu) Reader.tsx sağlar.
-function ChildDashboard({ childName, account, onExit }: { childName: string; account: Account; onExit: () => void }) {
-  return <ChildReaderApp account={account} childName={childName} group="cocuk" onExit={onExit} />
+// tamamen bağımsız — kendi kartları, kendi (light) teması var.
+// ŞİMDİLİK İSKELET: kartlar sabit/örnek içerik. Bir sonraki turda "Yeni" ve
+// "Konular" bölümleri Sheets'ten beslenecek, dinleme kartları gerçek <audio>
+// ile arka planda çalabilecek şekilde bağlanacak. Şu an hiçbir kart tıklanınca
+// bir şey açmıyor — bilerek böyle, içerik gelene kadar.
+function ChildDashboard({ childName, onExit }: { childName: string; onExit: () => void }) {
+  return (
+    <div style={{
+      minHeight: '100vh', background: '#F8FAFC', padding: '24px 18px 40px',
+      fontFamily: "'Inter', system-ui, sans-serif",
+    }}>
+      <div style={{ maxWidth: '480px', margin: '0 auto' }}>
+
+        {/* Üst şerit: isimle karşılama + çıkış */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '22px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '38px', height: '38px', borderRadius: '50%', background: '#4F46E5',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#fff', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '15px',
+            }}>{childName[0]}</div>
+            <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '21px', fontWeight: 700, color: '#0F172A' }}>
+              Merhaba {childName}
+            </p>
+          </div>
+          <button onClick={onExit} style={{
+            background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
+            padding: '6px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--foreground)', cursor: 'pointer',
+          }}>Çıkış</button>
+        </div>
+
+        {/* Yeni */}
+        <p style={{
+          margin: '0 0 10px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#64748B',
+          letterSpacing: '0.08em', textTransform: 'uppercase',
+        }}>Yeni</p>
+
+        <button style={{
+          width: '100%', textAlign: 'left', background: '#FFFFFF', border: '1.5px solid #B4530933',
+          borderRadius: '16px', padding: '16px', marginBottom: '10px',
+          boxShadow: '0 1px 5px rgba(15,23,42,0.06)', cursor: 'pointer',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '52px', height: '52px', borderRadius: '12px', background: '#FEF3C7',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '24px',
+            }}>🎬</div>
+            <div>
+              <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: '#0F172A' }}>
+                Bugünün mesajı
+              </p>
+              <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748B' }}>İzle · içerik yakında eklenecek</p>
+            </div>
+          </div>
+        </button>
+
+        <button style={{
+          width: '100%', textAlign: 'left', background: '#FFFFFF', border: '1.5px solid #0EA5E933',
+          borderRadius: '16px', padding: '16px', marginBottom: '22px',
+          boxShadow: '0 1px 5px rgba(15,23,42,0.06)', cursor: 'pointer',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '52px', height: '52px', borderRadius: '12px', background: '#E0F2FE',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '24px',
+            }}>🎧</div>
+            <div>
+              <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: '#0F172A' }}>
+                Dinleme parçası
+              </p>
+              <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748B' }}>Dinle · içerik yakında eklenecek</p>
+            </div>
+          </div>
+        </button>
+
+        {/* Konular */}
+        <p style={{
+          margin: '0 0 10px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#64748B',
+          letterSpacing: '0.08em', textTransform: 'uppercase',
+        }}>Konular</p>
+
+        <button style={{
+          width: '100%', textAlign: 'left', background: '#FFFFFF', border: '1px solid rgba(15,23,42,0.09)',
+          borderRadius: '16px', padding: '18px 16px', marginBottom: '10px',
+          boxShadow: '0 1px 5px rgba(15,23,42,0.06)', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', cursor: 'pointer',
+        }}>
+          <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: '#0F172A' }}>
+            (ilk konu buraya gelecek)
+          </span>
+          <span style={{ color: '#64748B', fontSize: '18px' }}>→</span>
+        </button>
+
+      </div>
+    </div>
+  )
+}
+
+// ─── Kitaplık Paneli (LibraryPanel) ───────────────────────────────────────────
+// Çocuk panelinden ayrı, kendi giriş kartı olan okuma paneli. Kitap listesi ve
+// Okuyucu Reader.tsx'ten gelir. Öğretmen panelinden "Kitaplık" alanı açılan her
+// hesap (öğrenci olsun olmasın) buraya girebilir; karşılama hesabın adıyla.
+function LibraryPanel({ account, onExit }: { account: Account; onExit: () => void }) {
+  const name = account.displayName.split(' ')[0] || account.displayName
+  return <ChildReaderApp account={account} childName={name} group="cocuk" onExit={onExit} />
 }
 
 // ─── URL ile konum hafızası ─────────────────────────────────────────────────
@@ -4701,7 +4818,7 @@ export default function App() {
   const [entryProfile, setEntryProfile] = useState<EntryProfile | null>(() => {
     try {
       const v = sessionStorage.getItem(ENTRY_PROFILE_KEY)
-      return (v === 'A1' || v === 'A2' || v === 'owner' || v === 'child_omur' || v === 'child_oztug') ? v : null
+      return (v === 'A1' || v === 'A2' || v === 'owner' || v === 'child_omur' || v === 'child_oztug' || v === 'library') ? v : null
     } catch { return null }
   })
 
@@ -4714,7 +4831,7 @@ export default function App() {
     }
   }, [account, entryProfile])
 
-  function chooseProfile(p: 'A1' | 'A2' | 'child_omur' | 'child_oztug') {
+  function chooseProfile(p: 'A1' | 'A2' | 'child_omur' | 'child_oztug' | 'library') {
     if (!canUseArea(account, p)) return
     setEntryProfile(p)
     try { sessionStorage.setItem(ENTRY_PROFILE_KEY, p) } catch {}
@@ -5113,7 +5230,7 @@ export default function App() {
   // tıklama bunu zaten engelliyor ama URL o kontrolü atlayabiliyor. Böyle bir
   // durum tespit edilirse profili kendi seviyesine ve dashboard'a geri döndür.
   useEffect(() => {
-    if (!entryProfile || entryProfile === 'owner' || entryProfile === 'child_omur' || entryProfile === 'child_oztug') return
+    if (!entryProfile || entryProfile === 'owner' || entryProfile === 'child_omur' || entryProfile === 'child_oztug' || entryProfile === 'library') return
     if (isTabAvailable(level)) return
     const fallback = PROFILE_ALLOWED_LEVELS[entryProfile]?.[0] ?? 'A1'
     setLevel(fallback)
@@ -5169,9 +5286,17 @@ export default function App() {
         {iosInstallBanner}
         <ChildDashboard
           childName={entryProfile === 'child_omur' ? 'Ömür' : 'Öztuğ'}
-          account={account}
           onExit={handleExitToEntry}
         />
+      </>
+    )
+  }
+
+  if (entryProfile === 'library') {
+    return (
+      <>
+        {iosInstallBanner}
+        <LibraryPanel account={account} onExit={handleExitToEntry} />
       </>
     )
   }
