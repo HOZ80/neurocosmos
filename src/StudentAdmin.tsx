@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getAccessToken, normalizeLoginName } from './auth'
+import { sb, shortName } from './liveShared'
 
 // ─── Öğretmen paneli: Öğrenciler ──────────────────────────────────────────────
 // Öğrenci ekle, alan aç/kapat, şifre değiştir, pasife al / yeniden aç.
@@ -12,6 +13,7 @@ interface Student {
   id: string
   loginName: string
   displayName: string
+  surnameInitial: string
   areas: string[]
   active: boolean
 }
@@ -101,6 +103,16 @@ function StudentRow({ s, open, onOpen, onChanged, onMessage }: {
   const [error, setError] = useState<string | null>(null)
   const [newPw, setNewPw] = useState('')
   const [confirmClose, setConfirmClose] = useState(false)
+  const [initial, setInitial] = useState(s.surnameInitial)
+  useEffect(() => { setInitial(s.surnameInitial) }, [s.surnameInitial])
+
+  function saveInitial() {
+    run(async () => {
+      const data = await call('soyad', { id: s.id, soyadHarfi: initial })
+      onChanged(data.students)
+      onMessage(`${s.displayName} için soyadı baş harfi kaydedildi.`)
+    })
+  }
 
   useEffect(() => { if (!open) { setError(null); setNewPw(''); setConfirmClose(false) } }, [open])
 
@@ -157,7 +169,7 @@ function StudentRow({ s, open, onOpen, onChanged, onMessage }: {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <span style={{ fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: 'var(--foreground)' }}>
-              {s.displayName}
+              {shortName(s.displayName, s.surnameInitial)}
             </span>
             {!s.active && (
               <span style={{ fontSize: '12px', fontWeight: 600, color: '#B45309', background: '#FEF3C7', borderRadius: '100px', padding: '2px 8px' }}>
@@ -178,6 +190,23 @@ function StudentRow({ s, open, onOpen, onChanged, onMessage }: {
             <span style={fieldLabel}>Girebildiği alanlar (dokununca hemen kaydedilir)</span>
             <AreaChips value={s.areas} onToggle={toggleArea} disabled={busy || !s.active} />
             {!s.active && <p style={{ margin: '8px 2px 0', fontSize: '13px', color: 'var(--muted-foreground)' }}>Alanları değiştirmek için önce hesabı yeniden aç.</p>}
+          </div>
+
+          <div>
+            <label htmlFor={`ini-${s.id}`} style={fieldLabel}>Soyadının baş harfi (ekranda “{shortName(s.displayName, initial)}” görünür)</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                id={`ini-${s.id}`}
+                value={initial}
+                onChange={e => setInitial(e.target.value.slice(0, 1))}
+                maxLength={1}
+                autoComplete="off"
+                style={{ ...input, width: '80px', textAlign: 'center' }}
+              />
+              <button onClick={saveInitial} disabled={busy || initial === s.surnameInitial} style={{ ...primaryBtn, opacity: busy || initial === s.surnameInitial ? 0.5 : 1, flexShrink: 0 }}>
+                Kaydet
+              </button>
+            </div>
           </div>
 
           <div>
@@ -234,8 +263,21 @@ function NewStudentForm({ onDone, onCancel }: { onDone: (list: Student[], name: 
   const [loginTouched, setLoginTouched] = useState(false)
   const [password, setPassword] = useState('')
   const [areas, setAreas] = useState<string[]>([])
+  const [initial, setInitial] = useState('')
+  const [classes, setClasses] = useState<{ id: string; name: string; is_default: boolean }[]>([])
+  const [classId, setClassId] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Canlı ders sınıfları (varsayılan sınıf seçili gelir).
+  useEffect(() => {
+    sb.from('live_classes').select('id,name,is_default').order('created_at').then(({ data }) => {
+      const list = (data || []) as { id: string; name: string; is_default: boolean }[]
+      setClasses(list)
+      const def = list.find(c => c.is_default)
+      if (def) setClassId(def.id)
+    })
+  }, [])
 
   function changeDisplayName(v: string) {
     setDisplayName(v)
@@ -250,8 +292,8 @@ function NewStudentForm({ onDone, onCancel }: { onDone: (list: Student[], name: 
     if (password.length < 6) { setError('Şifre en az 6 karakter olmalı.'); return }
     setBusy(true)
     try {
-      const data = await call('ekle', { gorunenAd: displayName.trim(), girisAdi: login, sifre: password, alanlar: areas })
-      onDone(data.students, displayName.trim(), login)
+      const data = await call('ekle', { gorunenAd: displayName.trim(), soyadHarfi: initial, girisAdi: login, sifre: password, alanlar: areas, sinif: classId })
+      onDone(data.students, shortName(displayName.trim(), initial), login + (data.classOk === false ? '. Sınıfa eklenemedi; Canlı Ders > Sınıflar ekranından ekleyebilirsin' : ''))
     } catch (e: any) {
       setError(e?.message || 'Öğrenci eklenemedi.')
       setBusy(false)
@@ -264,6 +306,10 @@ function NewStudentForm({ onDone, onCancel }: { onDone: (list: Student[], name: 
       <div>
         <label htmlFor="ns-name" style={fieldLabel}>Görünen ad (ekranda görünecek)</label>
         <input id="ns-name" value={displayName} onChange={e => changeDisplayName(e.target.value)} style={input} />
+      </div>
+      <div>
+        <label htmlFor="ns-ini" style={fieldLabel}>Soyadının baş harfi (ekranda “{shortName(displayName || 'Ali', initial)}” görünür)</label>
+        <input id="ns-ini" value={initial} onChange={e => setInitial(e.target.value.slice(0, 1))} maxLength={1} autoComplete="off" style={{ ...input, width: '80px', textAlign: 'center' }} />
       </div>
       <div>
         <label htmlFor="ns-login" style={fieldLabel}>Giriş adı (öğrenci bunu yazacak)</label>
@@ -282,6 +328,14 @@ function NewStudentForm({ onDone, onCancel }: { onDone: (list: Student[], name: 
       <div>
         <span style={fieldLabel}>Girebileceği alanlar</span>
         <AreaChips value={areas} onToggle={a => setAreas(v => v.includes(a) ? v.filter(x => x !== a) : [...v, a])} disabled={busy} />
+        <p style={{ margin: '6px 2px 0', fontSize: '13px', color: 'var(--muted-foreground)' }}>Yalnızca canlı derse katılacaksa hiçbir alan seçme; girişte sade bir Canlı Ders ekranı görür.</p>
+      </div>
+      <div>
+        <label htmlFor="ns-class" style={fieldLabel}>Canlı ders sınıfı</label>
+        <select id="ns-class" value={classId} onChange={e => setClassId(e.target.value)} style={input}>
+          <option value="">Sınıf yok</option>
+          {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
       </div>
       {error && <p role="alert" style={{ margin: 0, fontSize: '14px', color: '#DC2626' }}>{error}</p>}
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>

@@ -17,6 +17,7 @@ const PUBLISHABLE_KEY = 'sb_publishable_dx8Rx1zdfhvhg6G0TEZUHQ_JSQg-Z-Q'
 const LOGIN_DOMAIN = 'giris.neurocosmos.tr'
 
 const STUDENT_AREAS = ['A1', 'A2', 'child_omur', 'child_oztug', 'library']
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const BAN_FOREVER = '876000h' // ~100 yıl: hesap kapalı
 const LOGIN_NAME_RE = /^[a-z0-9][a-z0-9._-]{1,29}$/
 
@@ -43,6 +44,12 @@ function normalizeLoginName(raw) {
     .replace(/ç/g, 'c').replace(/ğ/g, 'g').replace(/ı/g, 'i')
     .replace(/ö/g, 'o').replace(/ş/g, 's').replace(/ü/g, 'u')
     .replace(/\s+/g, '')
+}
+
+// Soyadının baş harfi: tek harf, büyük yazılır ("Ali A." biçimi için).
+function cleanInitial(raw) {
+  const ch = String(raw || '').trim().charAt(0)
+  return /\p{L}/u.test(ch) ? ch.toLocaleUpperCase('tr-TR') : ''
 }
 
 function cleanAreas(list) {
@@ -111,7 +118,7 @@ async function adminUpdateUser(id, fields, secret) {
 
 async function listStudents(secret) {
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/profiles?role=eq.student&select=id,login_name,display_name,areas,active,created_at&order=created_at.asc`,
+    `${SUPABASE_URL}/rest/v1/profiles?role=eq.student&select=id,login_name,display_name,surname_initial,areas,active,created_at&order=created_at.asc`,
     { headers: secretHeaders(secret) },
   )
   if (!res.ok) return null
@@ -121,6 +128,7 @@ async function listStudents(secret) {
     id: r.id,
     loginName: r.login_name,
     displayName: r.display_name || r.login_name,
+    surnameInitial: r.surname_initial || '',
     areas: Array.isArray(r.areas) ? r.areas : [],
     active: r.active !== false,
   }))
@@ -156,6 +164,9 @@ export const handler = async (event) => {
       const displayName = String(body.gorunenAd || '').trim().slice(0, 60)
       const password = String(body.sifre || '')
       const areas = cleanAreas(body.alanlar)
+      const initial = cleanInitial(body.soyadHarfi)
+      const classId = String(body.sinif || '')
+      if (classId && !UUID_RE.test(classId)) return json(400, { error: 'Sınıf seçimi geçersiz.' })
       if (!LOGIN_NAME_RE.test(loginName)) {
         return json(400, { error: 'Giriş adı 2-30 karakter olmalı; yalnızca harf, rakam, nokta, alt çizgi ve tire kullanılabilir.' })
       }
@@ -178,7 +189,7 @@ export const handler = async (event) => {
       }
 
       // Profil satırını veritabanı kendiliğinden açar; adı ve alanları yaz.
-      const ok = await updateProfile(created.id, { display_name: displayName, areas }, secret)
+      const ok = await updateProfile(created.id, { display_name: displayName, surname_initial: initial, areas }, secret)
       if (!ok) {
         // Yarım kalmasın: hesabı geri sil.
         await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(created.id)}`, {
@@ -186,7 +197,18 @@ export const handler = async (event) => {
         }).catch(() => {})
         return json(500, { error: 'Hesap açılamadı (profil yazılamadı).' })
       }
-      return json(200, { ok: true, students: await listStudents(secret) })
+      // Canlı ders sınıfı (seçildiyse). Olmazsa hesap yine açılmış olur; sınıf
+      // sonradan Canlı Ders > Sınıflar ekranından verilebilir.
+      let classOk = true
+      if (classId) {
+        const r = await fetch(`${SUPABASE_URL}/rest/v1/live_class_members`, {
+          method: 'POST',
+          headers: secretHeaders(secret, { Prefer: 'resolution=merge-duplicates,return=minimal' }),
+          body: JSON.stringify({ student_id: created.id, class_id: classId }),
+        }).catch(() => null)
+        classOk = !!(r && r.ok)
+      }
+      return json(200, { ok: true, classOk, students: await listStudents(secret) })
     }
 
     // Aşağıdaki işlemlerin hepsi tek bir öğrenci üzerinde.
@@ -199,6 +221,12 @@ export const handler = async (event) => {
       if (!areas) return json(400, { error: 'Alan seçimi geçersiz.' })
       const ok = await updateProfile(id, { areas }, secret)
       if (!ok) return json(500, { error: 'Alanlar kaydedilemedi.' })
+      return json(200, { ok: true, students: await listStudents(secret) })
+    }
+
+    if (islem === 'soyad') {
+      const ok = await updateProfile(id, { surname_initial: cleanInitial(body.soyadHarfi) }, secret)
+      if (!ok) return json(500, { error: 'Kaydedilemedi.' })
       return json(200, { ok: true, students: await listStudents(secret) })
     }
 

@@ -11,6 +11,8 @@ import type { Account, AreaId } from './auth'
 import LoginScreen from './LoginScreen'
 import StudentAdmin from './StudentAdmin'
 import ChildReaderApp from './Reader'
+import LiveTeacher, { clearLiveTeacherNav } from './LiveTeacher'
+import { useLiveStatus, LiveBanner, LiveOnlyHome, LiveStudentScreen } from './LiveStudent'
 
 // Hafıza beyni (three.js içerir) — sadece Memory sayfası açılınca yüklenir.
 const MemoryBrain = lazy(() => import('./MemoryBrain'))
@@ -823,7 +825,7 @@ function PasswordModal({ onSubmit, onClose, error, title }: {
   )
 }
 
-function EntryScreen({ onPickProfile, onPickOwner, canUse, greetingName, isTeacher, onLogout, onAdmin }: {
+function EntryScreen({ onPickProfile, onPickOwner, canUse, greetingName, isTeacher, onLogout, onAdmin, live, onLive }: {
   onPickProfile: (p: 'A1' | 'A2' | 'child_omur' | 'child_oztug' | 'library') => void
   onPickOwner: () => void
   canUse: (area: AreaId) => boolean
@@ -831,6 +833,9 @@ function EntryScreen({ onPickProfile, onPickOwner, canUse, greetingName, isTeach
   isTeacher: boolean
   onLogout: () => void
   onAdmin: () => void
+  // Canlı Ders kartı: öğretmende her zaman; öğrencide yalnızca bir sınıftaysa.
+  live: 'teacher' | 'active' | 'idle' | 'none'
+  onLive: () => void
 }) {
   // Bu ekran bilinçli olarak sitenin geri kalanından (light tema) bağımsız,
   // sabit bir koyu palet kullanır — var(--...) yerine düz hex değerler.
@@ -878,6 +883,25 @@ function EntryScreen({ onPickProfile, onPickOwner, canUse, greetingName, isTeach
       }}>Merhaba {greetingName}! Hadi başlayalım</h1>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', width: '100%', maxWidth: '400px' }}>
+
+        {live !== 'none' && (
+          <button
+            onClick={() => { if (live !== 'idle') onLive() }}
+            disabled={live === 'idle'}
+            style={live === 'idle' ? { ...cardBase, opacity: 0.55, cursor: 'default' } : { ...cardBase, borderColor: dark.spark, background: live === 'active' ? `${dark.spark}22` : dark.surface }}
+          >
+            <div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '19px', fontWeight: 700, color: dark.text, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {live === 'active' && <span aria-hidden style={{ width: 10, height: 10, borderRadius: '50%', background: dark.spark, display: 'inline-block' }} />}
+                Canlı Ders
+              </div>
+              <div style={{ marginTop: '6px', fontSize: '13px', color: dark.textMuted }}>
+                {live === 'teacher' ? 'Ders başlat, deneme modu, hazırlık' : live === 'active' ? 'Ders başladı, katılmak için dokun' : 'Şu an kapalı'}
+              </div>
+            </div>
+            {live !== 'idle' && <span style={{ color: dark.text, fontSize: '18px' }}>→</span>}
+          </button>
+        )}
 
         <button
           onClick={() => { if (canUse('child_omur')) onPickProfile('child_omur') }}
@@ -4812,6 +4836,29 @@ export default function App() {
   }, [])
   const isTeacher = !!account && account.active && account.role === 'teacher'
 
+  // ── Canlı Ders ──
+  // Hangi canlı ders ekranının açık olduğu sekme boyunca hatırlanır; sayfa
+  // yenilenince aynı ekrana dönülür.
+  // Değer: 'teacher' ya da 'student:<ders kimliği>' (öğrenci katıldığı derste
+  // kalır; ders bitince ekranında "Ders bitti" görür, kendisi çıkar).
+  const liveStatus = useLiveStatus(account)
+  const [liveView, setLiveView] = useState<string | null>(() => {
+    try {
+      const v = sessionStorage.getItem('nc_live_view')
+      return v === 'teacher' || (v && v.startsWith('student:')) ? v : null
+    } catch { return null }
+  })
+  function openLive(v: string | null) {
+    setLiveView(v)
+    try { if (v) sessionStorage.setItem('nc_live_view', v); else sessionStorage.removeItem('nc_live_view') } catch {}
+  }
+  const liveJoinedSession = liveView && liveView.startsWith('student:') ? liveView.slice(8) : null
+  useEffect(() => {
+    // Öğrenci artık bir sınıfta değilse canlı ders ekranı kapanır.
+    if (liveJoinedSession && liveStatus.checked && !liveStatus.klass) openLive(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveJoinedSession, liveStatus.checked, liveStatus.klass])
+
   // ── Giriş ekranı profili (bkz. EntryScreen) ──
   // Hangi kartla çalışıldığı. Sekme açık kaldıkça hatırlanır; kartın bu hesaba
   // açık olup olmadığı her zaman hesabın alan listesinden kontrol edilir.
@@ -4863,6 +4910,8 @@ export default function App() {
   // Hesaptan tamamen çıkış — telefon artık hatırlamaz, giriş ekranı gelir.
   function handleLogout() {
     handleExitToEntry()
+    openLive(null)
+    clearLiveTeacherNav()
     setShowStudentAdmin(false)
     setAccount(null)
     signOut()
@@ -5259,8 +5308,31 @@ export default function App() {
     )
   }
 
+  if (liveView === 'teacher' && isTeacher) {
+    return <LiveTeacher onExit={() => { openLive(null); clearLiveTeacherNav() }} />
+  }
+  if (liveJoinedSession && !isTeacher && liveStatus.klass) {
+    return <LiveStudentScreen key={liveJoinedSession} account={account} klass={liveStatus.klass} sessionId={liveJoinedSession} onExit={() => openLive(null)} />
+  }
+  const joinLive = () => { if (liveStatus.sessionId) openLive('student:' + liveStatus.sessionId) }
+  // Ders başlayınca öğrencinin her ekranında beliren şerit.
+  const liveBanner = !isTeacher && liveStatus.sessionId && !liveJoinedSession
+    ? <LiveBanner onJoin={joinLive} />
+    : null
+
   if (showStudentAdmin && isTeacher) {
     return <StudentAdmin onClose={() => setShowStudentAdmin(false)} />
+  }
+
+  // Yalnızca canlı derse katılan (başka alanı açık olmayan) öğrenci: sade ekran.
+  const ENTRY_AREAS: AreaId[] = ['A1', 'A2', 'child_omur', 'child_oztug', 'library', 'owner']
+  if (!isTeacher && !entryProfile && !ENTRY_AREAS.some(a => canUseArea(account, a))) {
+    return (
+      <>
+        {iosInstallBanner}
+        <LiveOnlyHome account={account} status={liveStatus} onJoin={joinLive} onLogout={handleLogout} />
+      </>
+    )
   }
 
   if (!entryProfile) {
@@ -5275,7 +5347,10 @@ export default function App() {
           isTeacher={isTeacher}
           onLogout={handleLogout}
           onAdmin={() => setShowStudentAdmin(true)}
+          live={isTeacher ? 'teacher' : !liveStatus.klass ? 'none' : liveStatus.sessionId ? 'active' : 'idle'}
+          onLive={() => { if (isTeacher) openLive('teacher'); else joinLive() }}
         />
+        {liveBanner}
       </>
     )
   }
@@ -5288,6 +5363,7 @@ export default function App() {
           childName={entryProfile === 'child_omur' ? 'Ömür' : 'Öztuğ'}
           onExit={handleExitToEntry}
         />
+        {liveBanner}
       </>
     )
   }
@@ -5297,6 +5373,7 @@ export default function App() {
       <>
         {iosInstallBanner}
         <LibraryPanel account={account} onExit={handleExitToEntry} />
+        {liveBanner}
       </>
     )
   }
@@ -5304,6 +5381,7 @@ export default function App() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       {iosInstallBanner}
+      {liveBanner}
 
       {/* ── Nav ── */}
       <header style={{
