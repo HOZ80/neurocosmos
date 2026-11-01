@@ -11,6 +11,11 @@ import type { Account, AreaId } from './auth'
 import LoginScreen from './LoginScreen'
 import StudentAdmin from './StudentAdmin'
 import ChildReaderApp from './Reader'
+import { useChildBrain, ChildBrainCard, ChildBrainView } from './ChildBrain'
+import KitaplikReport from './KitaplikReport'
+import { listStudentAccounts } from './readerStore'
+import type { StudentAccount } from './readerStore'
+import { loadContent } from './readerData'
 import LiveTeacher, { clearLiveTeacherNav } from './LiveTeacher'
 import { useLiveStatus, LiveBanner, LiveOnlyHome, LiveStudentScreen } from './LiveStudent'
 
@@ -4532,7 +4537,37 @@ function DrillView({ unit, onBack, sheetTopics, entryProfile }: { unit: Unit; on
 // "Konular" bölümleri Sheets'ten beslenecek, dinleme kartları gerçek <audio>
 // ile arka planda çalabilecek şekilde bağlanacak. Şu an hiçbir kart tıklanınca
 // bir şey açmıyor — bilerek böyle, içerik gelene kadar.
-function ChildDashboard({ childName, onExit }: { childName: string; onExit: () => void }) {
+// My Brain adı eşleşmesi: listedeki ad ile hesap adı aynı olmalı (büyük/küçük harf ve
+// baştaki/sondaki boşluk önemsiz).
+function sameName(a: string, b: string): boolean {
+  return a.trim().toLocaleLowerCase('tr') === b.trim().toLocaleLowerCase('tr')
+}
+
+// Çocuk panelinin My Brain'i: My Brain öğrenci listesinde çocuğun adını bulur, o
+// satırdaki tabloyu okur. Satır yoksa beyin boş görünür.
+async function loadMemoryByName(name: string): Promise<MemoryItem[]> {
+  const bust = (u: string) => `${u}${u.includes('?') ? '&' : '?'}t=${Date.now()}`
+  const list = parseMemoryStudents(parseCSV(await (await fetch(bust(MEMORY_STUDENTS_SHEET_CSV_URL), { cache: 'no-store' })).text()))
+  const me = list.find(s => s.active && sameName(s.name, name))
+  if (!me) return []
+  const res = await fetch(bust(me.url), { cache: 'no-store' })
+  if (!res.ok) throw new Error('tablo okunamadı')
+  return parseMemoryRows(parseCSV(await res.text())).items
+}
+
+// Tablonun ilk satırındaki sütun adları, sırasıyla (Kitaplık raporu kopyalarken bu sırayı kullanır)
+function csvHeader(text: string): string[] {
+  const first = text.split(/\r?\n/)[0] ?? ''
+  return first.split(',').map(c => c.replace(/^"|"$/g, '').trim())
+}
+
+function ChildDashboard({ childName, unitTitles, onExit }: { childName: string; unitTitles: Record<string, string>; onExit: () => void }) {
+  // My Brain: öğretmenin My Brain tablosundan (ChildBrain.tsx)
+  const brain = useChildBrain(() => loadMemoryByName(childName))
+  const [showBrain, setShowBrain] = useState(false)
+  if (showBrain) {
+    return <ChildBrainView childName={childName} data={brain.data} unitTitles={unitTitles} onBack={() => { setShowBrain(false); window.scrollTo(0, 0) }} />
+  }
   return (
     <div style={{
       minHeight: '100vh', background: '#F8FAFC', padding: '24px 18px 40px',
@@ -4557,6 +4592,9 @@ function ChildDashboard({ childName, onExit }: { childName: string; onExit: () =
             padding: '6px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--foreground)', cursor: 'pointer',
           }}>Çıkış</button>
         </div>
+
+        {/* My Brain */}
+        <ChildBrainCard data={brain.data} onOpen={() => { brain.reload(); setShowBrain(true); window.scrollTo(0, 0) }} />
 
         {/* Yeni */}
         <p style={{
@@ -5028,7 +5066,7 @@ export default function App() {
   // ── Memory (hafıza beyni): Öğrenciler tablosu + seçili öğrencinin kendi hafıza tablosu ──
   const [memoryStudents, setMemoryStudents] = useState<MemoryStudent[] | null>(null)
   const [memoryStudentName, setMemoryStudentName] = useState<string | null>(null)
-  const [memoryLoad, setMemoryLoad] = useState<{ url: string; status: 'loading' | 'ok' | 'error'; items: MemoryItem[]; skipped: number } | null>(null)
+  const [memoryLoad, setMemoryLoad] = useState<{ url: string; status: 'loading' | 'ok' | 'error'; items: MemoryItem[]; skipped: number; columns?: string[] } | null>(null)
   const memoryEnabled = entryProfile === 'A1' || entryProfile === 'A2' || entryProfile === 'owner'
   const unut = useUnutmama(UNUTMAMA_CARDS_SHEET_CSV_URL, entryProfile === 'owner')
 
@@ -5041,6 +5079,23 @@ export default function App() {
       .catch(() => { /* Memory butonu görünmez, site etkilenmez */ })
   }, [memoryEnabled])
 
+  // Öğretmen için öğrenci hesapları: Kitaplık raporu ve listede tablosu olmayan Kitaplık öğrencileri
+  const [studentAccounts, setStudentAccounts] = useState<StudentAccount[]>([])
+  useEffect(() => {
+    if (entryProfile !== 'owner') return
+    listStudentAccounts().then(setStudentAccounts).catch(() => { /* rapor görünmez, site etkilenmez */ })
+  }, [entryProfile])
+
+  // Kitap adları: My Brain'de kitap kodu (örn. K001) yerine kitabın adı yazsın
+  const [bookTitles, setBookTitles] = useState<Record<string, string>>({})
+  const wantsBookTitles = memoryEnabled || entryProfile === 'child_omur' || entryProfile === 'child_oztug'
+  useEffect(() => {
+    if (!wantsBookTitles) return
+    loadContent()
+      .then(c => { const t: Record<string, string> = {}; c.books.forEach(b => { if (b.code) t[b.code] = b.title || b.code }); setBookTitles(t) })
+      .catch(() => { /* kod olarak görünür */ })
+  }, [wantsBookTitles])
+
   // Bu giriş profilinin görebileceği öğrenciler: Owner hepsini (aktif olanları), diğerleri
   // sadece profile sütunu kendi grubuyla aynı olan aktif öğrenciyi görür.
   const memoryProfileLabel = entryProfile === 'A1' || entryProfile === 'A2' ? LEVEL_META[entryProfile].label : null
@@ -5048,6 +5103,12 @@ export default function App() {
     ...(memoryStudents ?? []).filter(s =>
       s.active && (entryProfile === 'owner' || (memoryProfileLabel !== null && s.profile.trim().toLowerCase() === memoryProfileLabel.toLowerCase()))
     ),
+    // Owner için: Kitaplık'ı olan ama listede (tabloda) adı olmayan öğrenciler; beyni boş, altında raporu görünür
+    ...(entryProfile === 'owner'
+      ? studentAccounts
+          .filter(a => (a.areas || []).includes('library') && !(memoryStudents ?? []).some(s => s.active && sameName(s.name, a.display_name)))
+          .map(a => ({ name: a.display_name, profile: 'Kitaplık', url: '', active: true }))
+      : []),
     // Owner için, öğrencilerin ardına: kendi Unutmama kartlarından çıkan beyin
     ...(entryProfile === 'owner' && unut.status === 'ok' && unut.cards.length > 0
       ? [{ name: UNUTMAMA_STUDENT_NAME, profile: 'Owner', url: '', active: true }]
@@ -5067,19 +5128,24 @@ export default function App() {
       .then(text => {
         if (cancelled) return
         const { items, skipped } = parseMemoryRows(parseCSV(text))
-        setMemoryLoad({ url: currentMemoryUrl, status: 'ok', items, skipped })
+        setMemoryLoad({ url: currentMemoryUrl, status: 'ok', items, skipped, columns: csvHeader(text) })
       })
       .catch(() => { if (!cancelled) setMemoryLoad({ url: currentMemoryUrl, status: 'error', items: EMPTY_MEMORY_ITEMS, skipped: 0 }) })
     return () => { cancelled = true }
   }, [currentMemoryUrl])
 
   const memoryReady = !!memoryLoad && memoryLoad.url === currentMemoryUrl
-  const memoryStatus: 'loading' | 'ok' | 'error' = isUnutStudent ? unut.status : (memoryReady ? memoryLoad!.status : 'loading')
-  const memoryItems: MemoryItem[] = isUnutStudent ? unut.memoryItems : (memoryReady ? memoryLoad!.items : EMPTY_MEMORY_ITEMS)
+  const memoryNoSheet = !!currentMemoryStudent && !isUnutStudent && !currentMemoryStudent.url // tablosu henüz olmayan Kitaplık öğrencisi
+  const memoryStatus: 'loading' | 'ok' | 'error' = isUnutStudent ? unut.status : memoryNoSheet ? 'ok' : (memoryReady ? memoryLoad!.status : 'loading')
+  const memoryItems: MemoryItem[] = isUnutStudent ? unut.memoryItems : (memoryReady && !memoryNoSheet ? memoryLoad!.items : EMPTY_MEMORY_ITEMS)
+  // Öğretmen ekranındaki Kitaplık raporu: seçili öğrencinin adıyla eşleşen, Kitaplık'ı olan hesap
+  const reportAccount = entryProfile === 'owner' && currentMemoryStudent && !isUnutStudent
+    ? studentAccounts.find(a => (a.areas || []).includes('library') && sameName(a.display_name, currentMemoryStudent.name)) ?? null
+    : null
   const memorySkipped = isUnutStudent ? 0 : (memoryReady ? memoryLoad!.skipped : 0)
   const memoryCounts: Record<string, number> = {}
   memoryItems.forEach(it => { memoryCounts[it.unit] = (memoryCounts[it.unit] ?? 0) + 1 })
-  const memoryUnitTitles: Record<string, string> = {}
+  const memoryUnitTitles: Record<string, string> = { ...bookTitles }
   if (unitsSheetData) {
     Object.values(unitsSheetData.unitsByLevel).flat().forEach(u => { if (u.unit_id && u.unit_title) memoryUnitTitles[u.unit_id] = u.unit_title })
   }
@@ -5361,6 +5427,7 @@ export default function App() {
         {iosInstallBanner}
         <ChildDashboard
           childName={entryProfile === 'child_omur' ? 'Ömür' : 'Öztuğ'}
+          unitTitles={memoryUnitTitles}
           onExit={handleExitToEntry}
         />
         {liveBanner}
@@ -5549,6 +5616,14 @@ export default function App() {
                   status={memoryStatus}
                   unitTitles={memoryUnitTitles}
                 />
+                {reportAccount && currentMemoryStudent && (
+                  <KitaplikReport
+                    studentName={currentMemoryStudent.name}
+                    studentId={reportAccount.id}
+                    brainItems={memoryItems}
+                    columns={memoryNoSheet ? null : (memoryReady ? memoryLoad!.columns ?? null : null)}
+                  />
+                )}
               </Suspense>
             ) : (
               <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>

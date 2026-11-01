@@ -79,3 +79,27 @@ export async function deleteWordMark(studentId: string, wordKey: string) {
     headers: { Prefer: 'return=minimal' },
   })
 }
+
+// ─── My Brain raporu için (yalnızca okuma; öğretmen ekranı) ──────────────────
+// Öğrencinin işaretli kelimeleri, ilk işaretlenme sırasıyla.
+export interface BrainMark {
+  word_key: string
+  status: 'known' | 'learning'
+  first_book_code: string | null
+  first_marked_at: string
+  updated_at: string
+}
+
+export async function loadBrainMarks(studentId: string): Promise<BrainMark[]> {
+  const sid = encodeURIComponent(studentId)
+  const res = await rest(`word_marks?student_id=eq.${sid}&select=word_key,status,first_book_code,first_marked_at,updated_at&order=first_marked_at.asc&limit=5000`)
+  return res.json()
+}
+
+// Öğretmen için: etkin öğrenci hesapları (ad eşleşmesi ve rapor için)
+export interface StudentAccount { id: string; display_name: string; areas: string[] }
+
+export async function listStudentAccounts(): Promise<StudentAccount[]> {
+  const res = await rest('profiles?role=eq.student&active=eq.true&select=id,display_name,areas&order=display_name.asc')
+  return res.json()
+}
