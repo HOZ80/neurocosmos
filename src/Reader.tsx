@@ -1026,10 +1026,12 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   useLayoutEffect(() => {
     const app = appRef.current, bar = barRef.current
     if (!app) return
-    if (!bar) { app.style.removeProperty('--rd-barh'); return }
+    if (!bar) { app.style.removeProperty('--rd-barh'); document.documentElement.style.removeProperty('--rd-barh'); return }
     const set = () => {
       const h = bar.getBoundingClientRect().height
       app.style.setProperty('--rd-barh', h + 'px')
+      // Sayfanın kökünde de dursun: canlı ders şeridi ses çubuğunun üstüne yerleşsin
+      document.documentElement.style.setProperty('--rd-barh', h + 'px')
       if (!pos.bitti) readBarH.current = h
     }
     set()
@@ -1039,6 +1041,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
     return () => ro.disconnect()
   }, [pos.bitti, wide, audioError, canPlay, quiz ? 1 : 0])  // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => () => { document.documentElement.style.removeProperty('--rd-barh') }, [])
   const stopAll = () => { stopAudio(); stopQSpeak() }
   const hasTTS = typeof window !== 'undefined' && 'speechSynthesis' in window
   const sideBySide = vw >= 1050

@@ -295,6 +295,13 @@ export const READER_CSS = `
 
 @media (max-width:1049px){.rd-main.open{grid-template-columns:minmax(0,1fr)}}
 
+/* Canlı ders şeridi: okuma ekranı açıkken ses çubuğunun üstünde durur, düğmeleri kapatmaz */
+body:has(.rd-app.reading) .nc-live-banner{bottom:calc(var(--rd-barh,0px) + 28px)!important}
+@media (max-width:699px){
+  body:has(.rd-app.reading) .nc-live-banner{bottom:calc(var(--rd-barh,0px) + 10px)!important}
+  body:has(.nc-live-banner) .rd-say,body:has(.nc-live-banner) .rd-wcard{bottom:calc(var(--rd-barh,150px) + 76px)}
+}
+
 /* ─── telefon ─── */
 @media (max-width:699px){
   .rd-app{padding:max(14px,env(safe-area-inset-top,0px)) 14px 0;gap:12px}

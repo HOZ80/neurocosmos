@@ -56,12 +56,12 @@ export function useLiveStatus(account: Account | null): LiveStatus {
 // Ders başlayınca her ekranın altında beliren şerit.
 export function LiveBanner({ onJoin }: { onJoin: () => void }) {
   return (
-    <div style={{
+    <div className="nc-live-banner" style={{
       position: 'fixed', left: '50%', transform: 'translateX(-50%)', zIndex: 1000,
       bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
       display: 'flex', alignItems: 'center', gap: '12px', background: '#1B1F4B', color: '#fff',
       borderRadius: '999px', padding: '8px 8px 8px 16px', boxShadow: '0 8px 24px rgba(15,23,42,0.3)',
-      fontFamily: "Quicksand, 'Outfit', system-ui, sans-serif", fontWeight: 700, fontSize: '15px', maxWidth: 'calc(100vw - 24px)',
+      fontFamily: "Quicksand, 'Outfit', system-ui, sans-serif", fontWeight: 700, fontSize: '15px', width: 'max-content', maxWidth: 'calc(100vw - 24px)', whiteSpace: 'nowrap',
     }}>
       <style>{'@keyframes lvpulse{0%,100%{opacity:1}50%{opacity:.35}}'}</style>
       <span aria-hidden style={{ width: 10, height: 10, borderRadius: '50%', background: '#4EEAC1', animation: 'lvpulse 1.4s infinite' }} />
