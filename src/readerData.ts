@@ -33,6 +33,7 @@ export interface PageRow {
   audio: string
   image: string
   timing: string
+  sectionName: string // bolum_adi: bölümün yalnızca ilk sayfa satırına yazılır
 }
 
 export interface VocabEntry {
@@ -144,6 +145,7 @@ function build(t: { books: string; pages: string; vocab: string; questions: stri
       audio: r['ses'] || '',
       image: r['gorsel'] || '',
       timing: r['kelime_zamanlama'] || '',
+      sectionName: r['bolum_adi'] || '',
     }))
   const vocab: VocabEntry[] = toObjects(t.vocab)
     .filter(r => r['kitap_kodu'] && r['kelime'])
@@ -340,6 +342,59 @@ export function scalePlan(p: DemoPlan, duration: number): DemoPlan {
     timing: { exact: true, starts: p.timing.starts.map(x => x * k), words: p.timing.words.map(w => w.map(x => x * k)) },
     ends: p.ends.map(x => x * k),
     duration,
+  }
+}
+
+// ─── Gölgeleme: sesin cümle içinde gerçekten bittiği yer ────────────────────
+// Ses dosyası çözülür, her cümlenin başlangıcı ile sıradakinin başlangıcı
+// arasında sesin son duyulduğu an bulunur; üstüne küçük bir güvenlik payı
+// eklenir. Böylece gölgeleme cümle arasındaki boş beklemeyi atlar ama son
+// kelimenin ucunu kırpmaz. Bir şey ters giderse null döner ve eski davranış
+// (sıradaki cümlenin başında durmak) sürer.
+export async function measureSpeechEnds(url: string, starts: number[], words: number[][] | null): Promise<number[] | null> {
+  try {
+    if (!starts.length) return null
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const raw = await res.arrayBuffer()
+    const W = window as any
+    const Ctx = W.OfflineAudioContext || W.webkitOfflineAudioContext
+    if (!Ctx) return null
+    const ctx = new Ctx(1, 22050, 22050)
+    const audio: AudioBuffer = await new Promise((ok, bad) => {
+      const p = ctx.decodeAudioData(raw, ok, bad)
+      if (p && typeof p.then === 'function') p.then(ok, bad)
+    })
+    const data = audio.getChannelData(0)
+    const win = Math.max(1, Math.round(audio.sampleRate * 0.01))
+    const frame = win / audio.sampleRate
+    const n = Math.ceil(data.length / win)
+    const peaks = new Float32Array(n)
+    let max = 0
+    for (let i = 0; i < n; i++) {
+      let pk = 0
+      const e = Math.min(data.length, (i + 1) * win)
+      for (let k = i * win; k < e; k++) { const v = Math.abs(data[k]); if (v > pk) pk = v }
+      peaks[i] = pk
+      if (pk > max) max = pk
+    }
+    if (!(max > 0)) return null
+    const thr = Math.max(0.006, max * 0.02)
+    const dur = audio.duration
+    return starts.map((s, i) => {
+      const next = i + 1 < starts.length ? starts[i + 1] : dur
+      let last = -1
+      for (let f = Math.min(n, Math.floor(next / frame)) - 1; f >= Math.ceil(s / frame); f--) {
+        if (peaks[f] > thr) { last = f; break }
+      }
+      if (last < 0) return next
+      let end = (last + 1) * frame + 0.15
+      const w = words && words[i]
+      if (w && w.length) end = Math.max(end, w[w.length - 1] + 0.15)
+      return Math.min(end, i + 1 < starts.length ? next - 0.05 : dur)
+    })
+  } catch {
+    return null
   }
 }
 

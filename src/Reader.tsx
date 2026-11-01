@@ -9,7 +9,7 @@ import { READER_CSS } from './readerStyles'
 import {
   type Book, type Content, type PageRow, type VocabEntry, type PageTiming, type Issue, type DemoPlan,
   loadContent, fileUrl, fileUrlFallback, tokenize, buildFormIndex, findSpans, buildTiming, checkContent,
-  buildDemoPlan, scalePlan,
+  buildDemoPlan, scalePlan, measureSpeechEnds,
 } from './readerData'
 import {
   type StudentData, loadStudentData, saveBookState, addReading, saveWordMark, deleteWordMark,
@@ -19,10 +19,50 @@ type Mark = 'known' | 'learning'
 const EMPTY_DATA: StudentData = { states: [], readings: [], marks: [] }
 const LAYOUT_KEY = 'nc_reader_layout'
 
-const ICON_PLAY = <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-const ICON_PAUSE = <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4.5" height="14" rx="1.2" /><rect x="13.5" y="5" width="4.5" height="14" rx="1.2" /></svg>
-const ICON_HOME = <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11.5 12 4l9 7.5" /><path d="M5.5 10v9.5h13V10" /><path d="M10 19.5v-5h4v5" /></svg>
-const ICON_SPK = <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 9v6h4l5 4V5L8 9z" /><path d="M16.5 8.5a5 5 0 010 7" /></svg>
+const SWIPE_KEY = 'nc_reader_swipe_hint_v1'
+const LETTERS = 'ABCDEFGH'
+
+// İkonlar (onaylı taslaktaki çizgi ikonlar)
+const ICONS: Record<string, string[]> = {
+  home: ['M3 10.5 12 3l9 7.5', 'M5 9.5V20h14V9.5', 'M10 20v-6h4v6'],
+  books: ['M2 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H2z', 'M22 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8z'],
+  check: ['M20 6 9 17l-5-5'],
+  words: ['M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20'],
+  eye: ['M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z'],
+  eyeOff: ['M3 3l18 18', 'M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1', 'M6.6 6.6C3.7 8.4 2 12 2 12s3.5 7 10 7a9.6 9.6 0 0 0 5.4-1.6'],
+  pen: ['M4 20h16', 'M6 16 14.5 7.5l3 3L9 19H6z'],
+  lines: ['M4 7h16', 'M4 12h16', 'M4 17h10'],
+  chat: ['M21 11.5a8.4 8.4 0 0 1-12.6 7.3L3 20l1.3-4.6A8.5 8.5 0 1 1 21 11.5z'],
+  chatDots: ['M21 11.5a8.4 8.4 0 0 1-12.6 7.3L3 20l1.3-4.6A8.5 8.5 0 1 1 21 11.5z', 'M8.5 11.5h.01', 'M12 11.5h.01', 'M15.5 11.5h.01'],
+  tr: ['m5 8 6 6', 'm4 14 6-6 2-3', 'M2 5h12', 'M7 2h1', 'm22 22-5-10-5 10', 'M14 18h6'],
+  single: ['M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z'],
+  double: ['M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z', 'M12 4v16'],
+  tap: ['M22 14a8 8 0 0 1-8 8', 'M18 11v-1a2 2 0 0 0-4 0', 'M14 10V9a2 2 0 0 0-4 0v1', 'M10 9.5V4a2 2 0 0 0-4 0v10', 'M18 11a2 2 0 1 1 4 0v3a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-6-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15'],
+  spk: ['M11 5 6 9H2v6h4l5 4z', 'M15.5 8.5a5 5 0 0 1 0 7'],
+  spk2: ['M11 5 6 9H2v6h4l5 4z', 'M15.5 8.5a5 5 0 0 1 0 7', 'M19 5a10 10 0 0 1 0 14'],
+  back5: ['M3 12a9 9 0 1 0 3-6.7L3 8', 'M3 3v5h5'],
+  fwd5: ['M21 12a9 9 0 1 1-3-6.7L21 8', 'M21 3v5h-5'],
+  arrowR: ['M5 12h14', 'm12 5 7 7-7 7'],
+  x: ['M18 6 6 18', 'm6 6 12 12'],
+  star: ['m12 2.5 2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5-4.8-4.6 6.6-.9z'],
+  prevS: ['M19 20 9 12l10-8z', 'M5 19V5'],
+  nextS: ['m5 4 10 8-10 8z', 'M19 5v14'],
+  chevL: ['m15 18-6-6 6-6'],
+  chevR: ['m9 18 6-6-6-6'],
+  swipe: ['M19 12H5', 'm9 8-4 4 4 4'],
+  lock: ['M7 11V7a5 5 0 0 1 10 0v4', 'M5 11h14v10H5z'],
+  upload: ['M12 15V3', 'm7 8 5-5 5 5', 'M5 21h14'],
+  wave: ['M3 10v4', 'M7 7v10', 'M11 4v16', 'M15 8v8', 'M19 10v4'],
+  image: ['M4 4h16v16H4z', 'm4 16 5-5 4 4 3-3 4 4', 'M15.5 8.5h.01'],
+  pin: ['M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z', 'M14.5 10a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z'],
+  q: ['M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3', 'M12 17h.01', 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z'],
+}
+function Ic({ n }: { n: string }) {
+  return <svg className="rd-i" viewBox="0 0 24 24" aria-hidden="true">{(ICONS[n] ?? []).map((d, i) => <path key={i} d={d} />)}</svg>
+}
+const ICON_PLAY = <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4.8v14.4L19.5 12z" fill="currentColor" /></svg>
+const ICON_PAUSE = <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4.5" width="4" height="15" rx="1.2" fill="currentColor" /><rect x="14" y="4.5" width="4" height="15" rx="1.2" fill="currentColor" /></svg>
+const STAR_FULL = <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2.5 2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5-4.8-4.6 6.6-.9z" fill="#FFD54A" stroke="#E3B11E" strokeWidth="1.2" /></svg>
 
 // Tarayıcının kendi sesi (ücretsiz, hesap gerektirmez). Yalnızca kelime kartında.
 function speakWord(text: string) {
@@ -57,6 +97,23 @@ function SmartImg({ name, className, alt }: { name: string; className?: string; 
   if (stage >= 2) return null
   return <img className={className} alt={alt ?? ''} src={stage === 0 ? fileUrl(name) : (fb as string)}
     onError={() => setStage(s => (s === 0 && fb ? 1 : 2))} />
+}
+
+// Sahne resmi: resim kırpılmadan tam görünür, kenarlardaki boşluğu aynı
+// resmin bulanık bir kopyası doldurur. Dosya bulma sırası SmartImg ile aynı.
+function SceneImg({ name }: { name: string }) {
+  const [stage, setStage] = useState(0)
+  useEffect(() => { setStage(0) }, [name])
+  const fb = fileUrlFallback(name)
+  if (stage >= 2) return <div className="rd-ph"><Ic n="image" />Resim açılamadı</div>
+  const src = stage === 0 ? fileUrl(name) : (fb as string)
+  const onError = () => setStage(s => (s === 0 && fb ? 1 : 2))
+  return (
+    <>
+      <img className="bg" src={src} alt="" aria-hidden="true" />
+      <img className="fg" src={src} alt="Sayfa resmi" onError={onError} />
+    </>
+  )
 }
 
 function fmt(x: number) {
@@ -163,7 +220,7 @@ export default function ChildReaderApp({ account, childName, group, onExit }: {
     body = (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'flex-start' }}>
         <div className="rd-warn">{error}</div>
-        <button className="rd-btn primary" onClick={load}>Tekrar dene</button>
+        <button className="rd-btn pri" onClick={load}>Tekrar dene</button>
       </div>
     )
   } else if (content && screen.kind === 'book' && content.books.some(b => b.code === screen.code)) {
@@ -193,9 +250,9 @@ export default function ChildReaderApp({ account, childName, group, onExit }: {
         {content.stale && <div className="rd-warn">İnternet yok gibi görünüyor. En son kaydedilen kitap listesi gösteriliyor.</div>}
         {preview && <div className="rd-note">Öğretmen önizlemesi: bütün kitaplar açık görünür, çeviriler serbesttir, hiçbir şey kaydedilmez.</div>}
         {books.length === 0 ? (
-          <div className="rd-note" style={{ marginTop: 12 }}>Şimdilik burada kitap yok.</div>
+          <div className="rd-note">Şimdilik burada kitap yok.</div>
         ) : (
-          <div className="rd-list" style={{ marginTop: 12 }}>
+          <div className="rd-shelf">
             {books.map((b, i) => {
               const pages = content.pages.filter(p => p.book === b.code)
               const secCount = new Set(pages.map(p => p.section)).size
@@ -203,24 +260,33 @@ export default function ChildReaderApp({ account, childName, group, onExit }: {
               const reads = sd.readings.filter(r => r.book_code === b.code).length
               const open = preview || i === 0 || !!st?.unlocked
               const canOpen = open && pages.length > 0
+              const started = !!st && (st.current_page > 1 || st.current_section > 1 || st.visited_pages.length > 0)
               return (
-                <button key={b.code} className={'rd-card' + (open ? '' : ' locked')} disabled={!canOpen}
+                <button key={b.code} className={'rd-bk' + (open ? '' : ' locked')} disabled={!canOpen}
                   onClick={() => openScreen({ kind: 'book', code: b.code })}
-                  aria-label={b.title + (open ? '' : ' (kilitli)')}>
-                  <div className="rd-cover" style={{ background: coverColor(b.code) }}>
-                    {b.cover ? <SmartImg name={b.cover} /> : null}
-                    {!b.cover && (open ? b.title[0] : '🔒')}
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <h2>{b.title}</h2>
-                    <p>
-                      {!open ? 'Kilitli' : pages.length === 0 ? 'Henüz sayfa yok'
-                        : st && (st.current_page > 1 || st.current_section > 1 || st.visited_pages.length > 0)
-                          ? `Kaldığın yer: bölüm ${st.current_section}, sayfa ${st.current_page}`
-                          : 'Başlamak için dokun'}
-                    </p>
-                    <p className="rd-sec">{secCount} bölüm{reads > 0 ? ` · ${reads} okuma tamamlandı` : ''}</p>
-                  </div>
+                  aria-label={b.title + (open ? (started ? ', kaldığın yerden devam et' : '') : ' (kilitli)')}>
+                  <span className="rd-bkw">
+                    <span className="rd-cover" style={{ background: coverColor(b.code) }}>
+                      {b.cover ? <SmartImg name={b.cover} /> : b.title[0]}
+                    </span>
+                    {!open && <span className="rd-lock"><Ic n="lock" /></span>}
+                  </span>
+                  <span className="bd">
+                    <span className="h">{b.title}</span>
+                    <span className="meta">{secCount} bölüm{reads > 0 ? ` · ${reads} okuma tamamlandı` : ''}</span>
+                    {!open ? (
+                      <span className="rd-cta off"><Ic n="lock" />Kilitli</span>
+                    ) : pages.length === 0 ? (
+                      <span className="rd-cta off">Henüz sayfa yok</span>
+                    ) : started ? (
+                      <>
+                        <span className="rd-cta">Kaldığın yerden devam et<Ic n="arrowR" /></span>
+                        <span className="rd-where"><Ic n="pin" />Bölüm {st!.current_section}, Sayfa {st!.current_page}</span>
+                      </>
+                    ) : (
+                      <span className="rd-cta">Okumaya başla<Ic n="arrowR" /></span>
+                    )}
+                  </span>
                 </button>
               )
             })}
@@ -235,20 +301,17 @@ export default function ChildReaderApp({ account, childName, group, onExit }: {
     <div className="rd">
       <style>{READER_CSS}</style>
       <div className="rd-app">
-        <header className="rd-top">
-          <div className="rd-brand">
-            <button className="rd-home" onClick={goHome} aria-label="Ana sayfaya dön">{ICON_HOME}<span>Ana sayfa</span></button>
-            {!onList && <button className="rd-btn" onClick={backToList}>‹ Kitaplar</button>}
-            <div style={{ minWidth: 0 }}>
-              <h1>{onList ? `Merhaba ${childName}` : 'İçerik kontrolü'}</h1>
-              {onList && <p>Bir kitap seç, okumaya başla</p>}
-            </div>
+        <header className="rd-lhd">
+          <button className="rd-btn pri" onClick={goHome} aria-label="Ana sayfaya dön"><Ic n="home" />Ana sayfa</button>
+          {!onList && <button className="rd-btn" onClick={backToList}><Ic n="books" />Kitaplar</button>}
+          <div className="hi">
+            <b>{onList ? `Merhaba ${childName}` : 'İçerik kontrolü'}</b>
+            {onList && <span>Bir kitap seç, okumaya başla</span>}
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {onList && preview && content && <button className="rd-btn" onClick={() => openScreen({ kind: 'check' })}>İçerik kontrolü</button>}
-          </div>
+          <div className="rd-grow" />
+          {onList && preview && content && <button className="rd-btn" onClick={() => openScreen({ kind: 'check' })}>İçerik kontrolü</button>}
         </header>
-        <main className="rd-stage">{body}</main>
+        <main style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>{body}</main>
       </div>
     </div>
   )
@@ -270,7 +333,7 @@ function ContentCheck({ content, onBack }: { content: Content; onBack: () => voi
   return (
     <div className="rd-issues" style={{ marginTop: 12 }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button className="rd-btn" onClick={onBack}>‹ Geri</button>
+        <button className="rd-btn" onClick={onBack}><Ic n="chevL" />Geri</button>
         <button className="rd-btn" onClick={refresh} disabled={busy}>{busy ? 'Okunuyor…' : 'Tabloyu yeniden oku'}</button>
       </div>
       {issues.length === 0
@@ -357,8 +420,14 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   const double = wide && (layout ? layout === 'double' : vw >= 860)
 
   const [sel, setSel] = useState<VocabEntry | null>(null)
-  const [drawer, setDrawer] = useState(false)
-  const [filter, setFilter] = useState<'all' | 'page' | 'learning' | 'known'>('all')
+  // Kelime paneli varsayılan kapalı; geniş ekranda kitabın yanında, dar ekranda sağdan kayarak açılır.
+  const [panel, setPanel] = useState(false)
+  const [filter, setFilter] = useState<'page' | 'all' | 'learning'>('page')
+  // Telefonda bir kerelik "Kaydırarak sayfa çevir" ipucu
+  const [swipeHint, setSwipeHint] = useState(() => { try { return localStorage.getItem(SWIPE_KEY) !== '1' } catch { return true } })
+  const hideSwipeHint = () => { setSwipeHint(false); try { localStorage.setItem(SWIPE_KEY, '1') } catch {} }
+  // "Kaydedildi" rozeti: her başarılı kayıtta yeniden belirir
+  const [savedN, setSaved] = useState(0)
   const [toast, setToast] = useState('')
   const toastTimer = useRef<number | undefined>(undefined)
   const notify = useCallback((m: string) => {
@@ -368,7 +437,9 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   }, [])
   const [notice, setNotice] = useState('')
   // Bölüm sonu soruları: bölümü bitirince tek tek gösterilir, hiçbir yere kaydedilmez.
-  const [quiz, setQuiz] = useState<{ qi: number; picked: string | null; correct: number; done: boolean } | null>(null)
+  const [quiz, setQuiz] = useState<{ qi: number; picked: string | null; res: boolean[]; done: boolean } | null>(null)
+  // Soruyu dinle: -1 soru okunuyor, 0.. o seçenek okunuyor, null sessiz
+  const [qSpeak, setQSpeak] = useState<number | null>(null)
 
   const secPages = useMemo(() => pagesOf(pos.section), [pagesOf, pos.section])
   const page: PageRow | undefined = pos.bitti ? undefined : secPages[pos.idx]
@@ -378,7 +449,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
       q.book === book.code && q.section === pos.section && q.question.trim() &&
       q.options.length >= 2 && q.options.some(o => o.trim() === q.answer.trim())),
     [content.questions, book.code, pos.section])
-  const startQuiz = () => setQuiz(sectionQs.length ? { qi: 0, picked: null, correct: 0, done: false } : null)
+  const startQuiz = () => setQuiz(sectionQs.length ? { qi: 0, picked: null, res: [], done: false } : null)
 
   // ── Kayıt ───────────────────────────────────────────────────────────────
   const persistState = useCallback((section: number, pageNo: number, vis: number[]) => {
@@ -388,7 +459,9 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
       return { ...prev, states: [...others, { book_code: book.code, unlocked: old?.unlocked ?? false, current_section: section, current_page: pageNo, visited_pages: vis }] }
     })
     if (preview) return
-    saveBookState(studentId, book.code, section, pageNo, vis).catch(() => notify('Kaldığın yer kaydedilemedi. İnternetini kontrol et.'))
+    saveBookState(studentId, book.code, section, pageNo, vis)
+      .then(() => setSaved(n => n + 1))
+      .catch(() => { setSaved(0); notify('Kaldığın yer kaydedilemedi. İnternetini kontrol et.') })
   }, [book.code, notify, preview, setSd, studentId])
 
   const commit = useCallback((section: number, idx: number, vis: number[]) => {
@@ -450,6 +523,13 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   const [time, setTime] = useState(0)
   const [active, setActive] = useState({ si: -1, wi: -1 })
   const [waiting, setWaiting] = useState(-1)
+  // Tek cümle dinleme ("Dinle" düğmesi): o cümle bitince ses durur
+  const [once, setOnce] = useState(-1)
+  const onceRef = useRef(-1)
+  const setOnceBoth = (v: number) => { onceRef.current = v; setOnce(v) }
+  // Ses dosyasında her cümlenin gerçekten bittiği an (gölgeleme kısa beklesin diye)
+  const [speechEnds, setSpeechEnds] = useState<{ key: string; ends: number[] } | null>(null)
+  const [audioReady, setAudioReady] = useState('')
   const [voiceOn, setVoiceOn] = useState(true)
   const [override, setOverride] = useState<{ key: string; url: string } | null>(null)
   const ovRef = useRef(override)
@@ -469,14 +549,20 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   const timing: PageTiming = useMemo(
     () => (plan ? plan.timing : page ? buildTiming(page, duration) : { exact: false, starts: [], words: [] }),
     [plan, page, duration])
+  const measuredEnds = !plan && speechEnds && speechEnds.key === pageKey + '|' + realSrc ? speechEnds.ends : undefined
+  const ends: number[] | undefined = plan ? plan.ends : measuredEnds
   const live = useRef({ shadow, timing, duration, rate, nSent: 0, ends: undefined as number[] | undefined, demo: false, voice: true, sentences: [] as string[] })
-  live.current = { shadow, timing, duration, rate, nSent: page ? page.sentences.length : 0, ends: plan?.ends, demo: !hasReal, voice: voiceOn, sentences: page ? page.sentences : [] }
+  live.current = { shadow, timing, duration, rate, nSent: page ? page.sentences.length : 0, ends, demo: !hasReal, voice: voiceOn, sentences: page ? page.sentences : [] }
+  // Bir cümlenin bittiği an: ölçülmüşse gerçek bitiş, yoksa sıradaki cümlenin başı
+  const endOf = (L: typeof live.current, si: number, dur: number) =>
+    L.ends && L.ends[si] != null ? L.ends[si] : si + 1 < L.timing.starts.length ? L.timing.starts[si + 1] : dur
 
   useEffect(() => {
     stopSpeech()
     demo.current = { t: 0, last: 0, spoken: -1 }
     setPlaying(false); setTime(0); setDuration(0); setAudioError(false)
     setActive({ si: -1, wi: -1 }); setWaiting(-1); setSel(null); setTrPage(false); prevSi.current = -1
+    setOnceBoth(-1); setAudioReady('')
     if (!page) return
     if (!realSrc) { setDuration(buildDemoPlan(page).duration); return }
     // Düz dosya adı Supabase'te bulunamazsa sitenin kitaplar klasörüne bakılır
@@ -486,7 +572,10 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
     a.preload = 'auto'
     a.src = realSrc
     a.playbackRate = live.current.rate
-    a.onloadedmetadata = () => setDuration(isFinite(a.duration) ? a.duration : 0)
+    a.onloadedmetadata = () => {
+      setDuration(isFinite(a.duration) ? a.duration : 0)
+      setAudioReady(a.currentSrc || a.src)
+    }
     a.onerror = () => {
       if (!usedFb && fb) { usedFb = true; a.src = fb; a.load(); return }
       setAudioError(true)
@@ -494,7 +583,9 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
     a.onended = () => {
       setPlaying(false)
       setActive({ si: -1, wi: -1 })
-      if (live.current.shadow && live.current.nSent > 0) setWaiting(live.current.nSent - 1)
+      const o = onceRef.current
+      setOnceBoth(-1)
+      if (live.current.shadow && live.current.nSent > 0) setWaiting(o >= 0 ? o : live.current.nSent - 1)
     }
     audioRef.current = a
     return () => {
@@ -504,6 +595,20 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   }, [pageKey, realSrc])  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { if (audioRef.current) audioRef.current.playbackRate = rate }, [rate])
+
+  // Ses dosyası açılınca cümle bitişlerini ölç (yalnızca gerçek ses dosyasında)
+  useEffect(() => {
+    if (!audioReady || !hasReal || overrideActive || !page) return
+    const starts = timing.starts
+    if (!starts.length || !(duration > 0)) return
+    const key = pageKey + '|' + realSrc
+    if (speechEnds && speechEnds.key === key) return
+    let alive = true
+    measureSpeechEnds(audioReady, starts, timing.exact ? timing.words : null).then(e => {
+      if (alive && e) setSpeechEnds({ key, ends: e })
+    })
+    return () => { alive = false }
+  }, [audioReady, timing, duration])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Oynarken: konumu izle, kelime/cümle vurgusu, gölgeleme duraklaması, demo sesi
   useEffect(() => {
@@ -528,11 +633,25 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
       const dur = L.duration || (a ? a.duration : 0) || 0
       if (L.demo && dur > 0 && t >= dur) {
         d.t = dur
-        setTime(dur); setPlaying(false); setActive({ si: -1, wi: -1 })
-        if (L.shadow && L.nSent > 0) setWaiting(L.nSent - 1)
+        const o = onceRef.current
+        setTime(dur); setPlaying(false); setActive({ si: -1, wi: -1 }); setOnceBoth(-1)
+        if (L.shadow && L.nSent > 0) setWaiting(o >= 0 ? o : L.nSent - 1)
         return
       }
       const { si, wi } = locate(L.timing, t, dur)
+      // Tek cümle dinleme: o cümlenin sonunda dur (gölgeleme açıksa sıra çocuğa gelir)
+      const o = onceRef.current
+      if (o >= 0) {
+        const end = endOf(L, o, dur)
+        if ((end > 0 && t >= end - (L.demo ? 0.05 : 0)) || (si > o)) {
+          if (a) a.pause()
+          setPlaying(false); setTime(t); setOnceBoth(-1)
+          setActive({ si: -1, wi: -1 })
+          if (L.shadow) setWaiting(o)
+          prevSi.current = -1
+          return
+        }
+      }
       setActive(prev => (prev.si === si && prev.wi === wi ? prev : { si, wi }))
       if (Math.abs(t - lastShown) > 0.2) { lastShown = t; setTime(t) }
       // Gölgeleme: bazı tarayıcılar sesin konumunu seyrek günceller; cümle sınırı
@@ -546,8 +665,8 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
         return
       }
       if (L.shadow && si >= 0) {
-        const end = L.ends ? L.ends[si] : si + 1 < L.timing.starts.length ? L.timing.starts[si + 1] : dur
-        if (end > 0 && t >= end - 0.05) {
+        const end = endOf(L, si, dur)
+        if (end > 0 && t >= end - (L.demo ? 0.05 : 0)) {
           if (a) a.pause()
           setPlaying(false); setTime(t); setWaiting(si)
           return
@@ -570,7 +689,8 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
     if (a) a.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
   }, [])
 
-  const seekTo = useCallback((t: number, play: boolean) => {
+  const seekTo = useCallback((t: number, play: boolean, keepOnce = false) => {
+    if (!keepOnce) setOnceBoth(-1)
     const L = live.current
     const a = audioRef.current
     const dur = L.duration || (a ? a.duration : 0) || 0
@@ -595,8 +715,10 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
       setPlaying(false)
       return
     }
+    // "Şimdi sen söyle" açıkken oynat düğmesi "Devam et" ile aynı işi yapar.
+    if (waiting >= 0) { continueShadow(); return }
     const dur = L.duration || (a ? a.duration : 0) || 0
-    setWaiting(-1)
+    setOnceBoth(-1)
     // Gölgeleme: bir cümlenin sonunda durmuşken oynata basılırsa sıradaki
     // cümleden devam et (yoksa aynı yerde hemen yeniden durur).
     if (L.shadow) {
@@ -604,7 +726,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
       const cur = locate(L.timing, now, dur).si
       const n = L.timing.starts.length
       if (cur >= 0 && cur + 1 < n) {
-        const end = L.ends ? L.ends[cur] : L.timing.starts[cur + 1]
+        const end = endOf(L, cur, dur)
         if (end > 0 && now >= end - 0.05) { seekTo(L.timing.starts[cur + 1] + 0.01, true); return }
       }
     }
@@ -640,6 +762,18 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   }
 
   const sentStart = (i: number) => timing.starts[i] ?? 0
+  const listenOne = (i: number) => {
+    if (!canPlayNow()) return
+    seekTo(sentStart(i) + 0.01, true)
+    setOnceBoth(i)
+  }
+  const continueShadow = () => {
+    if (!page) return
+    const w = waiting
+    setWaiting(-1)
+    if (w >= page.sentences.length - 1) goNext()
+    else seekTo(sentStart(w + 1) + 0.01, true)
+  }
   const currentSent = () => Math.max(0, locate(timing, time, duration).si)
   const prevSentence = () => {
     const cs = currentSent()
@@ -759,25 +893,55 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
     setPos(p => ({ ...p, bitti: true }))
   }
 
+  const stopQSpeak = () => { stopSpeech(); setQSpeak(null) }
   const pickAnswer = (o: string) => {
-    setQuiz(p => (p && p.picked === null ? { ...p, picked: o, correct: p.correct + (o.trim() === sectionQs[p.qi]?.answer.trim() ? 1 : 0) } : p))
+    stopQSpeak()
+    setQuiz(p => {
+      if (!p || p.picked !== null) return p
+      const res = p.res.slice()
+      res[p.qi] = o.trim() === (sectionQs[p.qi]?.answer.trim() ?? '')
+      return { ...p, picked: o, res }
+    })
   }
   const nextQuestion = () => {
+    stopQSpeak()
     setQuiz(p => {
       if (!p) return p
-      return p.qi + 1 < sectionQs.length ? { qi: p.qi + 1, picked: null, correct: p.correct, done: false } : { ...p, done: true }
+      return p.qi + 1 < sectionQs.length ? { ...p, qi: p.qi + 1, picked: null, done: false } : { ...p, done: true }
     })
     window.scrollTo({ top: 0 })
   }
+  const restartQuiz = () => { stopQSpeak(); startQuiz() }
+  // Soruyu dinle: önce soru, sonra seçenekler sırayla (tarayıcının ücretsiz sesi)
+  const readQuestion = () => {
+    if (!quiz || quiz.done) return
+    const q = sectionQs[quiz.qi]
+    if (!q || !('speechSynthesis' in window)) return
+    const syn = window.speechSynthesis
+    syn.cancel()
+    const parts: { text: string; idx: number }[] = [{ text: q.question, idx: -1 }]
+    q.options.forEach((o, k) => parts.push({ text: `${LETTERS[k] ?? ''}. ${o}`, idx: k }))
+    parts.forEach((p, n) => {
+      const u = new SpeechSynthesisUtterance(p.text.replace(/[“”]/g, ''))
+      u.lang = 'en-US'; u.rate = 0.85
+      u.onstart = () => setQSpeak(p.idx)
+      if (n === parts.length - 1) { u.onend = () => setQSpeak(null); u.onerror = () => setQSpeak(null) }
+      syn.speak(u)
+    })
+    setQSpeak(-1)
+  }
+  useEffect(() => () => { stopSpeech() }, [])
 
   const goNext = () => {
     setNotice('')
+    stopQSpeak()
     if (pos.idx < secPages.length - 1) { startFlip(1); commit(pos.section, pos.idx + 1, visited) }
     else enterBitti()
     window.scrollTo({ top: 0 })
   }
   const goPrev = () => {
     setNotice('')
+    stopQSpeak()
     if (pos.bitti) { startFlip(-1); commit(pos.section, secPages.length - 1, visited); return }
     if (pos.idx > 0) { startFlip(-1); commit(pos.section, pos.idx - 1, visited) }
     window.scrollTo({ top: 0 })
@@ -806,6 +970,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
     const t = e.changedTouches[0]
     const dx = t.clientX - s0.x, dy = t.clientY - s0.y
     if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return
+    if (swipeHint) hideSwipeHint()
     if (dx < 0) goNext(); else if (pos.idx > 0) goPrev()
   }
   const keyNav = useRef({ next: () => {}, prev: () => {} })
@@ -814,6 +979,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
     const k = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null
       if (el && el.closest && el.closest('input,textarea')) return
+      if (e.key === 'Escape') { setSel(null); setPanel(false); return }
       if (e.key === 'ArrowRight') keyNav.current.next()
       else if (e.key === 'ArrowLeft') keyNav.current.prev()
     }
@@ -822,6 +988,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   }, [])
 
   const canPlay = !!page
+  function canPlayNow() { return !!page && !audioError }
   const effHl = timing.exact && hl === 'word' ? 'word' : 'sent'
 
   // ── Kelime sayıları ve çekmece ─────────────────────────────────────────
@@ -835,25 +1002,63 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
     sentSpans.forEach(sp => sp.forEach(x => s.add(x.entry.key)))
     return s
   }, [sentSpans])
+  // Kelimenin bu sayfada ilk geçtiği cümle ("Cümle 2" etiketi)
+  const firstSent = useMemo(() => {
+    const m = new Map<string, number>()
+    sentSpans.forEach((sp, i) => sp.forEach(x => { if (!m.has(x.entry.key)) m.set(x.entry.key, i) }))
+    return m
+  }, [sentSpans])
   const drawerItems = vocab.filter(v => {
     const m = marks.get(v.key)
     if (filter === 'page') return pageVocabKeys.has(v.key)
     if (filter === 'learning') return m === 'learning'
-    if (filter === 'known') return m === 'known'
     return true
   })
 
   const setLayoutPref = (v: 'single' | 'double') => setLayout(v)
+
+  // ── Ekran yardımcıları ────────────────────────────────────────────────
+  const appRef = useRef<HTMLDivElement | null>(null)
+  const barRef = useRef<HTMLElement | null>(null)
+  // Telefonda soru ve bölüm sonu ekranı kitapla aynı boyda kalsın: alttaki çubuk okuma çubuğu kadar yer tutar
+  const readBarH = useRef(0)
+  // Telefonda "Şimdi sen söyle" ve kelime kartı ses çubuğunun hemen üstünde dursun
+  useLayoutEffect(() => {
+    const app = appRef.current, bar = barRef.current
+    if (!app) return
+    if (!bar) { app.style.removeProperty('--rd-barh'); return }
+    const set = () => {
+      const h = bar.getBoundingClientRect().height
+      app.style.setProperty('--rd-barh', h + 'px')
+      if (!pos.bitti) readBarH.current = h
+    }
+    set()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(set)
+    ro.observe(bar)
+    return () => ro.disconnect()
+  }, [pos.bitti, wide, audioError, canPlay, quiz ? 1 : 0])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const stopAll = () => { stopAudio(); stopQSpeak() }
+  const hasTTS = typeof window !== 'undefined' && 'speechSynthesis' in window
+  const sideBySide = vw >= 1050
+  const nSent = page ? page.sentences.length : 0
+  const actIdx = waiting >= 0 ? waiting : active.si
+  const sectionName = secPages.find(p => p.sectionName)?.sectionName ?? ''
+  const chapLabel = 'BÖLÜM ' + pos.section + (sectionName ? ' · ' + sectionName.toLocaleUpperCase('en') : '') + (wide ? ' · SAYFA ' + (pos.idx + 1) : '')
+  const inQuiz = pos.bitti && !!quiz && !quiz.done && !!sectionQs[quiz.qi]
+  const lastPage = pos.idx === secPages.length - 1
 
   // ── Cümleleri çiz ──────────────────────────────────────────────────────
   const renderSentence = (i: number) => {
     if (!page) return null
     const toks = sentTokens[i]
     const spans = sentSpans[i]
-    const isActive = active.si === i
+    const isAct = actIdx === i
     const els: React.ReactNode[] = []
     const wordCls = (from: number, to: number) => {
-      if (!(effHl === 'word' && isActive && timing.exact)) return ''
+      if (waiting === i) return ' done'
+      if (!(effHl === 'word' && active.si === i && timing.exact)) return ''
       if (active.wi >= from && active.wi <= to) return ' on'
       if (active.wi > to) return ' done'
       return ''
@@ -864,13 +1069,10 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
       if (sp) {
         const st = marks.get(sp.entry.key)
         els.push(
-          <span key={k} className={'rd-w v' + (st ? ' ' + st : '') + wordCls(sp.from, sp.to)}
+          <span key={k} className={'rd-w v' + (st ? ' ' + (st === 'learning' ? 'learn' : 'known') : '') + wordCls(sp.from, sp.to)}
             role="button" tabIndex={0}
-            onClick={e => {
-              e.stopPropagation()
-              stopAudio(); setSel(sp.entry)
-            }}
-            onKeyDown={e => { if (e.key === 'Enter') { stopAudio(); setSel(sp.entry) } }}>
+            onClick={e => { e.stopPropagation(); stopAudio(); setSel(sp.entry) }}
+            onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); stopAudio(); setSel(sp.entry) } }}>
             {toks.slice(sp.from, sp.to + 1).join(' ')}
           </span>,
         )
@@ -884,245 +1086,411 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
     const showTrLine = !book.noTranslation && textMode === 'show' && page.translations[i] &&
       ((trState === 'free' && showTr) || (trState === 'hint' && trPage))
     return (
-      <div key={i} className={'rd-sent' + (isActive ? ' act' : '')}
-        onClick={() => {
-          if (canPlay && !audioError) seekTo(sentStart(i) + 0.01, true)
-        }}>
-        <div className="rd-line">{els}</div>
-        {showTrLine ? <div className="rd-tr">{page.translations[i]}</div> : null}
+      <div key={i} className={'rd-sc' + (isAct ? ' act' : '')}>
+        <div className="rd-sb" onClick={() => { if (canPlayNow()) seekTo(sentStart(i) + 0.01, true) }}>
+          <span className="rd-num">{i + 1}</span>
+          <span>
+            <span className="rd-line">{els}</span>
+            {showTrLine ? <span className="rd-tr">{page.translations[i]}</span> : null}
+          </span>
+        </div>
+        {canPlay && !audioError && (
+          <button className={'rd-lis' + (once === i ? ' on' : '')} onClick={() => listenOne(i)} aria-label="Bu cümleyi dinle">
+            <Ic n="spk" /><span>Dinle</span>
+          </button>
+        )}
       </div>
     )
   }
 
   const selMark = sel ? marks.get(sel.key) : undefined
 
+  // ── Ses çubuğu parçaları ───────────────────────────────────────────────
+  const segs = page ? page.sentences.map((_, i) => {
+    const st = sentStart(i)
+    const en = ends && ends[i] != null ? ends[i] : i + 1 < timing.starts.length ? timing.starts[i + 1] : duration
+    let f = 0
+    if (waiting >= 0 && i <= waiting) f = 100
+    else if (time >= en && en > 0) f = 100
+    else if (time > st && en > st) f = Math.min(100, ((time - st) / (en - st)) * 100)
+    return { flex: Math.max(1, sentTokens[i]?.length ?? 1), fill: f, act: actIdx === i }
+  }) : []
+  const restIdx = actIdx >= 0 ? actIdx : locate(timing, time, duration).si
+  const curLabel = duration > 0 && time >= duration - 0.3 && actIdx < 0 ? 'Sayfa sonu'
+    : `Cümle ${Math.max(0, restIdx) + 1} / ${nSent}`
+  const segsEl = (
+    <div className="rd-segs">
+      {segs.map((g, i) => (
+        <button key={i} className={'rd-sg' + (g.act ? ' act' : '')} style={{ flex: g.flex }}
+          onClick={() => { if (canPlayNow()) seekTo(sentStart(i) + 0.01, true) }} aria-label={`Cümle ${i + 1}`}>
+          <i style={{ width: g.fill + '%' }} />
+        </button>
+      ))}
+    </div>
+  )
+  const tmrEl = (
+    <div className="rd-tmr">
+      <span>{wide && <span className={'rd-eq' + (playing ? ' on' : '')} aria-hidden="true"><span /><span /><span /><span /></span>}{fmt(time)}</span>
+      <span>{curLabel}</span>
+      <span>{fmt(duration)}</span>
+    </div>
+  )
+  const playBtn = (
+    <button className={'rd-play' + (playing ? ' on' : '')} onClick={togglePlay} aria-label={playing ? 'Duraklat' : 'Oynat'}>
+      {playing ? ICON_PAUSE : ICON_PLAY}
+    </button>
+  )
+
+  // ── Kelime paneli ──────────────────────────────────────────────────────
+  const emptyMsg = filter === 'page' ? 'Bu sayfada işaretlenecek kelime yok.'
+    : filter === 'learning' ? 'Henüz "Öğreneceğim" dediğin kelime yok.' : 'Bu kitabın kelime listesi henüz boş.'
+  const panelEl = (
+    <aside className={'rd-pan' + (sideBySide ? '' : ' drawer')} aria-label="Kelimeler">
+      <h3><Ic n="words" />Kelimelerim
+        <button className="rd-x" onClick={() => setPanel(false)} aria-label="Kelime panelini kapat"><Ic n="x" /></button>
+      </h3>
+      <div className="rd-seg">
+        {([['page', 'Bu sayfa'], ['all', 'Tümü'], ['learning', 'Öğreneceğim']] as const).map(([v, l]) =>
+          <button key={v} className={filter === v ? 'on' : ''} aria-pressed={filter === v} onClick={() => setFilter(v)}>{l}</button>)}
+      </div>
+      <div className="rd-vlist">
+        {drawerItems.length === 0 ? <div className="rd-empty">{emptyMsg}</div> : drawerItems.map(v => {
+          const m = marks.get(v.key)
+          const here = !pos.bitti && pageVocabKeys.has(v.key)
+          const ref = firstSent.get(v.key)
+          return (
+            <div key={v.key} className={'rd-vw' + (here ? ' here' : '')}>
+              <div className="rd-vt1">
+                <button className="rd-spk" onClick={() => speakWord(v.word)} aria-label="Telaffuzu dinle"><Ic n="spk2" /></button>
+                <div className="t"><b>{v.word}</b>{v.phonetic && <span>{v.phonetic}</span>}</div>
+                {here && ref != null && <span className="rd-ref">Cümle {ref + 1}</span>}
+              </div>
+              {v.meaning && <div className="rd-mean">{v.meaning}</div>}
+              <div className="rd-vb">
+                <button className={'rd-mk k' + (m === 'known' ? ' on' : '')} aria-pressed={m === 'known'}
+                  onClick={() => markWord(v, m === 'known' ? null : 'known')}><Ic n="check" />Biliyorum</button>
+                <button className={'rd-mk l' + (m === 'learning' ? ' on' : '')} aria-pressed={m === 'learning'}
+                  onClick={() => markWord(v, m === 'learning' ? null : 'learning')}><Ic n="star" />Öğreneceğim</button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <div className="rd-legend"><span><i className="k" />Biliyorum</span><span><i className="l" />Öğreneceğim</span></div>
+    </aside>
+  )
+
+  // ── Bölüm sonu ve sorular ──────────────────────────────────────────────
+  // Soru ve bölüm sonu ekranı, kitabın son görünen boyutunda açılır (kutu zıplamasın)
+  const soloStyle = wide && spreadH.current ? { height: spreadH.current, overflowY: 'auto' as const } : undefined
+  const trUnlocked = !preview && readCount(pos.section) === 1 && !book.noTranslation
+  const moreLinks = (
+    <div className="more">
+      <button className="rd-link" onClick={() => { stopQSpeak(); rereadSection() }}>Bu bölümü tekrar oku</button>
+      <button className="rd-link" onClick={goPrev}>Son sayfaya dön</button>
+      {nextSection != null && <button className="rd-link" onClick={() => { stopAll(); onClose() }}>Kitaplara dön</button>}
+    </div>
+  )
+  const mainAction = nextSection != null
+    ? <button className="rd-btn pri lg" onClick={() => { stopQSpeak(); goNextSection() }}>Sonraki bölüm<Ic n="arrowR" /></button>
+    : <button className="rd-btn pri lg" onClick={() => { stopAll(); onClose() }}><Ic n="books" />Kitaplara dön</button>
+
+  let stage: React.ReactNode
+  if (inQuiz && quiz) {
+    const q = sectionQs[quiz.qi]
+    const answered = quiz.picked !== null
+    const right = answered && quiz.picked!.trim() === q.answer.trim()
+    stage = (
+      <div className="rd-solo" style={soloStyle}>
+        <div className="rd-qbox">
+          <div className="rd-qh">
+            <span>Soru {quiz.qi + 1} / {sectionQs.length}</span>
+            <div className="rd-qdots" aria-hidden="true">
+              {sectionQs.map((_, i) => <i key={i} className={i === quiz.qi ? 'on' : i < quiz.qi ? (quiz.res[i] ? 'ok' : 'no') : ''} />)}
+            </div>
+          </div>
+          <div className="rd-badge" aria-hidden="true">{book.cover ? <SmartImg name={book.cover} /> : <Ic n="q" />}</div>
+          <h2 className="rd-qt" key={quiz.qi}>{q.question}</h2>
+          <div className="rd-opts">
+            {q.options.map((o, k) => {
+              const isAns = o.trim() === q.answer.trim()
+              const cls = !answered ? (qSpeak === k ? ' reading' : '') : isAns ? ' good' : o === quiz.picked ? ' bad' : ' dim'
+              return (
+                <button key={k} className={'rd-op' + cls} disabled={answered} onClick={() => pickAnswer(o)}>
+                  <span className="lt">{LETTERS[k]}</span>{o}
+                  {answered && isAns && <span className="mk"><Ic n="check" /></span>}
+                  {answered && !isAns && o === quiz.picked && <span className="mk"><Ic n="x" /></span>}
+                </button>
+              )
+            })}
+          </div>
+          {answered && (
+            <>
+              <div className="rd-exp" role="status">
+                <b>{right ? 'Doğru!' : `Doğru cevap: ${q.answer}`}</b>
+                {q.explanation}
+              </div>
+              <button className="rd-btn pri lg" onClick={nextQuestion}>
+                {quiz.qi + 1 < sectionQs.length ? 'Sonraki soru' : 'Sonucu gör'}<Ic n="arrowR" />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    )
+  } else if (pos.bitti) {
+    const scored = !!quiz && quiz.done
+    const score = quiz ? quiz.res.filter(Boolean).length : 0
+    stage = (
+      <div className="rd-solo" style={soloStyle}>
+        {scored && (
+          <div className="rd-conf" aria-hidden="true">
+            {CONFETTI.map((c, i) => <i key={i} style={{ left: c[0], background: c[1], animationDelay: c[2] }} />)}
+          </div>
+        )}
+        <div className="rd-res">
+          <h2>{nextSection == null ? 'Kitap bitti!' : 'Bölüm bitti!'}</h2>
+          {scored && <div className="big">{score} / {sectionQs.length}</div>}
+          {scored && <div className="rd-stars" aria-hidden="true">{STAR_FULL}{STAR_FULL}{STAR_FULL}</div>}
+          {scored ? <p>Soruların {score} tanesini doğru bildin.</p> : <p>Bu bölümü okudun.</p>}
+          {trUnlocked && <p>Artık istersen Türkçesini görebilirsin.</p>}
+          <p>{counts.k} kelimeyi biliyorsun, {counts.l} kelimeyi öğreneceksin.</p>
+          <div className="acts">
+            {mainAction}
+            {scored && <button className="rd-btn lg" onClick={restartQuiz}><Ic n="back5" />Soruları tekrar çöz</button>}
+          </div>
+          {moreLinks}
+        </div>
+      </div>
+    )
+  } else if (page) {
+    stage = (
+      <div className={'rd-spread' + (double ? ' dbl' : '')}>
+        <div className="rd-art">
+          <div className="rd-scene">
+            {page.image ? <SceneImg name={page.image} /> : <div className="rd-ph"><Ic n="image" />Resim yakında</div>}
+            <div className="rd-sweep" />
+            {!wide && (
+              <div className="rd-strip" aria-label={`Sayfa ${pos.idx + 1} / ${secPages.length}`}>
+                <span className="pg">{secPages.map((_, i) => <i key={i} className={i === pos.idx ? 'on' : ''} />)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="rd-text">
+          <div className="rd-rph">
+            <span className="rd-chap">{chapLabel}</span>
+            {wide ? (
+              canPlay && !audioError && <span className="tap"><Ic n="tap" />Cümleye dokun, ses oradan başlar</span>
+            ) : swipeHint ? (
+              <span className="rd-hintw">
+                <span className="rd-hint"><Ic n="swipe" />Kaydırarak sayfa çevir</span>
+                <button className="rd-hx" onClick={hideSwipeHint} aria-label="İpucunu kapat"><Ic n="x" /></button>
+              </span>
+            ) : null}
+          </div>
+          {textMode === 'hide' ? (
+            <div className="rd-hid">
+              <Ic n="spk2" />Metin gizli. Dinle ve resmi takip et.
+              <button className="rd-btn pri" onClick={() => setTextMode('show')}>Metni göster</button>
+            </div>
+          ) : (
+            <div className="rd-sents">{page.sentences.map((_, i) => renderSentence(i))}</div>
+          )}
+          {trState === 'hint' && !book.noTranslation && textMode === 'show' && !trPage && page.translations.length > 0 && (
+            <button className="rd-btn rd-trhint" onClick={() => setTrPage(true)}><Ic n="tr" />İstersen Türkçesini görebilirsin</button>
+          )}
+          <div className="rd-pnav">
+            <button className="rd-btn" onClick={goPrev} disabled={pos.idx === 0}><Ic n="chevL" />Önceki sayfa</button>
+            <button className="rd-btn pri" onClick={goNext}>{lastPage ? 'Bitir' : 'Sonraki sayfa'}<Ic n="chevR" /></button>
+          </div>
+          {waiting >= 0 && (
+            <div className="rd-say" role="status">
+              <div className="top">
+                <div className="ic"><Ic n="chat" /></div>
+                <div style={{ minWidth: 0 }}><b>Şimdi sen söyle!</b><small>Cümleyi yüksek sesle tekrar et.</small></div>
+              </div>
+              <div className="acts">
+                <button className="rd-btn ghost" onClick={() => seekTo(sentStart(waiting) + 0.01, true)}><Ic n="back5" />Tekrar dinle</button>
+                <button className="rd-btn pri" onClick={continueShadow}>
+                  {waiting >= page.sentences.length - 1 ? 'Sonraki sayfa' : 'Devam et'}<Ic n="arrowR" />
+                </button>
+              </div>
+            </div>
+          )}
+          {sel && (
+            <div className="rd-wcard" role="dialog" aria-label={sel.word}>
+              <div className="t1">
+                <button className="rd-spk" onClick={() => speakWord(sel.word)} aria-label="Telaffuzu dinle"><Ic n="spk2" /></button>
+                <div style={{ minWidth: 0 }}><b>{sel.word}</b>{sel.phonetic && <span>{sel.phonetic}</span>}</div>
+                <button className="rd-x" onClick={() => setSel(null)} aria-label="Kapat"><Ic n="x" /></button>
+              </div>
+              {sel.meaning && <div className="mean">{sel.meaning}</div>}
+              {sel.image && <SmartImg name={sel.image} />}
+              {sel.example && <div className="ex">“{sel.example}”</div>}
+              <div className="rd-vb">
+                <button className={'rd-mk k' + (selMark === 'known' ? ' on' : '')} onClick={() => markWord(sel, 'known')}><Ic n="check" />Biliyorum</button>
+                <button className={'rd-mk l' + (selMark === 'learning' ? ' on' : '')} onClick={() => markWord(sel, 'learning')}><Ic n="star" />Öğreneceğim</button>
+                {selMark && <button className="rd-mk ghost" onClick={() => markWord(sel, null)}>Sıfırla</button>}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  } else {
+    stage = <div className="rd-note">Bu bölümde sayfa yok.</div>
+  }
+
+  const sub = pos.bitti
+    ? `Bölüm ${pos.section} · ${inQuiz ? 'Sorular' : 'Bitti'}`
+    : wide ? `Bölüm ${pos.section} · Sayfa ${pos.idx + 1} / ${secPages.length}` : `Sayfa ${pos.idx + 1}/${secPages.length}`
+  const showTab = !panel && wide && !pos.bitti && !!page
+  const shadowTg = canPlay ? (
+    <button className={'rd-tg' + (shadow ? ' on' : '')} aria-pressed={shadow} onClick={() => { setShadow(s => !s); setWaiting(-1) }}
+      title="Her cümleden sonra durur, sıra sana gelir"><Ic n="chatDots" />Gölgeleme<span className="sw" /></button>
+  ) : null
+
   return (
-    <div className="rd-app">
-      <header className="rd-top">
-        <div className="rd-brand">
-          <button className="rd-home" onClick={() => { stopAudio(); onHome() }} aria-label="Ana sayfaya dön">{ICON_HOME}<span>Ana sayfa</span></button>
-          <button className="rd-btn rd-nowrap" onClick={() => { stopAudio(); onClose() }} aria-label="Kitap listesine dön">‹ Kitaplar</button>
+    <div className="rd-app reading" ref={appRef}>
+      <header className="rd-hd">
+        {wide ? (
+          <>
+            <button className="rd-btn pri" onClick={() => { stopAll(); onHome() }} aria-label="Ana sayfaya dön"><Ic n="home" />Ana sayfa</button>
+            <button className="rd-btn" onClick={() => { stopAll(); onClose() }} aria-label="Kitap listesine dön"><Ic n="books" />Kitaplar</button>
+          </>
+        ) : (
+          <>
+            <button className="rd-sq pri" onClick={() => { stopAll(); onHome() }} aria-label="Ana sayfaya dön"><Ic n="home" /></button>
+            <button className="rd-sq" onClick={() => { stopAll(); onClose() }} aria-label="Kitap listesine dön"><Ic n="books" /></button>
+          </>
+        )}
+        <div className="rd-ttl">
+          <b>{book.title}</b>
+          <span>
+            {!wide && !pos.bitti && (preview ? 'Önizleme · ' : savedN > 0 ? <><span className="sv" key={savedN}><Ic n="check" />Kaydedildi</span>{' · '}</> : null)}
+            {sub}
+          </span>
         </div>
-        <div className="rd-titlebox">
-          <h1 className="rd-title">{book.title}</h1>
-          <p>Bölüm {pos.section}{sections.length > 1 ? ` / ${sections.length}` : ''}{preview ? ' · önizleme' : ''}</p>
-        </div>
-        <button className="rd-btn rd-vocabbtn" onClick={() => setDrawer(true)} aria-label="Kelime listesini aç">
-          <span className="rd-vicon" aria-hidden="true">📖</span><span className="rd-vlabel">Kelimeler</span> <span className="rd-cnt k">{counts.k}</span><span className="rd-cnt l">{counts.l}</span>
+        {wide && (preview ? <span className="rd-saved pv">Önizleme</span>
+          : savedN > 0 ? <span className="rd-saved" key={savedN}><Ic n="check" />Kaydedildi</span> : null)}
+        {wide && !pos.bitti && (
+          <div className="rd-pgd" aria-hidden="true">
+            {secPages.map((_, i) => <i key={i} className={i === pos.idx ? 'on' : i < pos.idx ? 'past' : ''} />)}
+          </div>
+        )}
+        {wide && <div className="rd-grow" />}
+        <button className={'rd-btn wb' + (panel ? ' on' : '')} onClick={() => setPanel(p => !p)} aria-pressed={panel} aria-label="Kelimeler">
+          <Ic n="words" />{wide ? 'Kelimeler' : null}<span className="rd-cnt k">{counts.k}</span><span className="rd-cnt l">{counts.l}</span>
         </button>
       </header>
 
-      {(
-        <section className="rd-controls" aria-label="Okuma ayarları" ref={ctrlRef}
-          style={pos.bitti ? { visibility: 'hidden', minHeight: ctrlH.current || undefined, boxSizing: 'border-box' } : undefined} aria-hidden={pos.bitti || undefined} inert={pos.bitti || undefined}>
-          <div className="rd-grp"><span>Metin</span>
-            <div className="rd-seg">
-              {([['show', 'Açık'], ['hide', 'Gizli']] as const).map(([v, l]) =>
-                <button key={v} aria-pressed={textMode === v} onClick={() => setTextMode(v)}>{l}</button>)}
-            </div>
+      <section className="rd-ctl" aria-label="Okuma ayarları" ref={ctrlRef}
+        style={pos.bitti ? { visibility: 'hidden', minHeight: ctrlH.current || undefined } : undefined}
+        aria-hidden={pos.bitti || undefined} inert={pos.bitti || undefined}>
+        {!wide && shadowTg}
+        <div className="rd-seg"><span className="lbl">Metin</span>
+          <button className={textMode === 'show' ? 'on' : ''} aria-pressed={textMode === 'show'} onClick={() => setTextMode('show')}><Ic n="eye" />Açık</button>
+          <button className={textMode === 'hide' ? 'on' : ''} aria-pressed={textMode === 'hide'} onClick={() => setTextMode('hide')}><Ic n="eyeOff" />Gizli</button>
+        </div>
+        {canPlay && timing.exact && (
+          <div className="rd-seg"><span className="lbl">Vurgu</span>
+            <button className={hl === 'word' ? 'on' : ''} aria-pressed={hl === 'word'} onClick={() => setHl('word')}><Ic n="pen" />Kelime</button>
+            <button className={hl === 'sent' ? 'on' : ''} aria-pressed={hl === 'sent'} onClick={() => setHl('sent')}><Ic n="lines" />Cümle</button>
           </div>
-          {canPlay && timing.exact && (
-            <div className="rd-grp"><span>Vurgu</span>
-              <div className="rd-seg">
-                <button aria-pressed={hl === 'word'} onClick={() => setHl('word')}>Kelime</button>
-                <button aria-pressed={hl === 'sent'} onClick={() => setHl('sent')}>Cümle</button>
-              </div>
-            </div>
-          )}
-          {canPlay && (
-            <button className="rd-tgl" aria-pressed={shadow} onClick={() => { setShadow(s => !s); setWaiting(-1) }}
-              title="Her cümleden sonra durur, sıra sana gelir"><i />Gölgeleme modu</button>
-          )}
-          {trState === 'free' && !book.noTranslation && (
-            <button className="rd-tgl" aria-pressed={showTr} onClick={() => setShowTr(s => !s)}><i />Türkçe</button>
-          )}
-          <div className="rd-grp rd-wide"><span>Sayfa</span>
-            <div className="rd-seg">
-              <button aria-pressed={!double} onClick={() => setLayoutPref('single')}>Tek</button>
-              <button aria-pressed={double} onClick={() => setLayoutPref('double')}>Çift</button>
-            </div>
+        )}
+        {wide && shadowTg}
+        {trState === 'free' && !book.noTranslation && (
+          <button className={'rd-tg' + (showTr ? ' on' : '')} aria-pressed={showTr} onClick={() => setShowTr(s => !s)}><Ic n="tr" />Türkçe<span className="sw" /></button>
+        )}
+        {wide && (
+          <div className="rd-seg"><span className="lbl">Sayfa</span>
+            <button className={!double ? 'on' : ''} aria-pressed={!double} onClick={() => setLayoutPref('single')}><Ic n="single" />Tek</button>
+            <button className={double ? 'on' : ''} aria-pressed={double} onClick={() => setLayoutPref('double')}><Ic n="double" />Çift</button>
           </div>
-        </section>
-      )}
+        )}
+        {canPlay && !hasReal && (
+          <button className={'rd-tg' + (voiceOn ? ' on' : '')} aria-pressed={voiceOn}
+            title="Gerçek ses dosyası gelene kadar tarayıcının yedek sesi"
+            onClick={() => { if (voiceOn) stopSpeech(); demo.current.spoken = -1; setVoiceOn(v => !v) }}><Ic n="wave" />Demo sesi<span className="sw" /></button>
+        )}
+        {preview && canPlay && (
+          <label className="rd-btn rd-file" title="Kendi ses dosyanla dene: bu sayfanın süresine uyarlanır"><Ic n="upload" />MP3 dene
+            <input type="file" accept="audio/*" onChange={onPickAudio} />
+          </label>
+        )}
+      </section>
 
       {notice && <div className="rd-note">{notice}</div>}
 
-      <main className="rd-stage">
-        <div className="rd-book" ref={bookRef} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-        {pos.bitti && quiz && !quiz.done && sectionQs[quiz.qi] ? (
-          <div className="rd-solo rd-quiz" style={spreadH.current ? { minHeight: spreadH.current } : undefined}>
-            <div className="rd-qhead">
-              <span>Soru {quiz.qi + 1} / {sectionQs.length}</span>
-              <div className="rd-qdots">{sectionQs.map((_, i) => <i key={i} className={i === quiz.qi ? 'on' : i < quiz.qi ? 'done' : ''} />)}</div>
-            </div>
-            <h2 className="rd-qtext">{sectionQs[quiz.qi].question}</h2>
-            <div className="rd-opts">
-              {sectionQs[quiz.qi].options.map(o => {
-                const answered = quiz.picked !== null
-                const isAns = o.trim() === sectionQs[quiz.qi].answer.trim()
-                const cls = !answered ? '' : isAns ? ' good' : o === quiz.picked ? ' bad' : ' dim'
-                return <button key={o} className={'rd-opt' + cls} disabled={answered} onClick={() => pickAnswer(o)}>{o}</button>
-              })}
-            </div>
-            {quiz.picked !== null && (
-              <>
-                <div className="rd-qexp">
-                  <b>{quiz.picked.trim() === sectionQs[quiz.qi].answer.trim() ? 'Doğru!' : `Doğru cevap: ${sectionQs[quiz.qi].answer}`}</b>
-                  {sectionQs[quiz.qi].explanation}
-                </div>
-                <div className="row">
-                  <button className="rd-btn primary" onClick={nextQuestion}>{quiz.qi + 1 < sectionQs.length ? 'Sonraki soru ›' : 'Sonucu gör ›'}</button>
-                </div>
-              </>
-            )}
-          </div>
-        ) : pos.bitti ? (
-          <div className="rd-solo" style={spreadH.current ? { minHeight: spreadH.current } : undefined}>
-            <h2>{nextSection == null ? 'Kitap bitti!' : 'Bölüm bitti!'}</h2>
-            <p>Bu bölümü okudun.{!preview && readCount(pos.section) === 1 && !book.noTranslation ? ' Artık istersen Türkçesini görebilirsin.' : ''}</p>
-            {quiz && quiz.done && <p>Sorular: {quiz.correct} / {sectionQs.length} doğru.</p>}
-            <p className="rd-muted">{counts.k} kelimeyi biliyorsun, {counts.l} kelimeyi öğreneceksin.</p>
-            <div className="row">
-              {nextSection != null && <button className="rd-btn primary" onClick={goNextSection}>Sonraki bölüm ›</button>}
-              <button className="rd-btn" onClick={rereadSection}>Bu bölümü tekrar oku</button>
-              <button className="rd-btn" onClick={goPrev}>‹ Son sayfaya dön</button>
-              <button className="rd-btn" onClick={onClose}>Kitaplara dön</button>
-            </div>
-          </div>
-        ) : page ? (
-          <div className={'rd-spread' + (double ? ' dbl' : '')}>
-            <div className="rd-art">
-              <div className="rd-frame">
-                {page.image
-                  ? <SmartImg name={page.image} alt="Sayfa resmi" />
-                  : <div className="rd-ph"><span>🖼️</span>Resim yakında</div>}
-              </div>
-            </div>
-            <div className="rd-text">
-              <div className="rd-pghead">
-                <span className="rd-dots" aria-label={`Sayfa ${pos.idx + 1} / ${secPages.length}`}>
-                  {secPages.map((_, i) => <i key={i} className={i === pos.idx ? 'on' : i < pos.idx ? 'past' : ''} />)}
-                  <b>Sayfa {pos.idx + 1} / {secPages.length}</b>
-                </span>
-                {canPlay && !audioError && <span className="rd-muted rd-hint">Cümleye dokun: ses oradan başlar</span>}
-              </div>
-              <div className="rd-body">
-                {textMode === 'hide' ? (
-                  <div className="rd-hide">
-                    <b>Dinleme modu</b><span>Sadece sese ve resme odaklan. Hazır olunca metni aç.</span>
-                    <button className="rd-btn primary" onClick={() => setTextMode('show')}>Metni göster</button>
-                  </div>
-                ) : page.sentences.map((_, i) => renderSentence(i))}
-                {trState === 'hint' && !book.noTranslation && textMode === 'show' && !trPage && page.translations.length > 0 && (
-                  <button className="rd-btn rd-trhint" onClick={() => setTrPage(true)}>İstersen Türkçesini görebilirsin</button>
-                )}
-              </div>
-              {waiting >= 0 && (
-                <div className="rd-shadow">
-                  <b>Şimdi sen söyle: cümleyi yüksek sesle tekrar et.</b>
-                  <button className="rd-btn" onClick={() => seekTo(sentStart(waiting) + 0.01, true)}>Tekrar dinle</button>
-                  <button className="rd-btn primary" onClick={() => {
-                    if (waiting >= page.sentences.length - 1) { setWaiting(-1); goNext() }
-                    else seekTo(sentStart(waiting + 1) + 0.01, true)
-                  }}>{waiting >= page.sentences.length - 1 ? 'Sonraki sayfa' : 'Devam et'}</button>
-                </div>
-              )}
-              {sel && (
-                <div className="rd-wcard">
-                  <div className="rd-wc-top">
-                    <button className="rd-round" onClick={() => speakWord(sel.word)} aria-label="Telaffuzu dinle">{ICON_SPK}</button>
-                    <div><div className="wd">{sel.word}</div>{sel.phonetic && <div className="ph">{sel.phonetic}</div>}</div>
-                    <button className="rd-x" onClick={() => setSel(null)} aria-label="Kapat">×</button>
-                  </div>
-                  {sel.meaning && <div className="rd-wc-mean">{sel.meaning}</div>}
-                  {sel.image && <SmartImg className="rd-wc-img" name={sel.image} />}
-                  {sel.example && <div className="rd-wc-ex">“{sel.example}”</div>}
-                  <div className="rd-wc-act">
-                    <button className="rd-b-known" onClick={() => markWord(sel, 'known')}>{selMark === 'known' ? '✓ ' : ''}Biliyorum</button>
-                    <button className="rd-b-learn" onClick={() => markWord(sel, 'learning')}>{selMark === 'learning' ? '✓ ' : ''}Öğreneceğim</button>
-                    {selMark && <button className="rd-b-ghost" onClick={() => markWord(sel, null)}>Sıfırla</button>}
-                  </div>
-                </div>
-              )}
-              <div className="rd-foot">
-                <button className="rd-btn" onClick={goPrev} disabled={pos.idx === 0}>‹ Önceki sayfa</button>
-                <button className="rd-btn primary" onClick={goNext}>{pos.idx === secPages.length - 1 ? 'Bitir ›' : 'Sonraki sayfa ›'}</button>
-              </div>
-              <button className="rd-curl" onClick={goNext} aria-label="Sayfayı çevir" title="Sayfayı çevir" />
-            </div>
-          </div>
-        ) : <div className="rd-note">Bu bölümde sayfa yok.</div>}
+      <div className={'rd-main' + (panel && sideBySide ? ' open' : '')}>
+        <div className={'rd-book' + (showTab ? ' tabbed' : '')} ref={bookRef} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+          {stage}
+          {showTab && (
+            <button className="rd-etab" onClick={() => setPanel(true)} aria-label="Kelime panelini aç">
+              <Ic n="words" /><span className="vt">Kelimeler</span><span className="rd-cnt l">{counts.l}</span>
+            </button>
+          )}
         </div>
-      </main>
+        {panel && sideBySide && panelEl}
+      </div>
 
-      {canPlay && !pos.bitti && (
-        <nav className="rd-bar" aria-label="Ses kontrolleri">
+      {pos.bitti ? (
+        <nav className="rd-bar q" ref={barRef} aria-label="Soru kontrolleri"
+          style={!wide && readBarH.current ? { minHeight: readBarH.current } : undefined}>
+          {inQuiz && hasTTS && (
+            <button className={'rd-ib lbl' + (qSpeak !== null ? ' on' : '')} onClick={qSpeak !== null ? stopQSpeak : readQuestion}>
+              <Ic n="spk2" />{qSpeak !== null ? 'Durdur' : 'Soruyu dinle'}
+            </button>
+          )}
+          <span className="qlbl">{inQuiz && quiz ? `Soru ${quiz.qi + 1} / ${sectionQs.length}` : quiz ? 'Sorular bitti' : 'Bölüm bitti'}</span>
+        </nav>
+      ) : canPlay ? (
+        <nav className="rd-bar" ref={barRef} aria-label="Ses kontrolleri">
           {audioError ? (
-            <span className="rd-muted">Bu sayfanın sesi açılamadı.</span>
+            <span className="msg">Bu sayfanın sesi açılamadı.</span>
+          ) : wide ? (
+            <>
+              <button className="rd-ib" onClick={() => seekTo(time - 5, playing)} aria-label="5 saniye geri"><Ic n="back5" />5</button>
+              <button className="rd-ib" onClick={prevSentence} aria-label="Önceki cümle"><Ic n="prevS" /></button>
+              {playBtn}
+              <button className="rd-ib" onClick={nextSentence} aria-label="Sonraki cümle"><Ic n="nextS" /></button>
+              <button className="rd-ib" onClick={() => seekTo(time + 5, playing)} aria-label="5 saniye ileri">5<Ic n="fwd5" /></button>
+              <div className="rd-trk">{segsEl}{tmrEl}</div>
+              {shadow && <span className="rd-chip"><Ic n="chat" />Gölgeleme açık</span>}
+              <div className="rd-spd" role="group" aria-label="Hız">
+                {[0.75, 1, 1.25].map(r => <button key={r} className={rate === r ? 'on' : ''} aria-pressed={rate === r} onClick={() => setRate(r)}>{r}×</button>)}
+              </div>
+            </>
           ) : (
             <>
-              <div className="rd-tp">
-                <button className="rd-btn rd-skip" onClick={() => seekTo(time - 5, playing)} aria-label="5 saniye geri">−5</button>
-                <button className="rd-btn" onClick={prevSentence} aria-label="Önceki cümle">‹ Cümle</button>
-                <button className="rd-play" onClick={togglePlay} aria-label={playing ? 'Duraklat' : 'Oynat'}>{playing ? ICON_PAUSE : ICON_PLAY}</button>
-                <button className="rd-btn" onClick={nextSentence} aria-label="Sonraki cümle">Cümle ›</button>
-                <button className="rd-btn rd-skip" onClick={() => seekTo(time + 5, playing)} aria-label="5 saniye ileri">+5</button>
-              </div>
-              <div className="rd-scrub">
-                <span>{fmt(time)}</span>
-                <input type="range" min={0} max={duration || 1} step={0.05} value={Math.min(time, duration || 1)}
-                  onChange={e => seekTo(parseFloat(e.target.value), playing)} aria-label="Ses konumu" />
-                <span>{fmt(duration)}</span>
-              </div>
-              <div className="rd-tools">
-                <div className="rd-seg rd-rate" aria-label="Hız">
-                  {[0.75, 1, 1.25].map(r => <button key={r} aria-pressed={rate === r} onClick={() => setRate(r)}>{r}×</button>)}
-                </div>
-                {!hasReal && (
-                  <button className="rd-tgl" aria-pressed={voiceOn}
-                    title="Gerçek ses dosyası gelene kadar tarayıcının yedek sesi"
-                    onClick={() => { if (voiceOn) stopSpeech(); demo.current.spoken = -1; setVoiceOn(v => !v) }}><i />Demo sesi</button>
-                )}
-                {preview && (
-                  <label className="rd-btn rd-file" title="Kendi ses dosyanla dene: bu sayfanın süresine uyarlanır">MP3 dene
-                    <input type="file" accept="audio/*" onChange={onPickAudio} />
-                  </label>
-                )}
+              {segsEl}
+              {tmrEl}
+              <div className="rd-ctr">
+                <button className="rd-ib" onClick={() => seekTo(time - 5, playing)} aria-label="5 saniye geri"><Ic n="back5" />5</button>
+                <button className="rd-ib" onClick={prevSentence} aria-label="Önceki cümle"><Ic n="prevS" /></button>
+                {playBtn}
+                <button className="rd-ib" onClick={nextSentence} aria-label="Sonraki cümle"><Ic n="nextS" /></button>
+                <button className="rd-ib" onClick={() => setRate(r => (r === 0.75 ? 1 : r === 1 ? 1.25 : 0.75))} aria-label="Hız">{rate}×</button>
               </div>
             </>
           )}
         </nav>
-      )}
+      ) : null}
 
-      <div className={'rd-scrim' + (drawer ? ' open' : '')} onClick={() => setDrawer(false)} />
-      <aside className={'rd-drawer' + (drawer ? ' open' : '')} aria-label="Kelime listesi">
-        <div className="rd-dh"><h3>Kitabın kelimeleri</h3><button className="rd-btn" onClick={() => setDrawer(false)}>Kapat</button></div>
-        <p className="rd-muted" style={{ margin: 0 }}>Seçtiğin kelimeler metinde renklenir.</p>
-        <div className="rd-seg" style={{ alignSelf: 'flex-start', flexWrap: 'wrap' }}>
-          {([['all', 'Tümü'], ['page', 'Bu sayfa'], ['learning', 'Öğreneceğim'], ['known', 'Biliyorum']] as const).map(([v, l]) =>
-            <button key={v} aria-pressed={filter === v} onClick={() => setFilter(v)}>{l}</button>)}
-        </div>
-        <div className="rd-vlist">
-          {drawerItems.length === 0 ? <div className="rd-empty">Bu filtrede henüz kelime yok.</div> : drawerItems.map(v => {
-            const m = marks.get(v.key)
-            return (
-              <div key={v.key} className={'rd-vi ' + (m ?? '')}>
-                <div className="r">
-                  <button className="rd-sp" onClick={() => speakWord(v.word)} aria-label="Dinle">{ICON_SPK}</button>
-                  <b>{v.word}</b><span className="ph">{v.phonetic}</span>
-                </div>
-                {v.example && <div className="ex">{v.example}</div>}
-                <div className="act">
-                  <button className={m === 'known' ? 'on-k' : ''} onClick={() => markWord(v, m === 'known' ? null : 'known')}>Biliyorum</button>
-                  <button className={m === 'learning' ? 'on-l' : ''} onClick={() => markWord(v, m === 'learning' ? null : 'learning')}>Öğreneceğim</button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </aside>
+      {panel && !sideBySide && (
+        <>
+          <div className="rd-scrim" onClick={() => setPanel(false)} />
+          {panelEl}
+        </>
+      )}
 
       <div className={'rd-toast' + (toast ? ' on' : '')} role="status">{toast}</div>
     </div>
   )
 }
+
+const CONFETTI: [string, string, string][] = [
+  ['8%', '#FFD54A', '0s'], ['22%', '#8B6CFF', '-.8s'], ['38%', '#22A57B', '-1.6s'],
+  ['55%', '#FF8FB8', '-.4s'], ['70%', '#FFD54A', '-1.2s'], ['86%', '#8B6CFF', '-2s'],
+]
