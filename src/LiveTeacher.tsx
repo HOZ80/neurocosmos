@@ -3,13 +3,14 @@ import type { BoardToken, Pen, PlanItemDraft } from './liveShared'
 import { sb, newId, parseImport, cleanBoard, shortName } from './liveShared'
 import { LiveStyles, BoardSentence, PenBar, PaintableTokens, Legend } from './LiveBoard'
 import LiveTeacherPanel, { loadRoster, demoStudents } from './LiveTeacherPanel'
+import LiveReport from './LiveReport'
 import type { PanelClass, PanelStudent, PlanItem, Preset } from './LiveTeacherPanel'
 
 // ─── Öğretmen: Canlı Ders ─────────────────────────────────────────────────────
 // Ana ekran (ders başlat / deneme / devam et), Hazır notlar, Sınıflar ve
 // Dersi içe aktar ekranları. Hepsi veri olarak tutulur, build harcamaz.
 
-type Screen = 'home' | 'panel' | 'presets' | 'classes' | 'import'
+type Screen = 'home' | 'panel' | 'presets' | 'classes' | 'import' | 'reports'
 const NAV_KEY = 'nc_live_teacher'
 
 interface ClassRow { id: string; name: string; meet_url: string; is_default: boolean }
@@ -18,7 +19,7 @@ interface PlanRow { id: string; title: string; updated_at: string }
 function readNav(): { screen: Screen; sessionId?: string } {
   try {
     const v = JSON.parse(sessionStorage.getItem(NAV_KEY) || 'null')
-    if (v && ['home', 'panel', 'presets', 'classes', 'import'].includes(v.screen)) return v
+    if (v && ['home', 'panel', 'presets', 'classes', 'import', 'reports'].includes(v.screen)) return v
   } catch {}
   return { screen: 'home' }
 }
@@ -44,6 +45,9 @@ export default function LiveTeacher({ onExit }: { onExit: () => void }) {
   const [panel, setPanel] = useState<null | { demo: boolean; sessionId: string; klass: PanelClass; students: PanelStudent[]; planItems: PlanItem[]; presets: Preset[] }>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Rapor ekranı nereden açıldı: ana ekrandan ya da ders sonu penceresinden.
+  // Pencereden açıldıysa geri tuşu o pencereye döner (ders paneli arkada açık kalır).
+  const [report, setReport] = useState<{ origin: 'home' | 'modal'; sessionId?: string; classId?: string } | null>(null)
 
   function go(screen: Screen, sessionId?: string) {
     const v = { screen, ...(sessionId ? { sessionId } : {}) }
@@ -102,32 +106,58 @@ export default function LiveTeacher({ onExit }: { onExit: () => void }) {
     openSession(id)
   }
 
-  let body: React.ReactNode
-  if (nav.screen === 'panel' && panel) {
-    body = <LiveTeacherPanel key={panel.sessionId} {...panel} onExit={() => { setPanel(null); go('home') }} />
-  } else if (nav.screen === 'presets') {
+  function openReport(origin: 'home' | 'modal', sessionId?: string, classId?: string) {
+    setReport({ origin, sessionId, classId })
+    go('reports')
+  }
+  function closeReport() {
+    const r = report
+    setReport(null)
+    if (r && r.origin === 'modal' && panel) go('panel', panel.sessionId)
+    else go('home')
+  }
+
+  // Ders sonu penceresinden rapora gidilince ders paneli gizli ama açık kalır;
+  // geri dönünce pencere olduğu gibi durur.
+  const keepPanel = !!panel && (nav.screen === 'panel' || (nav.screen === 'reports' && report?.origin === 'modal'))
+  let body: React.ReactNode = null
+  if (nav.screen === 'presets') {
     body = <PresetsScreen onBack={() => go('home')} />
   } else if (nav.screen === 'classes') {
     body = <ClassesScreen onBack={() => go('home')} />
   } else if (nav.screen === 'import') {
     body = <ImportScreen onBack={() => go('home')} />
+  } else if (nav.screen === 'reports') {
+    body = <LiveReport initial={report ? { classId: report.classId, lessonId: report.sessionId } : undefined} onBack={closeReport} />
   } else if (nav.screen === 'panel') {
-    body = <div className="panel"><p className="muted">Ders yükleniyor…</p></div>
+    if (!panel) body = <div className="panel"><p className="muted">Ders yükleniyor…</p></div>
   } else {
-    body = <HomeScreen busy={busy} error={error} onExit={onExit} onStart={startLesson} onDemo={startDemo} onResume={openSession} onGo={go} />
+    body = <HomeScreen busy={busy} error={error} onExit={onExit} onStart={startLesson} onDemo={startDemo} onResume={openSession} onGo={go} onReports={() => openReport('home')} />
   }
 
-  return <div className="lv"><LiveStyles />{body}</div>
+  return (
+    <div className="lv"><LiveStyles />
+      {keepPanel && panel && (
+        <div style={{ display: nav.screen === 'panel' ? 'block' : 'none' }}>
+          <LiveTeacherPanel key={panel.sessionId} {...panel}
+            onExit={() => { setPanel(null); setReport(null); go('home') }}
+            onOpenReport={() => openReport('modal', panel.sessionId, panel.klass.id)} />
+        </div>
+      )}
+      {body}
+    </div>
+  )
 }
 
 // ─── Ana ekran ───
-function HomeScreen({ busy, error, onExit, onStart, onDemo, onResume, onGo }: {
+function HomeScreen({ busy, error, onExit, onStart, onDemo, onResume, onGo, onReports }: {
   busy: boolean; error: string | null
   onExit: () => void
   onStart: (classId: string, planId: string | null) => void
   onDemo: (planId: string | null) => void
   onResume: (sessionId: string) => void
   onGo: (s: Screen) => void
+  onReports: () => void
 }) {
   const [classes, setClasses] = useState<ClassRow[] | null>(null)
   const [plans, setPlans] = useState<PlanRow[]>([])
@@ -207,6 +237,12 @@ function HomeScreen({ busy, error, onExit, onStart, onDemo, onResume, onGo }: {
         </div>
         {classBusy && <p className="hint">Bu sınıfın açık bir dersi var; yukarıdan devam edebilir ya da bitirebilirsin.</p>}
         <p className="hint">Deneme modu 20 sahte öğrenciyle çalışır, hiçbir şey kaydetmez.</p>
+      </div>
+
+      <div className="box" style={{ borderColor: 'var(--brand)' }}>
+        <h2 style={{ fontSize: 18, marginBottom: 4 }}>Raporlar</h2>
+        <p className="muted small" style={{ margin: '0 0 10px' }}>Ders, hafta ve ay dökümü; öğrenci öğrenci ve konu konu. Excel’e aktarılır.</p>
+        <div className="row" style={{ marginTop: 0 }}><button className="btn primary" onClick={onReports}>Raporları aç</button></div>
       </div>
 
       <div className="box">

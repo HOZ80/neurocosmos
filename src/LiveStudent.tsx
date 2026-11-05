@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Account } from './auth'
 import type { BoardToken } from './liveShared'
 import { sb, cleanBoard } from './liveShared'
-import { LiveStyles, BoardSentence, Legend } from './LiveBoard'
+import { LiveStyles, BoardSentence } from './LiveBoard'
 
 // ─── Öğrenci: Canlı Ders ──────────────────────────────────────────────────────
 // Çocuk yalnızca kendi sınıfının dersini, kendi cevaplarını ve kendine gelen
@@ -12,7 +12,15 @@ import { LiveStyles, BoardSentence, Legend } from './LiveBoard'
 export interface LiveClassInfo { id: string; name: string; meet_url: string }
 export interface LiveStatus { klass: LiveClassInfo | null; sessionId: string | null; checked: boolean }
 
-// Öğrencinin sınıfı ve o sınıfın açık dersi; ders başlayınca anında haber alır.
+// Öğrencinin sınıfı ve o sınıfın açık dersi; ders başlayınca haber alır.
+// Üç katman birlikte çalışır, biri kaçırsa diğeri yakalar:
+// 1) Anlık dinleme: sınıf süzgeci YOK (hangi dersi görebileceği zaten veritabanı
+//    kuralıyla sınırlı), ayrıca öğrencinin sınıfının değişmesi de dinlenir.
+//    Dinleme koparsa kendiliğinden yeniden kurulur.
+// 2) Her 15 saniyede bir "ders açıldı mı" diye kendisi bakar.
+// 3) Sayfa öne gelince, internet geri gelince ve yeniden bağlanınca bakar.
+const POLL_MS = 15000
+
 export function useLiveStatus(account: Account | null): LiveStatus {
   const [st, setSt] = useState<LiveStatus>({ klass: null, sessionId: null, checked: false })
   const isStudent = !!account && account.active && account.role === 'student'
@@ -21,32 +29,54 @@ export function useLiveStatus(account: Account | null): LiveStatus {
   useEffect(() => {
     if (!isStudent) { setSt({ klass: null, sessionId: null, checked: true }); return }
     let alive = true
-    let ch: ReturnType<typeof sb.channel> | null = null
+    let running = false
+    let again = false
 
-    async function refresh(): Promise<string | null> {
+    async function refreshOnce() {
       const m = await sb.from('live_class_members').select('class_id, live_classes(id,name,meet_url)').eq('student_id', uid).maybeSingle()
-      if (!alive) return null
-      if (m.error) { setSt(s => ({ ...s, checked: true })); return null }
+      if (!alive) return
+      // Okunamadıysa (internet gitti) eldeki bilgi bozulmaz.
+      if (m.error) { setSt(s => ({ ...s, checked: true })); return }
       const c: any = m.data ? (Array.isArray((m.data as any).live_classes) ? (m.data as any).live_classes[0] : (m.data as any).live_classes) : null
-      if (!c) { setSt({ klass: null, sessionId: null, checked: true }); return null }
-      const s = await sb.from('live_sessions').select('id').eq('class_id', c.id).eq('status', 'active').maybeSingle()
-      if (!alive) return null
-      setSt({ klass: { id: c.id, name: c.name, meet_url: c.meet_url || '' }, sessionId: s.data?.id || null, checked: true })
-      return c.id
+      if (!c) { setSt({ klass: null, sessionId: null, checked: true }); return }
+      const s = await sb.from('live_sessions').select('id').eq('class_id', c.id).eq('status', 'active').limit(1)
+      if (!alive) return
+      if (s.error) { setSt(x => ({ ...x, checked: true })); return }
+      const sid: string | null = (s.data && s.data[0] && (s.data[0] as any).id) || null
+      setSt(prev => {
+        const same = prev.checked && prev.sessionId === sid && prev.klass && prev.klass.id === c.id
+          && prev.klass.name === c.name && prev.klass.meet_url === (c.meet_url || '')
+        return same ? prev : { klass: { id: c.id, name: c.name, meet_url: c.meet_url || '' }, sessionId: sid, checked: true }
+      })
+    }
+    // Aynı anda tek kontrol; çalışırken yeni istek gelirse bitince bir kez daha bakar.
+    async function refresh() {
+      if (running) { again = true; return }
+      running = true
+      try {
+        do { again = false; try { await refreshOnce() } catch { if (alive) setSt(x => ({ ...x, checked: true })) } } while (again && alive)
+      } finally { running = false }
     }
 
-    refresh().then(classId => {
-      if (!alive || !classId) return
-      ch = sb.channel('live-cls-' + classId + '-' + uid)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'live_sessions', filter: `class_id=eq.${classId}` }, () => { refresh() })
-        .subscribe()
-    })
+    refresh()
+    const ch = sb.channel('live-status-' + uid)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'live_sessions' }, () => { refresh() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'live_class_members', filter: `student_id=eq.${uid}` }, () => { refresh() })
+      .subscribe(status => { if (status === 'SUBSCRIBED') refresh() })
+
+    const poll = window.setInterval(() => { if (document.visibilityState === 'visible') refresh() }, POLL_MS)
     const onVis = () => { if (document.visibilityState === 'visible') refresh() }
+    const onBack = () => refresh()
     document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('online', onBack)
+    window.addEventListener('focus', onBack)
     return () => {
       alive = false
+      window.clearInterval(poll)
       document.removeEventListener('visibilitychange', onVis)
-      if (ch) sb.removeChannel(ch)
+      window.removeEventListener('online', onBack)
+      window.removeEventListener('focus', onBack)
+      sb.removeChannel(ch)
     }
   }, [isStudent, uid])
 
@@ -227,7 +257,6 @@ export function LiveStudentScreen({ account, klass, sessionId, onExit }: { accou
         <div className="board">
           <BoardSentence tokens={q.board} />
           {q.task && <p className="task">{q.task}</p>}
-          <Legend withMark />
         </div>
         {q.kind === 'question' && (
           <div className="answer">

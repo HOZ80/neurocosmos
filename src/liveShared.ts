@@ -6,10 +6,11 @@ import { createClient } from '@supabase/supabase-js'
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, getAccessToken } from './auth'
 
 // Sitenin kendi giriş oturumunu kullanır; ayrı bir giriş yoktur.
+// Giriş anahtarı geçici olarak yenilenemezse (internet gidip geldi) hata verilir;
+// "anahtarsız" gibi davranıp boş sonuç döndürmez. Böylece öğrenci ekranı
+// sınıfını ya da canlı dersini yanlışlıkla "yok" sanmaz.
 export const sb = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  accessToken: async () => {
-    try { return await getAccessToken() } catch { return null }
-  },
+  accessToken: () => getAccessToken(),
   realtime: { params: { eventsPerSecond: 20 } },
 })
 

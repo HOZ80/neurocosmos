@@ -41,6 +41,7 @@ interface Store {
   feedback: Fb[]
   feedbackIds: Set<string>
   log: { answers: number; notes: number; decisions: number }
+  drops: Map<string, number> // öğrenci başına: ders sırasında bağlantısı kopup geri gelme sayısı
 }
 
 const k2 = (q: string, s: string) => q + '|' + s
@@ -74,7 +75,7 @@ function demoPool(expected: string) {
   return { good: [exp, exp.toLowerCase().replace(/[.?!]+$/, '')], other: [typo.join(' '), drop.join(' '), addS.join(' ')] }
 }
 
-export default function LiveTeacherPanel({ demo, sessionId, klass, students, planItems, presets, onExit }: {
+export default function LiveTeacherPanel({ demo, sessionId, klass, students, planItems, presets, onExit, onOpenReport }: {
   demo: boolean
   sessionId: string
   klass: PanelClass
@@ -82,11 +83,12 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
   planItems: PlanItem[]
   presets: Preset[]
   onExit: () => void
+  onOpenReport?: () => void
 }) {
   const store = useRef<Store>({
     sessionId, students, attended: new Set(), online: new Set(), questions: [], currentId: null,
     answers: new Map(), answerIds: new Set(), verdicts: new Map(), feedback: [], feedbackIds: new Set(),
-    log: { answers: 0, notes: 0, decisions: 0 },
+    log: { answers: 0, notes: 0, decisions: 0 }, drops: new Map(),
   })
   const [, setTick] = useState(0)
   const render = () => setTick(t => t + 1)
@@ -111,6 +113,7 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkDraft, setBulkDraft] = useState('')
   const [endModal, setEndModal] = useState(false)
+  const [endSaved, setEndSaved] = useState(false) // ders bitti kaydı veritabanına yazıldı mı
 
   // Tahta düzenleyicisi
   const [edText, setEdText] = useState('')
@@ -180,7 +183,7 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
       sb.from('live_answers').select('id,question_id,student_id,text,attempt_no,response_ms').eq('session_id', sid).order('submitted_at').limit(10000),
       sb.from('live_verdicts').select('question_id,student_id,teacher_status,one_on_one,unanswered').eq('session_id', sid).limit(10000),
       sb.from('live_feedback').select('id,question_id,student_id,kind,text').eq('session_id', sid).order('created_at').limit(10000),
-      sb.from('live_attendance').select('student_id').eq('session_id', sid),
+      sb.from('live_attendance').select('student_id,drop_count').eq('session_id', sid),
     ])
     const err = sess.error || qs.error || ans.error || ver.error || fb.error || att.error
     if (err) throw err
@@ -195,6 +198,7 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
     })
     S.answers = new Map(); S.answerIds = new Set()
     S.attended = new Set((att.data || []).map((r: any) => r.student_id))
+    S.drops = new Map((att.data || []).map((r: any) => [r.student_id as string, (r.drop_count as number) || 0]))
     for (const r of ans.data || []) ingestAnswer(r, true)
     S.verdicts = new Map()
     for (const r of ver.data || []) S.verdicts.set(k2(r.question_id, r.student_id), { teacher_status: r.teacher_status, one_on_one: !!r.one_on_one, unanswered: !!r.unanswered })
@@ -228,14 +232,49 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
           loadAll().catch(fail) // bağlantı geri gelince aradakileri tamamla
         }
       })
+    // Bağlantı kopması takibi (rapordaki "arada koptu" için): öğrenci 12 saniyeden
+    // uzun süre ortadan kaybolup geri gelirse bir kopma sayılır. Öğretmenin kendi
+    // bağlantısı gidip gelirse kimse suçlanmaz (o sırada sayım durur).
+    const seen = new Set<string>()
+    const away = new Set<string>()
+    const awayTimers = new Map<string, number>()
+    let teacherLinked = false
+    function resetAway() {
+      awayTimers.forEach(t => window.clearTimeout(t))
+      awayTimers.clear(); away.clear()
+    }
+    function countDrop(id: string) {
+      const n = (S.drops.get(id) || 0) + 1
+      S.drops.set(id, n)
+      sb.from('live_attendance').update({ drop_count: n }).eq('session_id', S.sessionId).eq('student_id', id)
+        .then(({ error }) => { if (error) console.error('[canli-ders] kopma kaydedilemedi', error) })
+    }
     const pres = sb.channel('live-' + sessionId)
       .on('presence', { event: 'sync' }, () => {
         S.online = new Set(Object.keys(pres.presenceState()))
         for (const id of S.online) S.attended.add(id)
+        if (teacherLinked) {
+          for (const id of S.online) {
+            const t = awayTimers.get(id)
+            if (t !== undefined) { window.clearTimeout(t); awayTimers.delete(id) }
+            if (away.has(id)) { away.delete(id); countDrop(id) }
+            seen.add(id)
+          }
+          for (const id of seen) {
+            if (S.online.has(id) || away.has(id) || awayTimers.has(id)) continue
+            awayTimers.set(id, window.setTimeout(() => {
+              awayTimers.delete(id)
+              if (alive && teacherLinked && !S.online.has(id)) away.add(id)
+            }, 12000))
+          }
+        }
         render()
       })
-      .subscribe()
-    return () => { alive = false; sb.removeChannel(ch); sb.removeChannel(pres) }
+      .subscribe(status => {
+        if (status === 'SUBSCRIBED') teacherLinked = true
+        else { teacherLinked = false; resetAway() }
+      })
+    return () => { alive = false; resetAway(); sb.removeChannel(ch); sb.removeChannel(pres) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -320,6 +359,7 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
     if (demo) return
     const r = await sb.from('live_sessions').update({ status: 'ended', ended_at: new Date().toISOString() }).eq('id', S.sessionId)
     if (r.error) fail(r.error)
+    else setEndSaved(true)
   }
 
   // ─── Notlar ve kararlar ───
@@ -726,8 +766,11 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
             <li>Doğru işareti: {S.feedback.filter(f => f.kind === 'confirm').length}</li>
           </ul>
           {demo ? <p className="muted small">Deneme modunda hiçbir şey kaydedilmedi.</p>
-            : <p className="muted small">Hepsi ve her cevabın süresi kaydedildi. Rapor ekranı sonraki aşamada gelecek.</p>}
-          <div className="row"><button className="btn primary" onClick={onExit}>Canlı Ders ana ekranına dön</button></div>
+            : <p className="muted small">Hepsi ve her cevabın süresi kaydedildi.</p>}
+          <div className="row" style={{ flexWrap: 'wrap' }}>
+            {!demo && onOpenReport && <button className="btn primary" disabled={!endSaved} onClick={onOpenReport}>{endSaved ? 'Bu dersin raporunu aç' : 'Ders kaydediliyor…'}</button>}
+            <button className={'btn' + (demo || !onOpenReport ? ' primary' : '')} onClick={onExit}>Canlı Ders ana ekranına dön</button>
+          </div>
         </div>
       </div>
     )
