@@ -46,6 +46,20 @@ interface Store {
 
 const k2 = (q: string, s: string) => q + '|' + s
 
+const PANEL_CSS = `
+.lv .lvnew{display:inline-block;margin-left:8px;font:700 12px system-ui,sans-serif;color:#fff;background:#E0457B;border-radius:999px;padding:2px 8px;vertical-align:2px}
+.lv .lvnotice{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;background:var(--brand-soft);border:1px solid var(--brand);border-radius:12px;padding:10px 14px;margin-bottom:12px}
+.lv .lvflow{margin-top:22px;border-top:2px solid var(--line);padding-top:12px}
+.lv .lvflow h3{font-size:16px;margin-bottom:8px}
+.lv .lvflow-item{background:var(--surface);border:1px solid var(--line);border-radius:12px;margin-bottom:8px;overflow:hidden}
+.lv .lvflow-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;width:100%;text-align:left;background:none;border:0;padding:10px 12px;color:var(--ink);cursor:pointer;font:inherit}
+.lv .lvflow-row.board{cursor:default;padding:6px 12px}
+.lv .lvflow-no{font:700 13px Quicksand,'Outfit',sans-serif;color:var(--muted);min-width:20px}
+.lv .lvflow-text{font:700 16px Quicksand,'Outfit',sans-serif;flex:1;min-width:160px;overflow-wrap:anywhere}
+.lv .lvflow-sum{font-size:13px;color:var(--muted);flex-basis:100%;padding-left:30px}
+.lv .lvflow-body{padding:0 12px 12px 42px}
+`
+
 function iyelik(n: number): string {
   if (n === 0) return '’ı'
   const u = n % 10
@@ -106,9 +120,15 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
   }
 
   const [tab, setTab] = useState<'ders' | 'tahta'>('tahta')
+  useEffect(() => { tabRef.current = tab; if (tab === 'ders') setUnseen(0) }, [tab])
   const [filter, setFilter] = useState<string | null>(null)
   const [onlyAttn, setOnlyAttn] = useState(false)
-  const [drawer, setDrawer] = useState<string | null>(null)
+  const [drawer, setDrawer] = useState<{ qid: string; sid: string } | null>(null)
+  // Ders akışında açılıp kapanan eski sorular (soru kimliği -> açık mı)
+  const [openFlow, setOpenFlow] = useState<Record<string, boolean>>({})
+  // Tahta sekmesindeyken gelen ve henüz görülmemiş cevap sayısı (sadece öğretmen görür)
+  const [unseen, setUnseen] = useState(0)
+  const tabRef = useRef<'ders' | 'tahta'>('tahta')
   const [noteDraft, setNoteDraft] = useState('')
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkDraft, setBulkDraft] = useState('')
@@ -161,6 +181,7 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
     S.attended.add(row.student_id)
     if (fromLoad) return
     S.log.answers++
+    if (tabRef.current !== 'ders') setUnseen(n => n + 1)
     // Yeni deneme gelince senin önceki kararın sıfırlanır; iki üst üste yanlışta birebir destek.
     const v = verdictOf(row.question_id, row.student_id)
     const prev = list.length >= 2 ? list[list.length - 2].auto : null
@@ -391,8 +412,8 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
     sendFeedback(sids, 'note', t, presetId)
     say(sids.length > 1 ? `Not ${sids.length} öğrenciye gönderildi.` : 'Not gönderildi.')
   }
-  async function decide(sid: string, k: 'dogru' | 'yakin' | 'yanlis') {
-    const q = cur()
+  async function decide(qid: string, sid: string, k: 'dogru' | 'yakin' | 'yanlis') {
+    const q = S.questions.find(x => x.id === qid)
     if (!q || !attemptsOf(q.id, sid).length) return
     const v = { ...verdictOf(q.id, sid), teacher_status: k }
     S.verdicts.set(k2(q.id, sid), v)
@@ -466,6 +487,7 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
       {demo && <span className="demo-tag">Deneme modu: 20 sahte öğrenci</span>}
       <span className="grow" />
       <button className="btn sm" onClick={() => { if (klass.meet_url) window.open(klass.meet_url, '_blank', 'noopener'); else say('Sınıf ayarlarına Meet bağlantısı ekle.') }}>Meet’i aç</button>
+      <button className="btn sm" onClick={onExit} title={demo ? 'Deneme kapanır, hiçbir şey kaydedilmez.' : 'Ders açık kalır; ana ekrandaki “Devam et” ile geri dönersin.'}>{demo ? 'Denemeden çık' : 'Ana ekrana dön'}</button>
       <button className="btn sm" onClick={endLesson}>Dersi bitir</button>
       <span className="att">Yoklama: {attendedCount} / {S.students.length} derste.{absent.length ? ` Katılmayan: ${absent.join(', ')}.` : ''}</span>
     </div>
@@ -473,7 +495,7 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
 
   const tabs = (
     <div className="tabs" role="tablist">
-      <button role="tab" aria-selected={tab === 'ders'} onClick={() => { setTab('ders'); setDrawer(null) }}>Ders</button>
+      <button role="tab" aria-selected={tab === 'ders'} onClick={() => { setTab('ders'); setDrawer(null) }}>Ders{unseen > 0 && tab !== 'ders' && <span className="lvnew">{unseen} yeni cevap</span>}</button>
       <button role="tab" aria-selected={tab === 'tahta'} onClick={() => { setTab('tahta'); setDrawer(null) }}>Tahta</button>
     </div>
   )
@@ -509,8 +531,58 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
         <Legend />
       </div>
     )
-    if (q.kind === 'board') return <>{strip}{board}</>
-    return <>{strip}{board}{summary(q)}{bulkOpen && bulkBox(q)}{grid(q)}</>
+    if (q.kind === 'board') return <>{strip}{board}{flow(q)}</>
+    return <>{strip}{board}{summary(q)}{bulkOpen && bulkBox(q)}{grid(q)}{flow(q)}</>
+  }
+
+  // ── Ders akışı: bu derste daha önce sorulanlar (en yenisi üstte), kartlarıyla ──
+  // Tahtaya yeni bir şey yazılınca önceki sorunun cevapları kaybolmaz; burada durur.
+  function flow(current: Q) {
+    const past = S.questions.filter(x => x.id !== current.id).slice().sort((a, b) => b.seq - a.seq)
+    if (!past.length) return null
+    const lastQuestion = past.find(x => x.kind === 'question')
+    const isOpen = (x: Q) => openFlow[x.id] ?? (current.kind === 'board' && lastQuestion?.id === x.id)
+    return (
+      <div className="lvflow">
+        <h3>Bu dersin akışı</h3>
+        {past.map(x => {
+          const no = S.questions.findIndex(y => y.id === x.id) + 1
+          if (x.kind === 'board') return (
+            <div key={x.id} className="lvflow-row board"><span className="lvflow-no">{no}</span><span className="muted small">Tahta:</span> <span className="lvflow-text">{nice(tokensToText(x.board))}</span></div>
+          )
+          const c = counts(x)
+          const op = isOpen(x)
+          const att = S.students.filter(st => S.attended.has(st.id)).length
+          return (
+            <div key={x.id} className="lvflow-item">
+              <button type="button" className="lvflow-row" aria-expanded={op} onClick={() => setOpenFlow(m => ({ ...m, [x.id]: !op }))}>
+                <span className="lvflow-no">{no}</span>
+                <span className="lvflow-text">{nice(tokensToText(x.board))}</span>
+                <span className="lvflow-sum">
+                  {att} kişiden {c.answered}{iyelik(c.answered)} cevapladı
+                  {hasExpected(x) ? ` · ${c.dogru} doğru · ${c.yakin} yakın · ${c.yanlis} yanlış` : ''}
+                  {c.notr ? ` · ${c.notr} işaretlenecek` : ''}
+                  {c.destek ? ` · ${c.destek} birebir destek` : ''}
+                </span>
+                <span className="muted small">{op ? 'Kapat' : 'Kartlar'}</span>
+              </button>
+              {op && (
+                <div className="lvflow-body">
+                  {x.task && <p className="task" style={{ fontSize: 15 }}>{x.task}</p>}
+                  {hasExpected(x) ? <p className="expected" style={{ marginTop: 4 }}>Beklenen cevap: <b>{nice(splitAccepted(x.expected).join(' / '))}</b></p>
+                    : <p className="expected" style={{ marginTop: 4 }}>Açık uçlu soru: kararı sen verirsin.</p>}
+                  {gridAll(x)}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+  function gridAll(x: Q) {
+    const list = S.students.slice().sort((a, b) => prio(x, a.id) - prio(x, b.id) || a.name.localeCompare(b.name, 'tr'))
+    return <div className="grid" style={{ marginTop: 10 }}>{list.map(st => card(x, st))}</div>
   }
 
   function counts(q: Q) {
@@ -622,7 +694,7 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
     const v = verdictOf(q.id, s.id)
     const notes = notesOf(q.id, s.id).length
     return (
-      <button key={s.id} className={'card st-' + st} onClick={() => { setDrawer(s.id); setNoteDraft('') }}>
+      <button key={s.id} className={'card st-' + st} onClick={() => { setDrawer({ qid: q.id, sid: s.id }); setNoteDraft('') }}>
         <div className="c-top"><span className="c-name">{s.name}</span>{conn(s.id)}</div>
         <div className="c-tags">
           <span className="chip">{v.teacher_status && last ? LABEL[st] + ' (senin kararın)' : LABEL[st]}</span>
@@ -638,9 +710,12 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
     )
   }
   function drawerView() {
-    if (!drawer || !q || tab !== 'ders') return null
-    const s = S.students.find(x => x.id === drawer)
-    if (!s) return null
+    if (!drawer || tab !== 'ders') return null
+    const q = S.questions.find(x => x.id === drawer.qid)
+    const s = S.students.find(x => x.id === drawer.sid)
+    if (!q || !s) return null
+    // Not ve doğru işaretini öğrenci sadece yayındaki soruda görür.
+    const live = q.id === S.currentId
     const st = statusOf(q, s.id)
     const a = attemptsOf(q.id, s.id)
     const has = a.length > 0
@@ -652,6 +727,7 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
         <div className="scrim" onClick={() => setDrawer(null)} />
         <aside className="drawer" role="dialog" aria-modal="true" aria-label={s.name}>
           <div className="d-head"><h2>{s.name}</h2>{conn(s.id)}<button className="btn sm" autoFocus onClick={() => setDrawer(null)}>Kapat</button></div>
+          <p className="small muted" style={{ margin: '6px 0 0' }}>{S.questions.findIndex(y => y.id === q.id) + 1}. {nice(tokensToText(q.board))}{live ? '' : ' (yayında değil)'}</p>
           {v.one_on_one && <p className="small" style={{ margin: '8px 0 0' }}><span className="tag destek">Birebir destek</span> Bu soruda üst üste iki kez yanlış cevap verdi.</p>}
           <section><h3>Cevapları</h3>
             {has ? a.map(x => (
@@ -664,17 +740,18 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
           <section><h3>Karar</h3>
             <div className="seg" role="group" aria-label="Karar">
               {(['dogru', 'yakin', 'yanlis'] as const).map(k => (
-                <button key={k} disabled={!has} aria-pressed={has && st === k} onClick={() => decide(s.id, k)}>{LABEL[k]}</button>
+                <button key={k} disabled={!has} aria-pressed={has && st === k} onClick={() => decide(q.id, s.id, k)}>{LABEL[k]}</button>
               ))}
             </div>
             <div style={{ marginTop: 10 }}>
-              {st === 'dogru'
+              {!live ? <p className="hint">Kararın rapora yazılır. Doğru işareti ve not sadece yayındaki soruda öğrenciye gider.</p>
+                : st === 'dogru'
                 ? (ok ? <button className="btn" disabled>✓ Doğru işareti gönderildi</button>
                   : <button className="btn primary" onClick={() => { sendFeedback([s.id], 'confirm', ''); say('Doğru işareti gönderildi.') }}>Öğrenciye doğru işareti gönder</button>)
                 : <p className="hint">Doğru işareti sadece “doğru” kararındaki cevaplara gönderilebilir.</p>}
             </div>
           </section>
-          <section><h3>Not gönder</h3>
+          {live && <section><h3>Not gönder</h3>
             {presetChips(p => sendNote([s.id], p.text, p.id))}
             <div className="row">
               <input type="text" value={noteDraft} onChange={e => setNoteDraft(e.target.value)} placeholder="Kendi notunu yaz" maxLength={300}
@@ -682,7 +759,7 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
               <button className="btn primary" onClick={() => { if (noteDraft.trim()) { sendNote([s.id], noteDraft); setNoteDraft('') } }}>Gönder</button>
             </div>
             <p className="hint">Notta doğru cevabı verme; neye bakacağını söyle. Öğrenci notu görünce cevabını düzeltip yeniden gönderebilir.</p>
-          </section>
+          </section>}
           <section><h3>Gönderilen notlar</h3>
             {notes.length ? notes.map(n => <div key={n.id} className="sent">{n.text}</div>) : <p className="muted small">Bu soruda henüz not yok.</p>}
           </section>
@@ -698,6 +775,12 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
     const nxt = nextPlanItem()
     return (
       <>
+        {unseen > 0 && (
+          <div className="lvnotice" role="status">
+            <span><b>{unseen}</b> yeni cevap geldi.</span>
+            <button className="btn sm primary" onClick={() => setTab('ders')}>Ders sekmesinde gör</button>
+          </div>
+        )}
         <div className="box">
           <label className="f" htmlFor="lv-text" style={{ marginTop: 0 }}>Cümle</label>
           <input id="lv-text" type="text" value={edText} disabled={!!linkedQ} placeholder="Örnek: My brother eats an apple every morning."
@@ -778,6 +861,7 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
 
   return (
     <div className="panel">
+      <style>{PANEL_CSS}</style>
       {top}
       {tabs}
       {tab === 'ders' ? dersTab() : tahtaTab()}
