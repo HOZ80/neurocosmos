@@ -5,7 +5,11 @@ import SceneView, { parseSceneRows, parseCharacterRows, FALLBACK_SCENE_DATA } fr
 import type { Scene, SceneCharacter } from './SceneView'
 import { parseMemoryRows, parseMemoryStudents, UnitMemorySection } from './memoryShared'
 import type { MemoryItem, MemoryStudent } from './memoryShared'
-import { useUnutmama, UnutmamaView, UnutmamaStrip, UNUTMAMA_STUDENT_NAME } from './UnutmamaView'
+import { useUnutmama, UnutmamaView, UnutmamaStrip, UnutmamaChildCard, UNUTMAMA_STUDENT_NAME } from './UnutmamaView'
+import {
+  loadDrillProgressLocal, saveDrillProgressLocal, loadDrillTopicsLocal, saveDrillTopicsLocal,
+  migrateLegacyDrill, syncDrillUnit, flushDrillPending,
+} from './memoryStore'
 import { restoreSession, getCachedAccount, signOut, canUseArea } from './auth'
 import type { Account, AreaId } from './auth'
 import LoginScreen from './LoginScreen'
@@ -3068,8 +3072,9 @@ const SCENE_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2P
 const MEMORY_STUDENTS_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSoeVcC7FNlHGg-KUB7qDtQDuNmcnVv-D_6wXi1DHiaUjBcC5IBJTmjAYss2ZdyRbH4gZX1noopNBfJ/pub?gid=1004484577&single=true&output=csv'
 const EMPTY_MEMORY_ITEMS: MemoryItem[] = []
 
-// UNUTMAMA kartları (Google Sheets → Web'de yayınla → CSV). Sadece Owner için okunur.
-const UNUTMAMA_CARDS_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vT2iIiqRiYKYBagNxc1w_cc29wrCVlcaEjvLWze1MYNcBAUlNI54jlwAOaU7PTvoKZaKhMoODeb21Ws/pub?output=csv'
+// UNUTMAMA kartları artık veritabanında (memoryStore.ts; öğretmen ekranı:
+// Öğrencileri yönet > Unutmama kartları). "Neurocosmos - My Memory Cards"
+// tablosu arşivdir; site onu okumaz.
 
 const SCENE_CHARACTERS_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRaUcai7WmP71DGXSTRXK95Tw1TLG0LlPvwM6Om7B5jq3wZPEdk3HimYd0hMTTgSw/pub?gid=943347820&single=true&output=csv'
 
@@ -3780,12 +3785,14 @@ function pickClosestAccepted(accepted: string[], given: string): string {
 
 type DrillQueueItem = { stageKey: keyof DrillTopic['stages']; stageName: string; cue: string; expected: string | null; resolvedModel?: string }
 
-function drillProgressKey(unitId: number) { return `nc_drill_progress_u${unitId}` }
+// İlerleme veritabanında (memoryStore.ts); burada tarayıcıdaki hesap kopyası okunur/yazılır,
+// değişenler veritabanına gönderilir. Eski (cihaz başına) kayıt bir kereye mahsus
+// hesaba aktarılır ve yedek olarak tarayıcıda kalır.
 function loadDrillProgress(unitId: number): Record<string, DrillProgress> {
-  try { return JSON.parse(localStorage.getItem(drillProgressKey(unitId)) || '{}') } catch { return {} }
+  return loadDrillProgressLocal(String(unitId))
 }
 function saveDrillProgress(unitId: number, data: Record<string, DrillProgress>) {
-  try { localStorage.setItem(drillProgressKey(unitId), JSON.stringify(data)) } catch {}
+  saveDrillProgressLocal(String(unitId), data)
 }
 
 // AI kullanımı için günlük giriş kotası: profil + o günün tarihine göre,
@@ -3802,12 +3809,13 @@ function incrementAiQuotaUsed(profile: string) {
   try { localStorage.setItem(aiQuotaKey(profile), String(loadAiQuotaUsed(profile) + 1)) } catch {}
 }
 
-function drillTopicsKey(unitId: number) { return `nc_drill_topics_u${unitId}` }
+// Elle eklenen konular da veritabanında (ünite başına liste). sync=false: yalnızca
+// bu tarayıcıda (ilk açılıştaki örnek konu başka cihazdaki gerçek listeyi ezmesin).
 function loadDrillTopics(unitId: number): DrillTopic[] {
-  try { return JSON.parse(localStorage.getItem(drillTopicsKey(unitId)) || '[]') } catch { return [] }
+  return loadDrillTopicsLocal(String(unitId)) as DrillTopic[]
 }
-function saveDrillTopicsToStorage(unitId: number, topics: DrillTopic[]) {
-  try { localStorage.setItem(drillTopicsKey(unitId), JSON.stringify(topics)) } catch {}
+function saveDrillTopicsToStorage(unitId: number, topics: DrillTopic[], sync = true) {
+  saveDrillTopicsLocal(String(unitId), topics, sync)
 }
 
 // Bir ünite için Drill konularının hangi kaynaktan geleceğini belirler.
@@ -3833,7 +3841,7 @@ function computeInitialDrillTopics(unitId: number, sheetTopics?: DrillTopic[]): 
     question_prompts: 'What did you do yesterday?|Tell me about somewhere you went last weekend.',
     notes: 'Örnek konu — silip kendi konularını ekleyebilirsin.',
   }])
-  saveDrillTopicsToStorage(unitId, seeded)
+  saveDrillTopicsToStorage(unitId, seeded, false)
   return seeded
 }
 
@@ -3893,6 +3901,33 @@ function DrillView({ unit, onBack, sheetTopics, entryProfile }: { unit: Unit; on
     setAiResult(null)
     setAiWrongCount(0)
     sheetTopicsAppliedRef.current = false
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drillUnitKey])
+
+  // Veritabanıyla eşitleme: bu tarayıcıdaki eski Drill kaydı bir kereye mahsus
+  // hesaba aktarılır, sonra ünitenin kayıtları okunur (her konuda en son
+  // çalışılan geçerli). Sheets'ten konu gelen ünitede konu listesine dokunulmaz.
+  const sheetTopicsRef = useRef(sheetTopics)
+  sheetTopicsRef.current = sheetTopics
+  useEffect(() => {
+    let cancelled = false
+    migrateLegacyDrill()
+      .then(() => syncDrillUnit(String(unit.id)))
+      .then(r => {
+        if (cancelled || !r) return
+        setProgress(r.progress)
+        const fromSheet = sheetTopicsRef.current && sheetTopicsRef.current.length > 0
+        if (!fromSheet && r.topics && r.topics.length) setTopics(r.topics as DrillTopic[])
+      })
+      .catch(() => { /* tarayıcıdaki kopyayla devam edilir */ })
+    const wake = () => { if (document.visibilityState === 'visible') void flushDrillPending() }
+    document.addEventListener('visibilitychange', wake)
+    window.addEventListener('online', wake)
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', wake)
+      window.removeEventListener('online', wake)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drillUnitKey])
 
@@ -4561,12 +4596,34 @@ function csvHeader(text: string): string[] {
   return first.split(',').map(c => c.replace(/^"|"$/g, '').trim())
 }
 
-function ChildDashboard({ childName, unitTitles, onExit }: { childName: string; unitTitles: Record<string, string>; onExit: () => void }) {
+function ChildDashboard({ childName, unitTitles, onExit, accountId, memoryEnabled }: { childName: string; unitTitles: Record<string, string>; onExit: () => void; accountId: string; memoryEnabled: boolean }) {
   // My Brain: öğretmenin My Brain tablosundan (ChildBrain.tsx)
   const brain = useChildBrain(() => loadMemoryByName(childName))
   const [showBrain, setShowBrain] = useState(false)
+  // Memory (Unutmama): yalnızca çocuğa atanmış kart varsa görünür.
+  // Öğretmen paneli önizlerken kapalı (öğretmenin kendi kartları burada görünmesin).
+  const unut = useUnutmama(accountId, memoryEnabled)
+  const [showMemory, setShowMemory] = useState(false)
+  const panelScroll = useRef(0)
   if (showBrain) {
     return <ChildBrainView childName={childName} data={brain.data} unitTitles={unitTitles} onBack={() => { setShowBrain(false); window.scrollTo(0, 0) }} />
+  }
+  if (showMemory) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#F8FAFC', padding: '18px 12px 40px', fontFamily: "'Inter', system-ui, sans-serif" }}>
+        <div style={{ maxWidth: '620px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <button onClick={() => { setShowMemory(false); requestAnimationFrame(() => window.scrollTo(0, panelScroll.current)) }} style={{
+            alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px',
+            background: '#FFFFFF', border: '1px solid rgba(15,23,42,0.12)', borderRadius: '10px',
+            padding: '8px 14px', fontSize: '14px', fontWeight: 600, color: '#0F172A', cursor: 'pointer',
+          }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" /></svg>
+            Panele dön
+          </button>
+          <UnutmamaView unut={unut} />
+        </div>
+      </div>
+    )
   }
   return (
     <div style={{
@@ -4595,6 +4652,11 @@ function ChildDashboard({ childName, unitTitles, onExit }: { childName: string; 
 
         {/* My Brain */}
         <ChildBrainCard data={brain.data} onOpen={() => { brain.reload(); setShowBrain(true); window.scrollTo(0, 0) }} />
+
+        {/* Memory (Unutmama) — yalnızca atanmış kart varsa */}
+        {memoryEnabled && unut.status === 'ok' && unut.cards.length > 0 && (
+          <UnutmamaChildCard unut={unut} onOpen={() => { panelScroll.current = window.scrollY; setShowMemory(true); window.scrollTo(0, 0) }} />
+        )}
 
         {/* Yeni */}
         <p style={{
@@ -5068,7 +5130,9 @@ export default function App() {
   const [memoryStudentName, setMemoryStudentName] = useState<string | null>(null)
   const [memoryLoad, setMemoryLoad] = useState<{ url: string; status: 'loading' | 'ok' | 'error'; items: MemoryItem[]; skipped: number; columns?: string[] } | null>(null)
   const memoryEnabled = entryProfile === 'A1' || entryProfile === 'A2' || entryProfile === 'owner'
-  const unut = useUnutmama(UNUTMAMA_CARDS_SHEET_CSV_URL, entryProfile === 'owner')
+  // Unutmama: Owner kendi kartlarını, yetişkin öğrenciler kendilerine atanmış kartları görür.
+  const studentUnut = !isTeacher && (entryProfile === 'A1' || entryProfile === 'A2')
+  const unut = useUnutmama(account?.id ?? null, entryProfile === 'owner' || studentUnut, isTeacher)
 
   useEffect(() => {
     if (!MEMORY_STUDENTS_SHEET_CSV_URL || !memoryEnabled || memoryStudents) return
@@ -5429,6 +5493,8 @@ export default function App() {
           childName={entryProfile === 'child_omur' ? 'Ömür' : 'Öztuğ'}
           unitTitles={memoryUnitTitles}
           onExit={handleExitToEntry}
+          accountId={account.id}
+          memoryEnabled={!isTeacher}
         />
         {liveBanner}
       </>
@@ -5577,7 +5643,7 @@ export default function App() {
             onSelectUnit={goUnit}
             onMemory={currentMemoryStudent ? goMemory : undefined}
             memoryCounts={memoryCounts}
-            unutmama={level === 'P' && entryProfile === 'owner' ? { status: unut.status, due: unut.dueCount, onClick: goUnutmama } : undefined}
+            unutmama={(level === 'P' && entryProfile === 'owner') || (studentUnut && unut.status === 'ok' && unut.cards.length > 0) ? { status: unut.status, due: unut.dueCount, onClick: goUnutmama } : undefined}
           />
         )}
         {view === 'unit' && selectedUnitLive && (
@@ -5632,7 +5698,7 @@ export default function App() {
             )}
           </div>
         )}
-        {view === 'unutmama' && entryProfile === 'owner' && (
+        {view === 'unutmama' && (entryProfile === 'owner' || studentUnut) && (
           <div className="anim-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <BackBtn onClick={goHome} label="Dashboard" />
             <UnutmamaView unut={unut} />
