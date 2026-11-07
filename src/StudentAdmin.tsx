@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { getAccessToken, normalizeLoginName } from './auth'
 import { sb, shortName } from './liveShared'
+
+// Unutmama kart bankası (yalnızca açılınca yüklenir)
+const MemoryCardsAdmin = lazy(() => import('./MemoryCardsAdmin'))
 
 // ─── Öğretmen paneli: Öğrenciler ──────────────────────────────────────────────
 // Öğrenci ekle, alan aç/kapat, şifre değiştir, pasife al / yeniden aç.
@@ -352,6 +355,8 @@ export default function StudentAdmin({ onClose }: { onClose: () => void }) {
   const [openId, setOpenId] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [showCards, setShowCards] = useState(false)
+  const listScroll = useRef(0)
 
   function load() {
     setLoadError(null)
@@ -361,8 +366,17 @@ export default function StudentAdmin({ onClose }: { onClose: () => void }) {
   }
   useEffect(load, [])
 
+  function openCards() { listScroll.current = window.scrollY; setShowCards(true); window.scrollTo(0, 0) }
+  function closeCards() { setShowCards(false); requestAnimationFrame(() => window.scrollTo(0, listScroll.current)) }
+
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--background)' }}>
+    <>
+    {showCards && (
+      <Suspense fallback={<p style={{ padding: '24px', color: 'var(--muted-foreground)', fontSize: '14px' }}>Yükleniyor…</p>}>
+        <MemoryCardsAdmin onBack={closeCards} />
+      </Suspense>
+    )}
+    <div style={{ minHeight: '100vh', background: 'var(--background)', display: showCards ? 'none' : undefined }}>
       <div style={{ maxWidth: '560px', margin: '0 auto', padding: '20px 16px 48px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '20px' }}>
           <button onClick={onClose} style={{ ...quietBtn, padding: '9px 14px' }}>← Geri</button>
@@ -376,6 +390,25 @@ export default function StudentAdmin({ onClose }: { onClose: () => void }) {
             <button onClick={() => setMessage(null)} aria-label="Kapat" style={{ background: 'none', border: 'none', color: '#065F46', fontSize: '18px', cursor: 'pointer', padding: 0, lineHeight: 1 }}>×</button>
           </div>
         )}
+
+        <button onClick={openCards} style={{
+          ...card, width: '100%', display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px',
+          marginBottom: '16px', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+        }}>
+          <span aria-hidden style={{
+            width: '40px', height: '40px', borderRadius: '10px', flexShrink: 0, display: 'grid', placeItems: 'center',
+            background: 'radial-gradient(circle at 50% 40%, #3B2F8F 0%, #1A1838 75%)',
+          }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#E9E4FF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="7" y="4" width="13" height="16" rx="2.5" /><path d="M4 7.5v10A2.5 2.5 0 0 0 6.5 20" /><path d="M11 10.5h5M11 14h3" />
+            </svg>
+          </span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: 'var(--foreground)' }}>Unutmama kartları</span>
+            <span style={{ display: 'block', fontSize: '13px', color: 'var(--muted-foreground)', marginTop: '2px' }}>Kartları düzenle, öğrencilere ata, kim hangi kartta zorlanıyor gör</span>
+          </span>
+          <span aria-hidden style={{ color: 'var(--muted-foreground)', fontSize: '18px' }}>›</span>
+        </button>
 
         {adding ? (
           <div style={{ marginBottom: '16px' }}>
@@ -425,5 +458,6 @@ export default function StudentAdmin({ onClose }: { onClose: () => void }) {
         )}
       </div>
     </div>
+    </>
   )
 }
