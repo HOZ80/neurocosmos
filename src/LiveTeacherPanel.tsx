@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { OralTab, OralCounter, ORAL_CSS, makeEngine, makeSync, loadEngine, saveEngine, dropEngine, oralClose, planToQs } from './LiveOral'
+import type { OralEngine } from './LiveOral'
 import type { AutoStatus, BoardToken, Pen } from './liveShared'
 import { sb, newId, autoCheck, splitAccepted, retokenize, tokensToText, cleanBoard, shortName, secondsLabel } from './liveShared'
 import { BoardSentence, Legend, PenBar, PaintableTokens, nice } from './LiveBoard'
@@ -119,7 +121,12 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
     say('Kaydedilemedi. İnternet bağlantını kontrol et.')
   }
 
-  const [tab, setTab] = useState<'ders' | 'tahta'>('tahta')
+  const [tab, setTab] = useState<'ders' | 'tahta' | 'soz'>('tahta')
+  // Söz sırası: motor panelde durur (Ders kartlarındaki sayaç da onu okur); bu cihazda saklanır.
+  const oral = useRef<OralEngine>((!demo && loadEngine(sessionId)) || makeEngine())
+  const oralSync = useRef(makeSync(sessionId, demo, e => fail(e)))
+  const kindSet = useRef(false)
+  function oralChanged() { if (!demo) saveEngine(sessionId, oral.current); render() }
   useEffect(() => { tabRef.current = tab; if (tab === 'ders') setUnseen(0) }, [tab])
   const [filter, setFilter] = useState<string | null>(null)
   const [onlyAttn, setOnlyAttn] = useState(false)
@@ -128,7 +135,7 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
   const [openFlow, setOpenFlow] = useState<Record<string, boolean>>({})
   // Tahta sekmesindeyken gelen ve henüz görülmemiş cevap sayısı (sadece öğretmen görür)
   const [unseen, setUnseen] = useState(0)
-  const tabRef = useRef<'ders' | 'tahta'>('tahta')
+  const tabRef = useRef<'ders' | 'tahta' | 'soz'>('tahta')
   const [noteDraft, setNoteDraft] = useState('')
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkDraft, setBulkDraft] = useState('')
@@ -376,6 +383,8 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
     const c = cur()
     if (c) await closeQuestion(c)
     setDrawer(null)
+    if (oral.current.started) oralClose(oral.current, oralSync.current) // açık kalan sözü kapatır
+    if (!demo) dropEngine(S.sessionId)
     setEndModal(true)
     if (demo) return
     const r = await sb.from('live_sessions').update({ status: 'ended', ended_at: new Date().toISOString() }).eq('id', S.sessionId)
@@ -497,8 +506,26 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
     <div className="tabs" role="tablist">
       <button role="tab" aria-selected={tab === 'ders'} onClick={() => { setTab('ders'); setDrawer(null) }}>Ders{unseen > 0 && tab !== 'ders' && <span className="lvnew">{unseen} yeni cevap</span>}</button>
       <button role="tab" aria-selected={tab === 'tahta'} onClick={() => { setTab('tahta'); setDrawer(null) }}>Tahta</button>
+      <button role="tab" aria-selected={tab === 'soz'} onClick={() => { setTab('soz'); setDrawer(null) }}>Söz sırası</button>
     </div>
   )
+
+  // ── Söz sırası sekmesi ──
+  function sozTab() {
+    const present = S.students.filter(s => S.attended.has(s.id)).map(s => s.id)
+    const names = new Map(S.students.map(s => [s.id, s.name] as [string, string]))
+    return (
+      <OralTab e={oral.current} sync={oralSync.current} nm={id => names.get(id) || 'Öğrenci'} present={present}
+        planQs={planToQs(planItems)} onChange={oralChanged}
+        onFirstStart={() => {
+          // Söz alınan derste ders türü "yazılı + sözlü" olur (rapordaki tür rozeti için).
+          if (demo || kindSet.current) return
+          kindSet.current = true
+          sb.from('live_sessions').update({ kind: 'both' }).eq('id', S.sessionId).eq('kind', 'written')
+            .then(({ error }) => { if (error) console.error('[soz-sirasi] ders türü', error) })
+        }} />
+    )
+  }
 
   // ── Ders sekmesi ──
   function dersTab() {
@@ -686,15 +713,18 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
       ? <span className="conn" title="Bağlı" aria-label="Bağlı"><i /></span>
       : <span className="conn off"><i />Bağlantı koptu</span>
   }
+  // Kart köşesindeki söz sayacı: bu derste söz sırası kullanıldıysa görünür (yalnızca yazılı derslerde kart değişmez).
+  const oralUsed = oral.current.started || Object.keys(oral.current.counts).length > 0
   function card(q: Q, s: PanelStudent) {
     const st = statusOf(q, s.id)
-    if (st === 'yok') return <div key={s.id} className="card st-yok"><div className="c-top"><span className="c-name">{s.name}</span></div><div className="c-tags"><span className="chip">Derse katılmadı</span></div></div>
+    if (st === 'yok') return <div key={s.id} className="card st-yok">{oral.current.counts[s.id] && <span className="oz-cardcorner"><OralCounter e={oral.current} id={s.id} /></span>}<div className="c-top"><span className="c-name">{s.name}</span></div><div className="c-tags"><span className="chip">Derse katılmadı</span></div></div>
     const a = attemptsOf(q.id, s.id)
     const last = a[a.length - 1]
     const v = verdictOf(q.id, s.id)
     const notes = notesOf(q.id, s.id).length
     return (
       <button key={s.id} className={'card st-' + st} onClick={() => { setDrawer({ qid: q.id, sid: s.id }); setNoteDraft('') }}>
+        {oralUsed && <span className="oz-cardcorner"><OralCounter e={oral.current} id={s.id} /></span>}
         <div className="c-top"><span className="c-name">{s.name}</span>{conn(s.id)}</div>
         <div className="c-tags">
           <span className="chip">{v.teacher_status && last ? LABEL[st] + ' (senin kararın)' : LABEL[st]}</span>
@@ -862,9 +892,10 @@ export default function LiveTeacherPanel({ demo, sessionId, klass, students, pla
   return (
     <div className="panel">
       <style>{PANEL_CSS}</style>
+      <style>{ORAL_CSS}</style>
       {top}
       {tabs}
-      {tab === 'ders' ? dersTab() : tahtaTab()}
+      {tab === 'ders' ? dersTab() : tab === 'soz' ? sozTab() : tahtaTab()}
       {drawerView()}
       {endView()}
       {toast && <div className="toast" role="status">{toast}</div>}

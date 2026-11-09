@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { signIn, AuthError, type Account } from './auth'
+import InstallButton from './InstallButton'
 
 // ─── Giriş ekranı ──────────────────────────────────────────────────────────────
 // Giriş adı + şifre. Bir kez girildikten sonra telefon hatırlar; öğrenci
@@ -42,8 +43,11 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (a: Account) =
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', padding: '32px 20px', background: dark.bg,
+      justifyContent: 'center', padding: '32px 20px', background: dark.bg, position: 'relative',
     }}>
+      <div style={{ position: 'absolute', top: 'calc(14px + env(safe-area-inset-top, 0px))', right: '14px' }}>
+        <InstallButton variant="round" bg={dark.accent} fg="#FFFFFF" autoOpenFirstVisit />
+      </div>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&display=swap');
         .nc-login-input:focus { border-color: ${dark.accent} !important; box-shadow: 0 0 0 3px ${dark.accent}44; }
         .nc-login-btn:focus-visible { outline: 3px solid ${dark.spark}; outline-offset: 2px; }`}</style>

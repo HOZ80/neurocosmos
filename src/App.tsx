@@ -15,6 +15,7 @@ import {
 import { restoreSession, getCachedAccount, signOut, canUseArea } from './auth'
 import type { Account, AreaId } from './auth'
 import LoginScreen from './LoginScreen'
+import InstallButton from './InstallButton'
 import StudentAdmin from './StudentAdmin'
 import ChildReaderApp from './Reader'
 import { useChildBrain, ChildBrainCard, ChildBrainView } from './ChildBrain'
@@ -506,69 +507,23 @@ function parseSRT(text: string): DictationSegment[] {
   return result
 }
 
-function pickerLabelStyle(accentColor: string): React.CSSProperties {
-  return {
-    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-    padding: '16px', borderRadius: '12px', border: `1.5px dashed ${accentColor}66`,
-    background: `${accentColor}0d`, color: accentColor, fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+// Cümle sonunu hassas yakalar: timeupdate saniyede yalnızca ~4 kez geldiği için ses
+// bir sonraki cümlenin ilk hecesine taşabiliyordu. Bu izleyici her ekran karesinde
+// (saniyede ~60 kez) bakar; sekme arka plandayken timeupdate yedek olarak çalışır.
+// isCurrent false dönerse (başka cümleye geçildi) sessizce kendini kapatır.
+function watchSegmentEnd(audio: HTMLMediaElement, end: number, isCurrent: () => boolean, onReached: () => void): () => void {
+  let raf = 0
+  let stopped = false
+  const cleanup = () => { stopped = true; cancelAnimationFrame(raf); audio.removeEventListener('timeupdate', check) }
+  function check() {
+    if (stopped) return
+    if (!isCurrent()) { cleanup(); return }
+    if (audio.currentTime >= end) { cleanup(); onReached() }
   }
-}
-
-// Lets the personal (P) area pick any audio + .srt file on the spot, instead
-// of using content baked into the unit ahead of time. accept="*/*" on the srt
-// input is deliberate — on mobile, a tighter accept filter can hide .srt
-// files picked from Google Drive since their reported MIME type varies.
-function LocalSourcePicker({ accentColor, onLoaded }: {
-  accentColor: string
-  onLoaded: (audioUrl: string, segments: DictationSegment[]) => void
-}) {
-  const [audioName, setAudioName] = useState<string | null>(null)
-  const [srtName, setSrtName] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const audioUrlRef = useRef<string | null>(null)
-  const segmentsRef = useRef<DictationSegment[] | null>(null)
-
-  function tryReveal() {
-    if (audioUrlRef.current && segmentsRef.current) onLoaded(audioUrlRef.current, segmentsRef.current)
-  }
-
-  function handleAudioFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    audioUrlRef.current = URL.createObjectURL(file)
-    setAudioName(file.name)
-    tryReveal()
-  }
-
-  function handleSrtFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      const parsed = parseSRT(String(reader.result))
-      if (parsed.length === 0) { setError('Altyazı okunamadı, formatı kontrol et.'); return }
-      setError(null)
-      segmentsRef.current = parsed
-      setSrtName(file.name)
-      tryReveal()
-    }
-    reader.readAsText(file)
-  }
-
-  return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      <p style={{ margin: '0 0 4px', fontSize: '13px', color: 'var(--muted-foreground)' }}>Kişisel alan — o an istediğin ses ve altyazı dosyasını seç.</p>
-      <label style={pickerLabelStyle(accentColor)}>
-        <span>{audioName ? `✓ ${audioName}` : '🎧 Ses dosyası seç'}</span>
-        <input type="file" accept="audio/*" onChange={handleAudioFile} style={{ display: 'none' }} />
-      </label>
-      <label style={pickerLabelStyle(accentColor)}>
-        <span>{srtName ? `✓ ${srtName}` : '📄 Altyazı (.srt) dosyası seç'}</span>
-        <input type="file" accept="*/*" onChange={handleSrtFile} style={{ display: 'none' }} />
-      </label>
-      {error && <p style={{ margin: 0, fontSize: '12px', color: '#DC2626' }}>{error}</p>}
-    </div>
-  )
+  const tick = () => { check(); if (!stopped) raf = requestAnimationFrame(tick) }
+  audio.addEventListener('timeupdate', check)
+  raf = requestAnimationFrame(tick)
+  return cleanup
 }
 
 // ─── MiniPlayer ───────────────────────────────────────────────────────────────
@@ -584,7 +539,10 @@ const MiniPlayer = forwardRef<MiniPlayerHandle, {
   showTranscript: boolean
   onTime?: (t: number) => void      // çalma ilerledikçe/sarıldıkça güncel saniyeyi bildirir (senkron altyazı için)
   onToggleTranscript?: () => void   // verilmezse (gösterilecek metin yoksa) düğme hiç çıkmaz
-}>(function MiniPlayer({ audioUrl, duration: fallbackDuration = 142, showTranscript, onToggleTranscript, onTime }, ref) {
+  // Dikte: verilirse oynatıcı yalnızca bu aralıkta çalışır. Oynat, ileri/geri ve çubuk
+  // hep bu cümlenin içinde kalır, ses cümle sonunda durur; süre ve çubuk cümleye göredir.
+  segment?: { start: number; end: number } | null
+}>(function MiniPlayer({ audioUrl, duration: fallbackDuration = 142, showTranscript, onToggleTranscript, onTime, segment }, ref) {
   const onTimeRef = useRef(onTime)
   onTimeRef.current = onTime
   const [playing, setPlaying] = useState(false)
@@ -594,13 +552,35 @@ const MiniPlayer = forwardRef<MiniPlayerHandle, {
   const ivRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const segmentEndRef = useRef<number | null>(null)
+  const seg = segment && segment.end > segment.start ? segment : null
+  const segRef = useRef(seg)
+  segRef.current = seg
+
+  // Çalarken cümle sonunu her ekran karesinde kontrol et (yalnızca bir sınır varken).
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audioUrl || !audio || !playing) return
+    let raf = 0
+    const tick = () => {
+      const end = segmentEndRef.current
+      if (end != null && audio.currentTime >= end) {
+        audio.pause()
+        segmentEndRef.current = null
+        return
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [playing, audioUrl])
 
   useImperativeHandle(ref, () => ({
     playSegment(start, end) {
       segmentEndRef.current = end
       const audio = audioRef.current
       if (audioUrl && audio) {
-        const seek = () => { audio.currentTime = start; audio.play() }
+        // Tarayıcı sesin kendiliğinden başlamasını engellerse hata vermesin; öğrenci oynata basar.
+        const seek = () => { audio.currentTime = start; audio.play().catch(() => {}) }
         if (audio.readyState >= 1) {
           seek()
         } else {
@@ -677,15 +657,36 @@ const MiniPlayer = forwardRef<MiniPlayerHandle, {
   }, [playing, speed, duration, audioUrl])
 
   function togglePlay() {
-    if (audioUrl && audioRef.current) {
-      if (playing) audioRef.current.pause()
-      else { segmentEndRef.current = null; audioRef.current.play() }
+    const audio = audioRef.current
+    if (audioUrl && audio) {
+      if (playing) { audio.pause(); return }
+      const sg = segRef.current
+      if (sg) {
+        // Cümlenin içinde duraklatıldıysa oradan devam; değilse (ya da sona geldiyse) cümle başından.
+        if (audio.currentTime < sg.start || audio.currentTime >= sg.end - 0.05) audio.currentTime = sg.start
+        segmentEndRef.current = sg.end
+      } else {
+        segmentEndRef.current = null
+      }
+      audio.play().catch(() => {})
     } else {
       setPlaying(p => !p)
     }
   }
 
+  // t: gösterilen süreye göre (cümle varsa cümlenin başından itibaren saniye).
   function seek(t: number) {
+    const sg = segRef.current
+    if (sg) {
+      const abs = Math.max(sg.start, Math.min(sg.end, sg.start + t))
+      if (audioUrl && audioRef.current) {
+        audioRef.current.currentTime = abs
+        segmentEndRef.current = sg.end
+      }
+      setElapsed(abs)
+      onTimeRef.current?.(abs)
+      return
+    }
     const clamped = Math.max(0, Math.min(duration, t))
     if (audioUrl && audioRef.current) {
       segmentEndRef.current = null
@@ -695,7 +696,11 @@ const MiniPlayer = forwardRef<MiniPlayerHandle, {
     onTimeRef.current?.(clamped)
   }
 
-  const pct = (elapsed / duration) * 100
+  // Cümle sınırı varsa ekrandaki süre, çubuk ve atlama adımları cümleye göredir.
+  const shownDuration = seg ? seg.end - seg.start : duration
+  const shownElapsed = seg ? Math.max(0, Math.min(shownDuration, elapsed - seg.start)) : elapsed
+  const jump = seg ? 3 : 10
+  const pct = shownDuration > 0 ? (shownElapsed / shownDuration) * 100 : 0
 
   return (
     <div style={{
@@ -707,7 +712,7 @@ const MiniPlayer = forwardRef<MiniPlayerHandle, {
       {audioUrl && <audio ref={audioRef} src={audioUrl} preload="metadata" />}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         {/* Rewind */}
-        <button onClick={() => seek(elapsed - 10)} style={{ ...iconBtn }}>
+        <button onClick={() => seek(shownElapsed - jump)} title={seg ? '3 s back' : '10 s back'} style={{ ...iconBtn }}>
           <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6 8.5 6V6l-8.5 6z" /></svg>
         </button>
         {/* Play/Pause */}
@@ -727,7 +732,7 @@ const MiniPlayer = forwardRef<MiniPlayerHandle, {
             : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>}
         </button>
         {/* Forward */}
-        <button onClick={() => seek(elapsed + 10)} style={{ ...iconBtn }}>
+        <button onClick={() => seek(shownElapsed + jump)} title={seg ? '3 s forward' : '10 s forward'} style={{ ...iconBtn }}>
           <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z" /></svg>
         </button>
 
@@ -735,7 +740,7 @@ const MiniPlayer = forwardRef<MiniPlayerHandle, {
         <div style={{ flex: 1, cursor: 'pointer' }}
           onClick={e => {
             const r = e.currentTarget.getBoundingClientRect()
-            seek(((e.clientX - r.left) / r.width) * duration)
+            seek(((e.clientX - r.left) / r.width) * shownDuration)
           }}>
           <div style={{ height: '4px', background: 'var(--muted)', borderRadius: '4px', position: 'relative' }}>
             <div style={{ width: `${pct}%`, height: '100%', background: 'var(--primary)', borderRadius: '4px', position: 'relative', transition: 'width 0.3s linear' }}>
@@ -746,7 +751,7 @@ const MiniPlayer = forwardRef<MiniPlayerHandle, {
 
         {/* Time */}
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--muted-foreground)', flexShrink: 0 }}>
-          {fmt(elapsed)} / {fmt(duration)}
+          {fmt(shownElapsed)} / {fmt(shownDuration)}
         </span>
 
         {/* Speed */}
@@ -864,8 +869,11 @@ function EntryScreen({ onPickProfile, onPickOwner, canUse, greetingName, isTeach
   const screen = (
     <div style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', padding: '32px 20px', background: dark.bg,
+      justifyContent: 'center', padding: '32px 20px', background: dark.bg, position: 'relative',
     }}>
+      <div style={{ position: 'absolute', top: 'calc(14px + env(safe-area-inset-top, 0px))', right: '14px' }}>
+        <InstallButton variant="round" bg={dark.accent} fg="#FFFFFF" />
+      </div>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=IBM+Plex+Mono:wght@500&display=swap');`}</style>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '28px' }}>
@@ -1858,20 +1866,18 @@ function AudioView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   )
 }
 
+// Ünitelerin dikte ekranı: ses ve cümleler yalnızca Units tablosundan gelir (dosya seçme yok;
+// Private alanın kendi ekranı PrivateDictation.tsx'tedir).
 function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
-  const [pickedAudioUrl, setPickedAudioUrl] = useState<string | null>(null)
-  const [pickedSegments, setPickedSegments] = useState<DictationSegment[] | null>(null)
-  const needsPicker = !!unit.freeSourceSelect && (!pickedAudioUrl || !pickedSegments)
-  const activeAudioUrl = unit.freeSourceSelect ? (pickedAudioUrl ?? undefined) : unit.audioUrl
+  const activeAudioUrl = unit.audioUrl
 
   const segments = useMemo<DictationSegment[]>(() => {
-    if (unit.freeSourceSelect) return pickedSegments ?? []
     // Sheet'ten gelen ünite: yalnızca dictation_srt_url'den okunan cümleler (tek cümlelik yedek yok)
     if (unit.fromSheet) return unit.dictationSegments ?? []
     return (unit.dictationSegments && unit.dictationSegments.length > 0)
       ? unit.dictationSegments
       : [{ start: 0, end: 0, text: unit.dictationSentence }]
-  }, [unit.freeSourceSelect, unit.fromSheet, unit.dictationSegments, unit.dictationSentence, pickedSegments])
+  }, [unit.fromSheet, unit.dictationSegments, unit.dictationSentence])
 
   const [showTranscript, setShowTranscript] = useState(false)
   const [typed, setTyped] = useState('')
@@ -1883,10 +1889,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const [hintOnWrong, setHintOnWrong] = useState(true)
   const [fullOnWrong, setFullOnWrong] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
-  const [recording, setRecording] = useState(false)
-  const [recSec, setRecSec] = useState(0)
   const [pastListOpen, setPastListOpen] = useState(false)
-  const recRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const playerRef = useRef<MiniPlayerHandle>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -1894,6 +1897,17 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const currentSegment = done ? null : segments[curIndex]
   // Transcript ipucu: ünitede ayrı bir transcript yoksa altyazı dosyasındaki cümlelerden kendiliğinden oluşur
   const hintText = unit.transcript || segments.map(sg => sg.text).filter(Boolean).join(' ')
+
+  // Oynatıcının sınırı: o anki cümle. Hepsi bitince altyazıda konuşmanın başladığı yerden
+  // bittiği yere kadar — baştaki müzik/efekt hiçbir durumda çalınmaz.
+  const speechRange = useMemo(() => {
+    const timed = segments.filter(sg => sg.end > sg.start)
+    if (timed.length === 0) return null
+    return { start: Math.min(...timed.map(sg => sg.start)), end: Math.max(...timed.map(sg => sg.end)) }
+  }, [segments])
+  const playerSegment = currentSegment
+    ? (currentSegment.end > currentSegment.start ? { start: currentSegment.start, end: currentSegment.end } : null)
+    : speechRange
 
   // Reset practice state whenever a different unit's segments load in.
   useEffect(() => {
@@ -1907,9 +1921,6 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
     setTyped('')
     setChecked(false)
     setReadyForNext(false)
-    setRecording(false)
-    setRecSec(0)
-    if (recRef.current) clearInterval(recRef.current)
     if (currentSegment) {
       playerRef.current?.playSegment(currentSegment.start, currentSegment.end)
       textareaRef.current?.focus()
@@ -1949,17 +1960,6 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
 
   function replay() {
     if (currentSegment) playerRef.current?.playSegment(currentSegment.start, currentSegment.end)
-  }
-
-  function handleRecord() {
-    if (recording) {
-      if (recRef.current) clearInterval(recRef.current)
-      setRecording(false)
-    } else {
-      setRecSec(0)
-      setRecording(true)
-      recRef.current = setInterval(() => setRecSec(s => s + 1), 1000)
-    }
   }
 
   function handleReset() {
@@ -2020,13 +2020,6 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
         </div>
       )}
 
-      {needsPicker ? (
-        <LocalSourcePicker
-          accentColor={MODULE_META.dictation.color}
-          onLoaded={(audioUrl, segs) => { setPickedAudioUrl(audioUrl); setPickedSegments(segs) }}
-        />
-      ) : (
-        <>
       {/* Segment progress */}
       {!done && (
         <div>
@@ -2041,7 +2034,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
       )}
 
       {/* Player */}
-      <MiniPlayer ref={playerRef} audioUrl={activeAudioUrl} showTranscript={showTranscript} onToggleTranscript={hintText ? () => setShowTranscript(t => !t) : undefined} />
+      <MiniPlayer ref={playerRef} audioUrl={activeAudioUrl} segment={playerSegment} showTranscript={showTranscript} onToggleTranscript={hintText ? () => setShowTranscript(t => !t) : undefined} />
 
       {showTranscript && hintText && (
         <div className="anim-slide-down" style={{ background: '#FFFBEB', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '12px', padding: '16px 20px' }}>
@@ -2077,14 +2070,6 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
             cursor: 'pointer', transition: 'all 0.15s',
           }}>Restart</button>
 
-          {unit.freeSourceSelect && (
-            <button
-              onClick={() => { setPickedAudioUrl(null); setPickedSegments(null) }}
-              style={{ alignSelf: 'center', background: 'none', border: 'none', color: 'var(--muted-foreground)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
-            >
-              Farklı ses/altyazı seç
-            </button>
-          )}
         </div>
       ) : (
         <>
@@ -2099,7 +2084,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
               readOnly={checked && allCorrect}
               style={{
                 width: '100%', resize: 'vertical',
-                padding: '16px 56px 16px 18px',
+                padding: '16px 18px',
                 fontFamily: 'var(--font-body)', fontSize: '16px', lineHeight: 1.7,
                 color: 'var(--foreground)',
                 background: 'var(--card)',
@@ -2111,39 +2096,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
               onFocus={e => { if (!checked) e.target.style.borderColor = 'rgba(79,70,229,0.5)' }}
               onBlur={e => { if (!checked) e.target.style.borderColor = 'var(--border)' }}
             />
-            {/* Mic button */}
-            <div style={{ position: 'absolute', right: '14px', top: '14px' }}>
-              <div style={{ position: 'relative', display: 'inline-flex' }}>
-                {recording && <div className="mic-ring" style={{ position: 'absolute', inset: 0, borderRadius: '50%' }} />}
-                <button
-                  onClick={handleRecord}
-                  title={recording ? 'Stop recording' : 'Start voice shadowing'}
-                  style={{
-                    width: '36px', height: '36px', borderRadius: '50%', border: 'none',
-                    background: recording ? 'var(--error)' : 'rgba(79,70,229,0.1)',
-                    color: recording ? '#fff' : 'var(--primary)',
-                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    transition: 'all 0.2s', flexShrink: 0, position: 'relative', zIndex: 1,
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5zm6 6c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
-                  </svg>
-                </button>
-              </div>
-            </div>
           </div>
-
-          {recording && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ display: 'flex', gap: '3px', alignItems: 'center', height: '20px' }}>
-                {[1,2,3,4,5].map(i => (
-                  <div key={i} className="wave-bar" style={{ width: '4px', background: 'var(--error)', borderRadius: '3px', height: '4px', animationDuration: `${0.4 + i * 0.07}s` }} />
-                ))}
-              </div>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--error)' }}>Recording {fmt(recSec)}</span>
-            </div>
-          )}
 
           {/* Buttons row */}
           <div style={{ display: 'flex', gap: '10px' }}>
@@ -2291,16 +2244,6 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
             </div>
           )}
 
-          {unit.freeSourceSelect && (
-            <button
-              onClick={() => { setPickedAudioUrl(null); setPickedSegments(null) }}
-              style={{ alignSelf: 'center', background: 'none', border: 'none', color: 'var(--muted-foreground)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
-            >
-              Farklı ses/altyazı seç
-            </button>
-          )}
-        </>
-      )}
         </>
       )}
     </div>
@@ -2724,21 +2667,102 @@ const shadowingVideoStyle: React.CSSProperties = {
   boxShadow: '0 0 0 8px var(--background)',
 }
 
+// Ünitelerin shadowing ekranı — Private'daki koyu ekranın düzeni, açık renklerle.
+// Ses/video ve cümleler yalnızca Units tablosundan gelir (dosya seçme yok; Private alanın
+// kendi ekranı PrivateShadowing.tsx'tedir). Stiller yalnızca .ncsu-root içinde geçerlidir.
+const SHADOW_UNIT_STYLES = `
+.ncsu-root {
+  --ncsu-bg: #F1F5F9;
+  --ncsu-card: #FFFFFF;
+  --ncsu-accent: #6366F1;
+  --ncsu-accent-dark: #4F46E5;
+  --ncsu-accent-soft: #EEF2FF;
+  --ncsu-text: #0F172A;
+  --ncsu-dim: #64748B;
+  --ncsu-border: #E2E8F0;
+  background: var(--ncsu-bg);
+  color: var(--ncsu-text);
+  border-radius: 20px;
+  padding: 24px 16px 28px;
+  display: flex; flex-direction: column; align-items: center;
+}
+.ncsu-root * { box-sizing: border-box; }
+.ncsu-root .ncsu-head { text-align: center; margin-bottom: 18px; }
+.ncsu-root .ncsu-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; margin: 0; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.ncsu-root .ncsu-sub { font-size: 13px; color: var(--ncsu-dim); margin: 4px 0 0; }
+.ncsu-root .ncsu-reading { font-size: 12px; color: var(--ncsu-accent-dark); font-weight: 500; margin: 2px 0 0; }
+.ncsu-root .ncsu-player { width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 16px; }
+.ncsu-root .ncsu-progress { text-align: center; color: var(--ncsu-dim); font-size: 14px; }
+.ncsu-root .ncsu-sentence {
+  background: var(--ncsu-card); border: 1px solid var(--ncsu-border); border-radius: 16px;
+  padding: 32px 24px; min-height: 140px;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  font-size: 22px; line-height: 1.5; font-weight: 600; color: var(--ncsu-text);
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.07);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.ncsu-root .ncsu-sentence.playing { border-color: rgba(99, 102, 241, 0.45); box-shadow: 0 6px 28px rgba(99, 102, 241, 0.16); }
+.ncsu-root .ncsu-btn { cursor: pointer; font-family: inherit; -webkit-tap-highlight-color: transparent; }
+.ncsu-root .ncsu-btn:active:not(:disabled) { transform: scale(0.97); }
+.ncsu-root .ncsu-btn:focus-visible { outline: 2px solid var(--ncsu-accent); outline-offset: 2px; }
+.ncsu-root .ncsu-rowctl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.ncsu-root .ncsu-loop {
+  padding: 8px 14px; border-radius: 9px; border: 1px solid var(--ncsu-border);
+  background: var(--ncsu-card); color: var(--ncsu-text); font-size: 13px; font-weight: 600;
+  display: flex; align-items: center; gap: 6px;
+}
+.ncsu-root .ncsu-loop.on { background: var(--ncsu-accent-soft); color: var(--ncsu-accent-dark); border-color: rgba(99, 102, 241, 0.5); }
+.ncsu-root .ncsu-speedgroup { display: flex; border: 1px solid var(--ncsu-border); border-radius: 9px; overflow: hidden; }
+.ncsu-root .ncsu-speed { padding: 8px 12px; border: none; font-size: 12px; font-weight: 700; background: var(--ncsu-card); color: var(--ncsu-dim); }
+.ncsu-root .ncsu-speed.on { background: var(--ncsu-accent); color: #fff; }
+.ncsu-root .ncsu-play {
+  width: 72px; height: 72px; border-radius: 50%; border: none; background: var(--ncsu-accent);
+  color: #fff; display: flex; align-items: center; justify-content: center; align-self: center;
+  box-shadow: 0 6px 22px rgba(99, 102, 241, 0.35); transition: background 0.15s;
+}
+.ncsu-root .ncsu-play:hover { background: var(--ncsu-accent-dark); }
+.ncsu-root .ncsu-controls { display: flex; gap: 12px; }
+.ncsu-root .ncsu-controls button {
+  flex: 1; padding: 16px 0; border-radius: 12px; border: none; font-size: 15px; font-weight: 700;
+  background: #E2E8F0; color: var(--ncsu-text); transition: background 0.15s;
+}
+.ncsu-root .ncsu-controls button:hover:not(:disabled) { background: #CBD5E1; }
+.ncsu-root .ncsu-controls button:disabled { opacity: 0.4; cursor: default; }
+.ncsu-root .ncsu-listcard { background: var(--ncsu-card); border: 1px solid var(--ncsu-border); border-radius: 16px; padding: 12px 16px; }
+.ncsu-root .ncsu-list-toggle {
+  background: none; border: none; color: var(--ncsu-dim); font-size: 13px; font-weight: 600;
+  padding: 6px 0; text-align: left; width: 100%;
+}
+.ncsu-root .ncsu-list { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; margin-top: 4px; position: relative; }
+.ncsu-root .ncsu-item {
+  text-align: left; padding: 12px 16px; border-radius: 12px; border: 1.5px solid var(--ncsu-border);
+  background: var(--ncsu-bg); display: flex; gap: 10px; align-items: flex-start; width: 100%; flex-shrink: 0;
+}
+.ncsu-root .ncsu-item.current { border-color: rgba(99, 102, 241, 0.55); background: var(--ncsu-accent-soft); }
+.ncsu-root .ncsu-num { font-family: var(--font-mono); font-size: 10px; color: var(--ncsu-dim); min-width: 16px; padding-top: 3px; }
+.ncsu-root .ncsu-item.current .ncsu-num { color: var(--ncsu-accent-dark); }
+.ncsu-root .ncsu-txt { font-size: 14px; line-height: 1.5; color: var(--ncsu-text); }
+.ncsu-root .ncsu-item.current .ncsu-txt { color: #3730A3; font-weight: 600; }
+.ncsu-root .ncsu-hint {
+  font-size: 11px; color: var(--ncsu-dim); text-align: center; line-height: 1.6;
+  border-top: 1px solid var(--ncsu-border); padding-top: 10px; margin-top: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ncsu-root .ncsu-btn:active:not(:disabled) { transform: none; }
+}
+`
+
 function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
-  const [pickedAudioUrl, setPickedAudioUrl] = useState<string | null>(null)
   const [listOpen, setListOpen] = useState(false)  // Cümle listesi: varsayılan kapalı, istenince açılır
   // Ses dosyası yerine video dosyası verilmişse (uzantıdan anlaşılır) aynı akışta
-  // kesintisiz izlenebilsin diye <audio> yerine <video> render edilir — oynatma,
-  // tekrar, hız, cümleye tıklama mantığının tamamı aynı kalır, yalnızca etiket değişir.
-  const [pickedSegments, setPickedSegments] = useState<DictationSegment[] | null>(null)
+  // kesintisiz izlenebilsin diye <audio> yerine <video> render edilir.
   // Klip modu: Sheet'te shadowing_clips doluysa her cümle kendi ses dosyasından
-  // çalar (süre bilgisi gerekmez). Boşsa aşağıdaki eski SRT yolu hiç değişmeden çalışır.
+  // çalar (süre bilgisi gerekmez). Boşsa altyazı (shadowing_srt_url) yolu çalışır.
   const clips = unit.shadowingClips ?? []
   const clipTexts = unit.shadowingClipTexts ?? []
   const clipMode = clips.length > 0
   const clipMismatch = clipMode && clips.length !== clipTexts.length
-  const needsPicker = !clipMode && !!unit.freeSourceSelect && (!pickedAudioUrl || !pickedSegments)
-  const activeAudioUrl = unit.freeSourceSelect ? (pickedAudioUrl ?? undefined) : (unit.fromSheet ? unit.shadowingAudioUrl : (unit.shadowingAudioUrl ?? unit.audioUrl))
+  const activeAudioUrl = unit.fromSheet ? unit.shadowingAudioUrl : (unit.shadowingAudioUrl ?? unit.audioUrl)
   const isVideoSrc = (u?: string) => !!u && /\.(mp4|mov|webm)$/i.test(u)
   // Klip modunda ilk klibin uzantısına bakılır (bir ünitede ses/video karışık olmaz, hepsi aynı kaynaktan gelir)
   const isVideo = clipMode ? isVideoSrc(clips[0]) : isVideoSrc(activeAudioUrl)
@@ -2746,7 +2770,6 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const clipTextsKey = clipTexts.join('|')
   const segments = useMemo<DictationSegment[]>(() => {
     if (clipMode) return clipTextsKey.split('|').map(text => ({ start: 0, end: 0, text }))
-    if (unit.freeSourceSelect) return pickedSegments ?? []
     // Sheet'ten gelen ünite: yalnızca shadowing_srt_url (Dictation'dan ödünç alınmaz)
     if (unit.fromSheet) return unit.shadowingSegments ?? []
     const shadowingOrShared = (unit.shadowingSegments && unit.shadowingSegments.length > 0)
@@ -2755,7 +2778,7 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
     return (shadowingOrShared && shadowingOrShared.length > 0)
       ? shadowingOrShared
       : [{ start: 0, end: 0, text: unit.dictationSentence }]
-  }, [clipMode, clipTextsKey, unit.freeSourceSelect, unit.fromSheet, unit.shadowingSegments, unit.dictationSegments, unit.dictationSentence, pickedSegments])
+  }, [clipMode, clipTextsKey, unit.fromSheet, unit.shadowingSegments, unit.dictationSegments, unit.dictationSentence])
 
   const [current, setCurrent] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -2766,8 +2789,10 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const listRef = useRef<HTMLDivElement>(null)  // Cümle listesi kutusu — kaydırma yalnızca bunun içinde olur
   const loopRef = useRef(loop)
   loopRef.current = loop
-  // Bumped on every navigation/stop so stale timeupdate/timeout callbacks from a
-  // previous sentence can recognize they're outdated and do nothing.
+  const speedRef = useRef(speed)
+  speedRef.current = speed
+  // Her geçişte/durdurmada artar; önceki cümleden kalan izleyiciler ve zamanlayıcılar
+  // eski olduklarını anlayıp hiçbir şey yapmaz.
   const playTokenRef = useRef(0)
 
   useEffect(() => {
@@ -2800,8 +2825,8 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
     const fullUrl = new URL(url, window.location.href).href
     if (audio.src !== fullUrl) audio.src = url
     else audio.currentTime = 0
-    audio.defaultPlaybackRate = speed
-    audio.playbackRate = speed
+    audio.defaultPlaybackRate = speedRef.current
+    audio.playbackRate = speedRef.current
     const onEnded = () => {
       audio.removeEventListener('ended', onEnded)
       if (token !== playTokenRef.current) return
@@ -2818,39 +2843,37 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   function playSegment(index: number) {
     if (clipMode) { playClip(index); return }
     const audio = audioRef.current
-    if (!audio || !activeAudioUrl) return
     const seg = segments[index]
+    if (!audio || !activeAudioUrl || !seg) return
     playTokenRef.current++
     const token = playTokenRef.current
     audio.pause()
-    audio.playbackRate = speed
+    audio.playbackRate = speedRef.current
 
-    const onTime = () => {
-      if (token !== playTokenRef.current) { audio.removeEventListener('timeupdate', onTime); return }
-      if (audio.currentTime >= seg.end) {
-        audio.pause()
-        audio.removeEventListener('timeupdate', onTime)
-        setIsPlaying(false)
-        if (loopRef.current) {
-          setTimeout(() => { if (token === playTokenRef.current) playSegment(index) }, 400)
-        }
+    const startWatch = () => {
+      if (token !== playTokenRef.current) return
+      // Ses her zaman cümlenin başından başlar; böylece altyazıdaki ilk konuşmadan önceki
+      // müzik/efekt hiç çalınmaz. Cümle sonu her ekran karesinde yakalanır.
+      audio.currentTime = seg.start
+      if (seg.end > seg.start) {
+        watchSegmentEnd(audio, seg.end, () => token === playTokenRef.current, () => {
+          audio.pause()
+          setIsPlaying(false)
+          if (loopRef.current) {
+            setTimeout(() => { if (token === playTokenRef.current) playSegment(index) }, 400)
+          }
+        })
       }
+      audio.play().catch(() => { if (token === playTokenRef.current) setIsPlaying(false) })
     }
 
-    // Freshly-picked local files may not have metadata loaded yet — seeking
-    // before that is silently ignored in some mobile browsers, so wait for it.
-    if (audio.readyState >= 1) {
-      audio.currentTime = seg.start
-    } else {
-      const onMeta = () => {
-        audio.removeEventListener('loadedmetadata', onMeta)
-        if (token === playTokenRef.current) audio.currentTime = seg.start
-      }
+    // Süre bilgisi henüz gelmediyse konumlandırma bazı telefon tarayıcılarında sessizce
+    // yok sayılıyor; bu yüzden bekleniyor.
+    if (audio.readyState >= 1) startWatch()
+    else {
+      const onMeta = () => { audio.removeEventListener('loadedmetadata', onMeta); startWatch() }
       audio.addEventListener('loadedmetadata', onMeta)
     }
-
-    audio.addEventListener('timeupdate', onTime)
-    audio.play()
     setIsPlaying(true)
   }
 
@@ -2864,6 +2887,7 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
     const audio = audioRef.current
     if (!audio) return
     if (isPlaying) {
+      playTokenRef.current++
       audio.pause()
       setIsPlaying(false)
     } else {
@@ -2871,10 +2895,40 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
     }
   }
 
+  function changeSpeed(r: number) {
+    setSpeed(r)
+    const audio = audioRef.current
+    if (audio) { audio.defaultPlaybackRate = r; audio.playbackRate = r }
+  }
+
+  // Klavye kısayolları — bir yazı alanına yazılmıyorken çalışır; ekrandan çıkınca kalkar.
+  useEffect(() => {
+    if (clipMismatch || segments.length === 0) return
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      switch (e.key) {
+        case ' ': e.preventDefault(); togglePlayPause(); break
+        case 'ArrowLeft': e.preventDefault(); if (current > 0) goTo(current - 1); break
+        case 'ArrowRight': e.preventDefault(); if (current < segments.length - 1) goTo(current + 1); break
+        case 'r': case 'R': playSegment(current); break
+        case 'l': case 'L': setLoop(l => !l); break
+        case '1': changeSpeed(0.75); break
+        case '2': changeSpeed(1); break
+        case '3': changeSpeed(1.25); break
+        case 'h': case 'H': setListOpen(o => !o); break
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  })
+
   const sentences = segments.map(s => s.text)
 
   return (
     <div className="anim-slide-down" style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '680px' }}>
+      <style>{SHADOW_UNIT_STYLES}</style>
       <BackBtn onClick={onBack} label={unit.title} />
       {clipMode
         ? (isVideo
@@ -2884,143 +2938,71 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
             ? <video ref={audioRef as React.RefObject<HTMLVideoElement>} src={activeAudioUrl} preload="metadata" playsInline controls={false} style={shadowingVideoStyle} />
             : <audio ref={audioRef} src={activeAudioUrl} preload="metadata" />)}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: MODULE_META.shadowing.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🎙️</div>
-        <div>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, margin: 0 }}>Shadowing</h2>
-          <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)' }}>{unit.title} · {needsPicker ? 'kaynak seç' : `${sentences.length} sentences`}</p>
-          {unit.readingTitle && <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--primary)', fontWeight: 500 }}>📖 {unit.readingTitle}</p>}
+      <div className="ncsu-root">
+        <div className="ncsu-head">
+          <h2 className="ncsu-title"><span aria-hidden="true">🎙️</span> Shadowing</h2>
+          <p className="ncsu-sub">{unit.title} · {sentences.length} sentences — play it, then shadow it out loud</p>
+          {unit.readingTitle && <p className="ncsu-reading">📖 {unit.readingTitle}</p>}
         </div>
-      </div>
 
-      {needsPicker ? (
-        <LocalSourcePicker
-          accentColor={MODULE_META.shadowing.color}
-          onLoaded={(audioUrl, segs) => { setPickedAudioUrl(audioUrl); setPickedSegments(segs) }}
-        />
-      ) : clipMismatch ? (
-        <ClipMismatchWarning fileCount={clips.length} textCount={clipTexts.length} filesColumn="shadowing_clips" textsColumn="shadowing_texts" />
-      ) : (
-        <>
-          {/* Playback controls — kept at the top so they never scroll out of view */}
-          <div style={{
-            background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px',
-            display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center',
-          }}>
-            <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', textAlign: 'center' }}>
-              Sentence {current + 1} / {sentences.length} — play it, then shadow it out loud
-            </p>
-            <p style={{ margin: '-8px 0 0', fontSize: '15px', fontWeight: 500, textAlign: 'center', color: 'var(--foreground)' }}>
-              {sentences[current]}
-            </p>
+        {clipMismatch ? (
+          <ClipMismatchWarning fileCount={clips.length} textCount={clipTexts.length} filesColumn="shadowing_clips" textsColumn="shadowing_texts" />
+        ) : (
+          <div className="ncsu-player">
+            <div className="ncsu-progress">Sentence {current + 1} / {sentences.length}</div>
+            <div className={`ncsu-sentence${isPlaying ? ' playing' : ''}`}>{sentences[current]}</div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
-              <button onClick={() => setLoop(l => !l)} title="Repeat this sentence automatically" style={{
-                padding: '7px 12px', borderRadius: '9px', border: `1px solid ${loop ? 'rgba(16,185,129,0.4)' : 'var(--border)'}`,
-                background: loop ? '#ECFDF5' : 'var(--secondary)', color: loop ? '#059669' : 'var(--foreground)',
-                fontSize: '13px', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-              }}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17 17H7v-4l-5 5 5 5v-4h12v-6h-2v4zM7 7h10v4l5-5-5-5v4H5v6h2V7z" /></svg>
-                Loop this sentence
+            <div className="ncsu-rowctl">
+              <button className={`ncsu-loop ncsu-btn${loop ? ' on' : ''}`} onClick={() => setLoop(l => !l)} title="Repeat this sentence automatically" aria-pressed={loop}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17 17H7v-4l-5 5 5 5v-4h12v-6h-2v4zM7 7h10v4l5-5-5-5v4H5v6h2V7z" /></svg>
+                Loop
               </button>
-
-              <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: '9px', overflow: 'hidden' }}>
+              <div className="ncsu-speedgroup">
                 {[0.75, 1, 1.25].map(r => (
-                  <button key={r} onClick={() => setSpeed(r)} style={{
-                    padding: '7px 10px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
-                    background: speed === r ? 'var(--primary)' : 'var(--secondary)',
-                    color: speed === r ? '#fff' : 'var(--foreground)',
-                  }}>{r}x</button>
+                  <button key={r} className={`ncsu-speed ncsu-btn${speed === r ? ' on' : ''}`} onClick={() => changeSpeed(r)} aria-pressed={speed === r}>{r}x</button>
                 ))}
               </div>
             </div>
 
-            <button onClick={togglePlayPause} style={{
-              width: '68px', height: '68px', borderRadius: '50%', border: 'none',
-              background: 'linear-gradient(135deg, #6366F1, #4F46E5)',
-              color: '#fff', cursor: 'pointer', fontSize: '26px',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 4px 20px rgba(99,102,241,0.35)',
-              transition: 'transform 0.15s',
-            }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.06)' }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)' }}
-            >
+            <button className="ncsu-play ncsu-btn" onClick={togglePlayPause} aria-label={isPlaying ? 'Pause' : 'Play'}>
               {isPlaying
-                ? <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z" /></svg>
-                : <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: '3px' }}><path d="M8 5v14l11-7z" /></svg>}
+                ? <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h4v14H6zM14 5h4v14h-4z" /></svg>
+                : <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style={{ marginLeft: '4px' }}><path d="M8 5v14l11-7z" /></svg>}
             </button>
 
-            <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
-              <button
-                onClick={() => goTo(current - 1)}
-                disabled={current === 0}
-                style={{ flex: 1, padding: '9px', borderRadius: '9px', border: '1px solid var(--border)', background: 'var(--secondary)', color: current === 0 ? 'var(--muted-foreground)' : 'var(--foreground)', fontSize: '13px', fontWeight: 500, cursor: current === 0 ? 'not-allowed' : 'pointer' }}
-              >← Previous</button>
-              <button
-                onClick={() => goTo(current + 1)}
-                disabled={current === sentences.length - 1}
-                style={{ flex: 1, padding: '9px', borderRadius: '9px', border: '1px solid var(--border)', background: 'var(--secondary)', color: current === sentences.length - 1 ? 'var(--muted-foreground)' : 'var(--foreground)', fontSize: '13px', fontWeight: 500, cursor: current === sentences.length - 1 ? 'not-allowed' : 'pointer' }}
-              >Next →</button>
+            <div className="ncsu-controls">
+              <button className="ncsu-btn" onClick={() => goTo(current - 1)} disabled={current === 0}>⏮ Previous</button>
+              <button className="ncsu-btn" onClick={() => goTo(current + 1)} disabled={current === sentences.length - 1}>Next ⏭</button>
+            </div>
+
+            {/* Cümle listesi — varsayılan kapalı; düğmeyle açılır. Açıkken sabit yükseklikte, kendi içinde kayar */}
+            <div className="ncsu-listcard">
+              <button className="ncsu-list-toggle ncsu-btn" onClick={() => setListOpen(o => !o)} aria-expanded={listOpen}>
+                Cümle listesi {listOpen ? '▴' : '▾'}
+              </button>
+              {listOpen && (
+                <div className="ncsu-list" ref={listRef}>
+                  {sentences.map((s, i) => (
+                    <button
+                      key={i}
+                      ref={el => { itemRefs.current[i] = el }}
+                      className={`ncsu-item ncsu-btn${i === current ? ' current' : ''}`}
+                      onClick={() => goTo(i)}
+                    >
+                      <span className="ncsu-num">{i + 1}</span>
+                      <span className="ncsu-txt">{s}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="ncsu-hint">
+              Space: play/pause &nbsp;·&nbsp; ← →: sentence &nbsp;·&nbsp; R: replay &nbsp;·&nbsp; L: loop &nbsp;·&nbsp; 1/2/3: speed &nbsp;·&nbsp; H: list
             </div>
           </div>
-
-          {/* Sentence list — varsayılan kapalı; düğmeyle açılır. Açıkken sabit yükseklikte, kendi içinde kayar */}
-          <div>
-            <button
-              onClick={() => setListOpen(o => !o)}
-              style={{
-                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                fontSize: '13px', fontWeight: 600, color: MODULE_META.shadowing.color,
-                display: 'flex', alignItems: 'center', gap: '6px',
-              }}
-            >
-              Cümle listesi {listOpen ? '▴' : '▾'}
-            </button>
-            {listOpen && (
-          <div ref={listRef} style={{
-            position: 'relative',
-            display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px',
-            maxHeight: '340px', overflowY: 'auto', paddingRight: '4px',
-          }}>
-            {sentences.map((s, i) => (
-              <button
-                key={i}
-                ref={el => { itemRefs.current[i] = el }}
-                onClick={() => goTo(i)}
-                style={{
-                  textAlign: 'left', padding: '14px 18px', borderRadius: '12px',
-                  border: `1.5px solid ${i === current ? 'rgba(99,102,241,0.45)' : 'var(--border)'}`,
-                  background: i === current ? '#EEF2FF' : 'var(--card)',
-                  cursor: 'pointer', transition: 'all 0.15s',
-                  display: 'flex', alignItems: 'flex-start', gap: '12px', flexShrink: 0,
-                }}
-              >
-                <div style={{
-                  width: '22px', height: '22px', borderRadius: '50%', flexShrink: 0, marginTop: '1px',
-                  background: i === current ? 'rgba(99,102,241,0.15)' : 'var(--muted)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  border: i === current ? '2px solid rgba(99,102,241,0.5)' : 'none',
-                }}>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: i === current ? '#4F46E5' : 'var(--muted-foreground)' }}>{i + 1}</span>
-                </div>
-                <span style={{ fontSize: '14px', lineHeight: 1.6, color: i === current ? '#3730A3' : 'var(--foreground)', fontWeight: i === current ? 500 : 400 }}>{s}</span>
-              </button>
-            ))}
-          </div>
-            )}
-          </div>
-
-          {unit.freeSourceSelect && (
-            <button
-              onClick={() => { setPickedAudioUrl(null); setPickedSegments(null) }}
-              style={{ alignSelf: 'center', background: 'none', border: 'none', color: 'var(--muted-foreground)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
-            >
-              Farklı ses/altyazı seç
-            </button>
-          )}
-        </>
-      )}
+        )}
+      </div>
     </div>
   )
 }
@@ -3995,27 +3977,6 @@ function DrillView({ unit, onBack, sheetTopics, entryProfile }: { unit: Unit; on
     setAddPanel(null)
   }
 
-  function exportData() {
-    const blob = new Blob([JSON.stringify(topics, null, 2)], { type: 'application/json' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `drill-data-unit${unit.id}.json`
-    a.click()
-  }
-  function importJsonFile(evt: React.ChangeEvent<HTMLInputElement>) {
-    const file = evt.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result as string)
-        if (Array.isArray(data)) persistTopics(data)
-      } catch { /* ignore malformed file */ }
-    }
-    reader.readAsText(file)
-    evt.target.value = ''
-  }
-
   function toggleQuickMode() {
     setQuickMode(v => { try { localStorage.setItem('nc_drill_quick_mode', !v ? '1' : '0') } catch {}; return !v })
   }
@@ -4558,11 +4519,6 @@ function DrillView({ unit, onBack, sheetTopics, entryProfile }: { unit: Unit; on
         )}
       </div>
 
-      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        <button onClick={exportData} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--foreground)', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', cursor: 'pointer' }}>Verini JSON olarak dışa aktar</button>
-        <button onClick={() => document.getElementById(`drill-json-import-${unit.id}`)?.click()} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--foreground)', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', cursor: 'pointer' }}>JSON'dan geri yükle</button>
-        <input id={`drill-json-import-${unit.id}`} type="file" accept=".json" style={{ display: 'none' }} onChange={importJsonFile} />
-      </div>
     </div>
   )
 }
@@ -4630,10 +4586,13 @@ function ChildDashboard({ childName, childArea, unitTitles, onExit, accountId, m
               Merhaba {childName}
             </p>
           </div>
-          <button onClick={onExit} style={{
-            background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
-            padding: '6px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--foreground)', cursor: 'pointer',
-          }}>Çıkış</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <InstallButton variant="round" bg="#EEF2FF" fg="#4F46E5" style={{ width: '34px', height: '34px' }} />
+            <button onClick={onExit} style={{
+              background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
+              padding: '6px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--foreground)', cursor: 'pointer',
+            }}>Çıkış</button>
+          </div>
         </div>
 
         {/* My Brain */}
@@ -4832,77 +4791,7 @@ export default function App() {
     return () => window.clearInterval(t)
   }, [screenKey])
 
-  // ── PWA yükleme — Android/Chrome: beforeinstallprompt yakalama ──
-  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null)
-  useEffect(() => {
-    function onBeforeInstallPrompt(e: any) {
-      e.preventDefault()
-      setDeferredInstallPrompt(e)
-    }
-    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
-    return () => window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
-  }, [])
-
-  async function handleInstallClick() {
-    if (!deferredInstallPrompt) return
-    deferredInstallPrompt.prompt()
-    await deferredInstallPrompt.userChoice
-    setDeferredInstallPrompt(null)
-  }
-
-  const isAndroidDevice = /android/i.test(navigator.userAgent)
-  const showAndroidInstallButton = isAndroidDevice && !!deferredInstallPrompt
-
-  // ── PWA yükleme — iPhone/Safari: otomatik istem yok, talimat şeridi gösteriyoruz ──
-  const isIOSDevice = /iphone|ipad|ipod/i.test(navigator.userAgent) && !(window as any).MSStream
-  const isSafariBrowser = /^((?!chrome|android|crios|fxios|edgios).)*safari/i.test(navigator.userAgent)
-  const isStandaloneMode = (window.navigator as any).standalone === true || window.matchMedia('(display-mode: standalone)').matches
-  const [iosBannerDismissed, setIosBannerDismissed] = useState<boolean>(() => {
-    try { return sessionStorage.getItem('ios_install_banner_dismissed') === 'true' } catch { return false }
-  })
-  const showIOSInstallBanner = isIOSDevice && isSafariBrowser && !isStandaloneMode && !iosBannerDismissed
-
-  function dismissIOSBanner() {
-    setIosBannerDismissed(true)
-    try { sessionStorage.setItem('ios_install_banner_dismissed', 'true') } catch {}
-  }
-
-  const iosInstallBanner = showIOSInstallBanner ? (
-    <div style={{
-      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
-      background: '#4F46E5', color: '#fff', padding: '10px 16px',
-      display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-    }}>
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-        <rect x="7" y="2" width="10" height="17" rx="2" />
-        <path d="M12 13v-7" />
-        <path d="M9.5 8.5L12 6l2.5 2.5" />
-      </svg>
-      <div style={{ flex: 1, lineHeight: 1.4 }}>
-        Uygulama gibi kullanmak için: alttaki <strong>Paylaş</strong> ikonuna dokun, sonra <strong>Ana Ekrana Ekle</strong>'yi seç.
-      </div>
-      <button onClick={dismissIOSBanner} style={{
-        background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '6px',
-        color: '#fff', padding: '5px 10px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
-      }}>Anladım</button>
-    </div>
-  ) : null
-
-  const androidInstallButton = showAndroidInstallButton ? (
-    <button onClick={handleInstallClick} style={{
-      background: 'var(--primary)', border: 'none', borderRadius: '7px',
-      padding: '5px 10px', fontSize: '12px', fontWeight: 600, color: '#fff', cursor: 'pointer',
-      display: 'flex', alignItems: 'center', gap: '6px',
-    }}>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 3v12" />
-        <path d="M7 10l5 5 5-5" />
-        <path d="M5 19h14" />
-      </svg>
-      Uygulamayı Yükle
-    </button>
-  ) : null
+  // ── PWA yükleme: düğme ve rehber InstallButton.tsx'te ──
 
   // ── Hesap (Supabase girişi, bkz. auth.ts) ──
   // Telefonda kayıtlı oturum varsa önce onunla açılır, arka planda doğrulanır.
@@ -5409,7 +5298,6 @@ export default function App() {
     }
     return (
       <>
-        {iosInstallBanner}
         <LoginScreen onSignedIn={a => { setAccount(a); setAuthChecked(true) }} />
       </>
     )
@@ -5436,7 +5324,6 @@ export default function App() {
   if (!isTeacher && !entryProfile && !ENTRY_AREAS.some(a => canUseArea(account, a))) {
     return (
       <>
-        {iosInstallBanner}
         <LiveOnlyHome account={account} status={liveStatus} onJoin={joinLive} onLogout={handleLogout} />
       </>
     )
@@ -5445,7 +5332,6 @@ export default function App() {
   if (!entryProfile) {
     return (
       <>
-        {iosInstallBanner}
         <EntryScreen
           onPickProfile={chooseProfile}
           onPickOwner={chooseOwner}
@@ -5465,7 +5351,6 @@ export default function App() {
   if (entryProfile === 'child_omur' || entryProfile === 'child_oztug') {
     return (
       <>
-        {iosInstallBanner}
         <ChildDashboard
           childName={entryProfile === 'child_omur' ? 'Ömür' : 'Öztuğ'}
           childArea={entryProfile}
@@ -5482,7 +5367,6 @@ export default function App() {
   if (entryProfile === 'library') {
     return (
       <>
-        {iosInstallBanner}
         <LibraryPanel account={account} onExit={handleExitToEntry} />
         {liveBanner}
       </>
@@ -5491,7 +5375,6 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-      {iosInstallBanner}
       {liveBanner}
 
       {/* ── Nav ── */}
@@ -5538,7 +5421,7 @@ export default function App() {
 
           {/* User */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {androidInstallButton}
+            <InstallButton variant="auto" roundBg="#EEF2FF" roundFg="#4F46E5" />
             {isTeacher && (
               <button onClick={() => setShowStudentAdmin(true)} title="Öğrencileri yönet" aria-label="Öğrencileri yönet" style={{
                 background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',

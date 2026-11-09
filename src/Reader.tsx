@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Account } from './auth'
 import { READER_CSS } from './readerStyles'
+import InstallButton from './InstallButton'
 import {
   type Book, type Content, type PageRow, type VocabEntry, type PageTiming, type Issue, type DemoPlan,
   loadContent, fileUrl, fileUrlFallback, tokenize, buildFormIndex, findSpans, buildTiming, checkContent,
@@ -304,12 +305,13 @@ export default function ChildReaderApp({ account, childName, group, onExit }: {
         <header className="rd-lhd">
           <button className="rd-btn pri" onClick={goHome} aria-label="Ana sayfaya dön"><Ic n="home" />Ana sayfa</button>
           {!onList && <button className="rd-btn" onClick={backToList}><Ic n="books" />Kitaplar</button>}
-          <div className="hi">
+          <div className="hi" style={{ flex: '1 1 120px' }}>
             <b>{onList ? `Merhaba ${childName}` : 'İçerik kontrolü'}</b>
             {onList && <span>Bir kitap seç, okumaya başla</span>}
           </div>
           <div className="rd-grow" />
           {onList && preview && content && <button className="rd-btn" onClick={() => openScreen({ kind: 'check' })}>İçerik kontrolü</button>}
+          <InstallButton variant="round" bg="#FFFFFF" fg="var(--ac)" style={{ width: '44px', height: '44px', boxShadow: 'var(--sh1)' }} />
         </header>
         <main style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>{body}</main>
       </div>

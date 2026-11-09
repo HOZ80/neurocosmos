@@ -4,13 +4,14 @@ import { sb, newId, parseImport, cleanBoard, shortName } from './liveShared'
 import { LiveStyles, BoardSentence, PenBar, PaintableTokens, Legend } from './LiveBoard'
 import LiveTeacherPanel, { loadRoster, demoStudents } from './LiveTeacherPanel'
 import LiveReport from './LiveReport'
+import { OralAlone } from './LiveOral'
 import type { PanelClass, PanelStudent, PlanItem, Preset } from './LiveTeacherPanel'
 
 // ─── Öğretmen: Canlı Ders ─────────────────────────────────────────────────────
 // Ana ekran (ders başlat / deneme / devam et), Hazır notlar, Sınıflar ve
 // Dersi içe aktar ekranları. Hepsi veri olarak tutulur, build harcamaz.
 
-type Screen = 'home' | 'panel' | 'presets' | 'classes' | 'import' | 'reports'
+type Screen = 'home' | 'panel' | 'presets' | 'classes' | 'import' | 'reports' | 'oral'
 const NAV_KEY = 'nc_live_teacher'
 
 interface ClassRow { id: string; name: string; meet_url: string; is_default: boolean }
@@ -19,7 +20,7 @@ interface PlanRow { id: string; title: string; updated_at: string }
 function readNav(): { screen: Screen; sessionId?: string } {
   try {
     const v = JSON.parse(sessionStorage.getItem(NAV_KEY) || 'null')
-    if (v && ['home', 'panel', 'presets', 'classes', 'import', 'reports'].includes(v.screen)) return v
+    if (v && ['home', 'panel', 'presets', 'classes', 'import', 'reports', 'oral'].includes(v.screen)) return v
   } catch {}
   return { screen: 'home' }
 }
@@ -127,12 +128,18 @@ export default function LiveTeacher({ onExit }: { onExit: () => void }) {
     body = <ClassesScreen onBack={() => go('home')} />
   } else if (nav.screen === 'import') {
     body = <ImportScreen onBack={() => go('home')} />
+  } else if (nav.screen === 'oral') {
+    // Söz sırası tek başına. Başlayınca adres kaydı güncellenir (sayfa yenilenince geri dönülsün diye).
+    body = <OralAlone key={'oral-' + (nav.sessionId || 'new')} resumeId={nav.sessionId}
+      onExit={() => go('home')}
+      onStarted={id => writeNav({ screen: 'oral', sessionId: id })}
+      onOpenReport={(sid, cid) => openReport('home', sid, cid)} />
   } else if (nav.screen === 'reports') {
     body = <LiveReport initial={report ? { classId: report.classId, lessonId: report.sessionId } : undefined} onBack={closeReport} />
   } else if (nav.screen === 'panel') {
     if (!panel) body = <div className="panel"><p className="muted">Ders yükleniyor…</p></div>
   } else {
-    body = <HomeScreen busy={busy} error={error} onExit={onExit} onStart={startLesson} onDemo={startDemo} onResume={openSession} onGo={go} onReports={() => openReport('home')} />
+    body = <HomeScreen busy={busy} error={error} onExit={onExit} onStart={startLesson} onDemo={startDemo} onResume={openSession} onGo={go} onReports={() => openReport('home')} onOral={id => go('oral', id)} />
   }
 
   return (
@@ -150,7 +157,7 @@ export default function LiveTeacher({ onExit }: { onExit: () => void }) {
 }
 
 // ─── Ana ekran ───
-function HomeScreen({ busy, error, onExit, onStart, onDemo, onResume, onGo, onReports }: {
+function HomeScreen({ busy, error, onExit, onStart, onDemo, onResume, onGo, onReports, onOral }: {
   busy: boolean; error: string | null
   onExit: () => void
   onStart: (classId: string, planId: string | null) => void
@@ -158,10 +165,11 @@ function HomeScreen({ busy, error, onExit, onStart, onDemo, onResume, onGo, onRe
   onResume: (sessionId: string) => void
   onGo: (s: Screen) => void
   onReports: () => void
+  onOral: (sessionId?: string) => void
 }) {
   const [classes, setClasses] = useState<ClassRow[] | null>(null)
   const [plans, setPlans] = useState<PlanRow[]>([])
-  const [active, setActive] = useState<{ id: string; class_id: string; started_at: string }[]>([])
+  const [active, setActive] = useState<{ id: string; class_id: string; started_at: string; kind: string }[]>([])
   const [classId, setClassId] = useState('')
   const [planId, setPlanId] = useState('')
   const [loadErr, setLoadErr] = useState<string | null>(null)
@@ -172,7 +180,7 @@ function HomeScreen({ busy, error, onExit, onStart, onDemo, onResume, onGo, onRe
     const [c, p, a] = await Promise.all([
       sb.from('live_classes').select('id,name,meet_url,is_default').order('created_at'),
       sb.from('live_plans').select('id,title,updated_at').order('updated_at', { ascending: false }),
-      sb.from('live_sessions').select('id,class_id,started_at').eq('status', 'active'),
+      sb.from('live_sessions').select('id,class_id,started_at,kind').eq('status', 'active'),
     ])
     if (c.error || p.error || a.error) { setLoadErr('Bilgiler okunamadı. İnternet bağlantını kontrol et.'); return }
     setClasses(c.data as ClassRow[])
@@ -207,10 +215,10 @@ function HomeScreen({ busy, error, onExit, onStart, onDemo, onResume, onGo, onRe
           <h2 style={{ fontSize: 18, marginBottom: 6 }}>Devam eden ders</h2>
           {active.map(a => (
             <div key={a.id} className="row" style={{ flexWrap: 'wrap' }}>
-              <span className="live">{name(a.class_id)}</span>
+              <span className="live">{name(a.class_id)}{a.kind === 'oral' ? ' · söz sırası' : ''}</span>
               <span className="muted small">başlangıç {new Date(a.started_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
               <span className="grow" />
-              <button className="btn primary" disabled={busy} onClick={() => onResume(a.id)}>Devam et</button>
+              <button className="btn primary" disabled={busy} onClick={() => a.kind === 'oral' ? onOral(a.id) : onResume(a.id)}>Devam et</button>
               {confirmEnd === a.id
                 ? <><button className="btn danger" onClick={() => endSession(a.id)}>Evet, bitir</button><button className="btn" onClick={() => setConfirmEnd(null)}>Vazgeç</button></>
                 : <button className="btn" onClick={() => setConfirmEnd(a.id)}>Bitir</button>}
@@ -237,6 +245,12 @@ function HomeScreen({ busy, error, onExit, onStart, onDemo, onResume, onGo, onRe
         </div>
         {classBusy && <p className="hint">Bu sınıfın açık bir dersi var; yukarıdan devam edebilir ya da bitirebilirsin.</p>}
         <p className="hint">Deneme modu 20 sahte öğrenciyle çalışır, hiçbir şey kaydetmez.</p>
+      </div>
+
+      <div className="box">
+        <h2 style={{ fontSize: 18, marginBottom: 4 }}>Söz sırası</h2>
+        <p className="muted small" style={{ margin: '0 0 10px' }}>Sözlü Meet dersi ya da yüz yüze sınıf için. Çocukların giriş yapması gerekmez.</p>
+        <div className="row" style={{ marginTop: 0 }}><button className="btn primary" disabled={busy} onClick={() => onOral()}>Söz sırasını aç</button></div>
       </div>
 
       <div className="box" style={{ borderColor: 'var(--brand)' }}>

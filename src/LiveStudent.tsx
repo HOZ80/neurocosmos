@@ -3,6 +3,7 @@ import type { Account } from './auth'
 import type { BoardToken } from './liveShared'
 import { sb, cleanBoard } from './liveShared'
 import { LiveStyles, BoardSentence } from './LiveBoard'
+import InstallButton from './InstallButton'
 
 // ─── Öğrenci: Canlı Ders ──────────────────────────────────────────────────────
 // Çocuk yalnızca kendi sınıfının dersini, kendi cevaplarını ve kendine gelen
@@ -39,7 +40,8 @@ export function useLiveStatus(account: Account | null): LiveStatus {
       if (m.error) { setSt(s => ({ ...s, checked: true })); return }
       const c: any = m.data ? (Array.isArray((m.data as any).live_classes) ? (m.data as any).live_classes[0] : (m.data as any).live_classes) : null
       if (!c) { setSt({ klass: null, sessionId: null, checked: true }); return }
-      const s = await sb.from('live_sessions').select('id').eq('class_id', c.id).eq('status', 'active').limit(1)
+      // Tek başına söz sırası (ders türü "oral") çocuklara bildirilmez: giriş gerektirmez, bildirim gitmez.
+      const s = await sb.from('live_sessions').select('id').eq('class_id', c.id).eq('status', 'active').neq('kind', 'oral').limit(1)
       if (!alive) return
       if (s.error) { setSt(x => ({ ...x, checked: true })); return }
       const sid: string | null = (s.data && s.data[0] && (s.data[0] as any).id) || null
@@ -118,7 +120,8 @@ export function LiveOnlyHome({ account, status, onJoin, onLogout }: { account: A
                 <p className="muted">Canlı ders başladı.</p>
                 <button className="btn primary big" onClick={onJoin}>Canlı derse katıl</button>
               </> : <p className="muted">Canlı ders şu an kapalı. Öğretmenin dersi başlatınca burada bir düğme belirecek.</p>}
-          <div className="row" style={{ justifyContent: 'center', marginTop: 20 }}>
+          <div className="row" style={{ justifyContent: 'center', alignItems: 'center', flexDirection: 'column', gap: 10, marginTop: 20 }}>
+            <InstallButton variant="text" style={{ padding: '8px 14px', fontSize: '13px', borderRadius: '9px' }} />
             <button className="btn" onClick={onLogout}>Çıkış yap</button>
           </div>
         </div>
@@ -135,6 +138,16 @@ const draftKey = (qid: string) => 'nc_live_draft_' + qid
 function readDraft(qid: string): string { try { return localStorage.getItem(draftKey(qid)) || '' } catch { return '' } }
 function writeDraft(qid: string, v: string) { try { if (v) localStorage.setItem(draftKey(qid), v); else localStorage.removeItem(draftKey(qid)) } catch {} }
 
+const TURN_CSS = `
+.lv .stu-turn{position:fixed;z-index:50;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));max-width:560px;margin:0 auto;background:var(--brand);color:#fff;border-radius:16px;padding:14px 16px 12px;box-shadow:0 10px 24px rgba(40,10,110,.35);animation:stuTurnPop .35s ease-out}
+.lv .stu-turn .t1{font:700 22px Quicksand,'Outfit',sans-serif;margin:0}
+.lv .stu-turn .t2{font-size:14px;margin:2px 0 8px;opacity:.92}
+.lv .stu-turn .qq{background:rgba(255,255,255,.14);border-radius:10px;padding:8px 10px;font:700 16px/1.4 Quicksand,'Outfit',sans-serif}
+.lv .stu-turn .qg{font:600 13px system-ui,sans-serif;opacity:.88;margin-top:2px}
+@keyframes stuTurnPop{from{transform:translateY(10px) scale(.96);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion: reduce){.lv .stu-turn{animation:none}}
+`
+
 export function LiveStudentScreen({ account, klass, sessionId, onExit }: { account: Account; klass: LiveClassInfo; sessionId: string; onExit: () => void }) {
   const me = account.id
   const [ended, setEnded] = useState(false)
@@ -146,6 +159,16 @@ export function LiveStudentScreen({ account, klass, sessionId, onExit }: { accou
   const [loaded, setLoaded] = useState(false)
   const [netErr, setNetErr] = useState<string | null>(null)
   const qRef = useRef<string | null>(null)
+  // Söz sırası: sıra bu çocuğa geldiyse (sonuçsuz ve iptal edilmemiş söz) ekranın altında kutu çıkar.
+  // Yalnızca soru ve görev gelir; beklenen cevap bu kayıtta hiç yoktur. Sonuç çocuğa gösterilmez.
+  const [turn, setTurn] = useState<{ id: string; prompt: string; task: string } | null>(null)
+  async function loadTurn() {
+    const t = await sb.from('live_oral_turns').select('id,prompt,task').eq('session_id', sessionId).eq('student_id', me)
+      .is('result', null).is('cancelled_at', null).order('seq', { ascending: false }).limit(1)
+    if (t.error) return
+    const r: any = t.data && t.data[0]
+    setTurn(prev => (r ? (prev && prev.id === r.id && prev.prompt === r.prompt ? prev : { id: r.id, prompt: r.prompt || '', task: r.task || '' }) : null))
+  }
 
   async function loadQuestion(qid: string | null) {
     qRef.current = qid
@@ -165,8 +188,8 @@ export function LiveStudentScreen({ account, klass, sessionId, onExit }: { accou
     const s = await sb.from('live_sessions').select('status,current_question_id').eq('id', sessionId).maybeSingle()
     if (s.error) { setNetErr('Bağlantı kurulamadı. İnternetini kontrol et.'); return }
     setNetErr(null)
-    if (!s.data || s.data.status !== 'active') { setEnded(true); setLoaded(true); return }
-    await loadQuestion(s.data.current_question_id)
+    if (!s.data || s.data.status !== 'active') { setEnded(true); setTurn(null); setLoaded(true); return }
+    await Promise.all([loadQuestion(s.data.current_question_id), loadTurn()])
     setLoaded(true)
   }
 
@@ -180,7 +203,7 @@ export function LiveStudentScreen({ account, klass, sessionId, onExit }: { accou
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'live_sessions', filter: `id=eq.${sessionId}` }, p => {
         const r: any = p.new
         if (!alive || !r) return
-        if (r.status !== 'active') { setEnded(true); return }
+        if (r.status !== 'active') { setEnded(true); setTurn(null); return }
         if (r.current_question_id !== qRef.current) loadQuestion(r.current_question_id)
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'live_questions', filter: `session_id=eq.${sessionId}` }, p => {
@@ -193,6 +216,7 @@ export function LiveStudentScreen({ account, klass, sessionId, onExit }: { accou
         if (!alive || !r || r.question_id !== qRef.current) return
         setFb(list => list.some(x => x.id === r.id) ? list : [...list, { id: r.id, kind: r.kind, text: r.text, created_at: r.created_at }])
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'live_oral_turns', filter: `student_id=eq.${me}` }, () => { if (alive) loadTurn() })
       .subscribe(status => { if (status === 'SUBSCRIBED' && alive) loadAll() })
 
     const pres = sb.channel('live-' + sessionId, { config: { presence: { key: me } } })
@@ -285,11 +309,21 @@ export function LiveStudentScreen({ account, klass, sessionId, onExit }: { accou
   }
 
   return (
-    <div className="lv"><LiveStyles />
+    <div className="lv"><LiveStyles /><style>{TURN_CSS}</style>
       <div className="stu">
         {head}
         {netErr && <p className="err" role="alert">{netErr}</p>}
         {body}
+        {turn && !ended && (
+          <>
+            <div style={{ height: 150 }} aria-hidden="true" />
+            <div className="stu-turn" role="status" aria-live="assertive">
+              <p className="t1">Söz sende!</p>
+              <p className="t2">Mikrofonunu aç ve cevabını söyle.</p>
+              {turn.prompt && <div className="qq">{turn.prompt}{turn.task && <div className="qg">{turn.task}</div>}</div>}
+            </div>
+          </>
+        )}
       </div>
     </div>
   )

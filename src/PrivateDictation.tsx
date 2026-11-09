@@ -154,6 +154,7 @@ export default function PrivateDictation({ unitTitle, onBack }: {
   const [hintOnWrong, setHintOnWrong] = useState(true)
   const [fullOnWrong, setFullOnWrong] = useState(false)
   const [showTranscript, setShowTranscript] = useState(false)
+  const [pastListOpen, setPastListOpen] = useState(false)
 
   // Ses çalar
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -167,6 +168,19 @@ export default function PrivateDictation({ unitTitle, onBack }: {
 
   const done = step === 'practice' && curIndex >= segments.length
   const currentSegment = step === 'practice' && !done ? segments[curIndex] : null
+
+  // Oynatıcının sınırı: alıştırmada o anki cümle; hepsi bitince konuşmanın başladığı
+  // yerden bittiği yere kadar. Oynat, ileri/geri ve çubuk bu aralığın dışına çıkmaz;
+  // baştaki müzik/efekt çalınmaz. (İşaretleme adımında sınır yok, dosyanın tamamı.)
+  const speechStart = segments.length ? Math.min(...segments.map(sg => sg.start)) : 0
+  const speechEnd = segments.length ? Math.max(...segments.map(sg => sg.end)) : 0
+  const bound: { start: number; end: number } | null = step !== 'practice'
+    ? null
+    : currentSegment
+      ? (currentSegment.end > currentSegment.start ? { start: currentSegment.start, end: currentSegment.end } : null)
+      : (speechEnd > speechStart ? { start: speechStart, end: speechEnd } : null)
+  const boundRef = useRef(bound)
+  boundRef.current = bound
 
   /* ── Ses çalar davranışı ── */
 
@@ -199,6 +213,25 @@ export default function PrivateDictation({ unitTitle, onBack }: {
     if (audioRef.current) audioRef.current.playbackRate = speed
   }, [speed])
 
+  // Çalarken cümle sonunu her ekran karesinde kontrol et (timeupdate saniyede yalnızca
+  // ~4 kez geldiği için ses bir sonraki cümleye taşabiliyordu).
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio || !playing) return
+    let raf = 0
+    const tick = () => {
+      const end = segmentEndRef.current
+      if (end != null && audio.currentTime >= end) {
+        audio.pause()
+        segmentEndRef.current = null
+        return
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [playing])
+
   useEffect(() => {
     if (mediaUrl && audioRef.current) audioRef.current.load()
   }, [mediaUrl])
@@ -207,7 +240,7 @@ export default function PrivateDictation({ unitTitle, onBack }: {
     const audio = audioRef.current
     if (!audio) return
     segmentEndRef.current = end > start ? end : null
-    const seek = () => { audio.currentTime = start; void audio.play() }
+    const seek = () => { audio.currentTime = start; audio.play().catch(() => {}) }
     if (audio.readyState >= 1) seek()
     else {
       const onMeta = () => { audio.removeEventListener('loadedmetadata', onMeta); seek() }
@@ -218,12 +251,29 @@ export default function PrivateDictation({ unitTitle, onBack }: {
   function togglePlay() {
     const audio = audioRef.current
     if (!audio) return
-    if (playing) audio.pause()
-    else { segmentEndRef.current = null; void audio.play() }
+    if (playing) { audio.pause(); return }
+    const b = boundRef.current
+    if (b) {
+      // Cümlenin içinde duraklatıldıysa oradan devam; değilse (ya da sona geldiyse) cümle başından.
+      if (audio.currentTime < b.start || audio.currentTime >= b.end - 0.05) audio.currentTime = b.start
+      segmentEndRef.current = b.end
+    } else {
+      segmentEndRef.current = null
+    }
+    audio.play().catch(() => {})
   }
 
+  // t: ekranda gösterilen süreye göre (sınır varsa sınırın başından itibaren saniye).
   function seek(t: number) {
     const audio = audioRef.current
+    const b = boundRef.current
+    if (b) {
+      const abs = Math.max(b.start, Math.min(b.end, b.start + t))
+      segmentEndRef.current = b.end
+      if (audio) audio.currentTime = abs
+      setElapsed(abs)
+      return
+    }
     const clamped = Math.max(0, Math.min(duration || 0, t))
     segmentEndRef.current = null
     if (audio) audio.currentTime = clamped
@@ -366,6 +416,13 @@ export default function PrivateDictation({ unitTitle, onBack }: {
   function goNext() { setCurIndex(i => Math.min(segments.length, i + 1)) }
   function goPrev() { setCurIndex(i => Math.max(0, i - 1)) }
 
+  // Yalnızca geçilmiş (mevcut dahil) cümlelere atlanabilir — öğrenci henüz duymadığı
+  // bir cümleyi görmemeli.
+  function goToPast(i: number) {
+    if (i > curIndex) return
+    setCurIndex(i)
+  }
+
   function replay() {
     if (currentSegment) playSegment(currentSegment.start, currentSegment.end)
   }
@@ -430,7 +487,11 @@ export default function PrivateDictation({ unitTitle, onBack }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, curIndex, readyForNext, typed, answered, segments])
 
-  const pct = duration > 0 ? (elapsed / duration) * 100 : 0
+  // Sınır varsa ekrandaki süre, çubuk ve atlama adımları cümleye göredir.
+  const shownDuration = bound ? bound.end - bound.start : duration
+  const shownElapsed = bound ? Math.max(0, Math.min(shownDuration, elapsed - bound.start)) : elapsed
+  const jump = bound ? 3 : 10
+  const pct = shownDuration > 0 ? (shownElapsed / shownDuration) * 100 : 0
 
   /* ── Görünüm ── */
 
@@ -623,7 +684,7 @@ export default function PrivateDictation({ unitTitle, onBack }: {
             display: 'flex', alignItems: 'center', gap: '10px',
             boxShadow: '0 1px 6px rgba(15,23,42,0.06)', flexWrap: 'wrap',
           }}>
-            <button onClick={() => seek(elapsed - 10)} style={iconBtnStyle} title="10 saniye geri">
+            <button onClick={() => seek(shownElapsed - jump)} style={iconBtnStyle} title={bound ? '3 saniye geri' : '10 saniye geri'}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6 8.5 6V6l-8.5 6z" /></svg>
             </button>
             <button onClick={togglePlay} style={{
@@ -636,14 +697,14 @@ export default function PrivateDictation({ unitTitle, onBack }: {
                 ? <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6zm8-14v14h4V5z" /></svg>
                 : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>}
             </button>
-            <button onClick={() => seek(elapsed + 10)} style={iconBtnStyle} title="10 saniye ileri">
+            <button onClick={() => seek(shownElapsed + jump)} style={iconBtnStyle} title={bound ? '3 saniye ileri' : '10 saniye ileri'}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z" /></svg>
             </button>
 
             <div style={{ flex: 1, minWidth: '120px', cursor: 'pointer' }}
               onClick={e => {
                 const r = e.currentTarget.getBoundingClientRect()
-                seek(((e.clientX - r.left) / r.width) * (duration || 0))
+                seek(((e.clientX - r.left) / r.width) * (shownDuration || 0))
               }}>
               <div style={{ height: '4px', background: 'var(--muted)', borderRadius: '4px' }}>
                 <div style={{ width: `${pct}%`, height: '100%', background: ACCENT, borderRadius: '4px', position: 'relative' }}>
@@ -653,7 +714,7 @@ export default function PrivateDictation({ unitTitle, onBack }: {
             </div>
 
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--muted-foreground)', flexShrink: 0 }}>
-              {fmt(elapsed)} / {fmt(duration)}
+              {fmt(shownElapsed)} / {fmt(shownDuration)}
             </span>
 
             <select value={speed} onChange={e => setSpeed(Number(e.target.value))} style={{
@@ -770,6 +831,42 @@ export default function PrivateDictation({ unitTitle, onBack }: {
               <p style={{ margin: 0, fontSize: '11px', color: 'var(--muted-foreground)' }}>
                 <kbd>Enter</kbd> kontrol et · doğruysa tekrar <kbd>Enter</kbd> ile ileri &nbsp; <kbd>Ctrl+R</kbd> tekrar dinle &nbsp; <kbd>←</kbd>/<kbd>→</kbd> cümle değiştir
               </p>
+
+              {/* Geçilen cümleler — ünitedeki dikteyle aynı: yalnızca o ana kadar gelinen
+                  (mevcut dahil) cümleler listelenir; henüz duyulmamış cümleler gösterilmez. */}
+              {curIndex > 0 && (
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '14px' }}>
+                  <button
+                    onClick={() => setPastListOpen(o => !o)}
+                    style={{
+                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                      fontSize: '13px', fontWeight: 600, color: ACCENT,
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                    }}
+                  >
+                    Geçilen cümleler {pastListOpen ? '▴' : '▾'}
+                  </button>
+                  {pastListOpen && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto', marginTop: '10px' }}>
+                      {segments.slice(0, curIndex + 1).map((sg, i) => (
+                        <button
+                          key={i}
+                          onClick={() => goToPast(i)}
+                          style={{
+                            display: 'flex', gap: '10px', textAlign: 'left', width: '100%',
+                            padding: '10px 12px', borderRadius: '10px', cursor: 'pointer',
+                            border: `1px solid ${i === curIndex ? ACCENT : 'var(--border)'}`,
+                            background: i === curIndex ? `${ACCENT}12` : 'var(--card)',
+                          }}
+                        >
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: i === curIndex ? ACCENT : 'var(--muted-foreground)', minWidth: '20px', paddingTop: '1px' }}>{i + 1}</span>
+                          <span style={{ fontSize: '13px', lineHeight: 1.5, color: i === curIndex ? 'var(--foreground)' : 'var(--muted-foreground)', fontWeight: i === curIndex ? 600 : 400 }}>{sg.text}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* SEGMENTLERİ .json İNDİR — şimdilik gizlendi. İleride lazım olursa
                   bu bloğu ve yukarıdaki exportSegments fonksiyonunu yorumdan

@@ -264,12 +264,18 @@ export default function PrivateShadowing({
     audio.pause()
     audio.playbackRate = speedRef.current
 
+    // Cümle sonu her ekran karesinde (saniyede ~60 kez) kontrol edilir; timeupdate saniyede
+    // yalnızca ~4 kez geldiği için ses bir sonraki cümlenin ilk hecesine taşabiliyordu.
+    // Sekme arka plandayken timeupdate yedek olarak çalışır.
+    let raf = 0
     const onTime = () => {
       if (token !== playTokenRef.current) {
+        cancelAnimationFrame(raf)
         audio.removeEventListener('timeupdate', onTime)
         return
       }
       if (audio.currentTime >= seg.end) {
+        cancelAnimationFrame(raf)
         audio.pause()
         audio.removeEventListener('timeupdate', onTime)
         setIsPlaying(false)
@@ -278,7 +284,9 @@ export default function PrivateShadowing({
             if (token === playTokenRef.current) playSegment(index)
           }, 400)
         }
+        return
       }
+      raf = requestAnimationFrame(onTime)
     }
 
     // Yeni seçilen yerel dosyada süre bilgisi henüz gelmemiş olabilir; bu
@@ -295,6 +303,7 @@ export default function PrivateShadowing({
     }
 
     audio.addEventListener('timeupdate', onTime)
+    raf = requestAnimationFrame(onTime)
     const p = audio.play()
     if (p && typeof p.then === 'function') {
       p.then(() => {
@@ -319,6 +328,7 @@ export default function PrivateShadowing({
     const audio = audioRef.current
     if (!audio) return
     if (isPlaying) {
+      playTokenRef.current++
       audio.pause()
       setIsPlaying(false)
     } else {
