@@ -58,15 +58,14 @@ export const LIVE_CSS = `
 .lv .tk.b{font-weight:800}
 .lv .tk.i{font-style:italic}
 .lv .tk.h{background:var(--hl)}
-.lv .w{text-decoration-line:underline;text-decoration-thickness:3px;text-underline-offset:7px;text-decoration-skip-ink:none}
-.lv .r-ozne{color:var(--r-ozne);text-decoration-style:solid}
-.lv .r-fiil{color:var(--r-fiil);text-decoration-style:double}
-.lv .r-nesne{color:var(--r-nesne);text-decoration-style:dotted}
-.lv .r-zaman{color:var(--r-zaman);text-decoration-style:wavy;text-decoration-thickness:2px}
-.lv .r-baglac{color:var(--r-baglac);text-decoration-style:dashed}
+.lv .r-ozne{color:var(--r-ozne)}
+.lv .r-fiil{color:var(--r-fiil)}
+.lv .r-nesne{color:var(--r-nesne)}
+.lv .r-zaman{color:var(--r-zaman)}
+.lv .r-baglac{color:var(--r-baglac)}
 .lv .r-kiremit{color:var(--r-kiremit)}
 .lv .legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:13px;color:var(--muted)}
-.lv .legend .w{font:700 14px Quicksand,'Outfit',sans-serif;text-underline-offset:4px;text-decoration-thickness:2px}
+.lv .legend .w{font:700 14px Quicksand,'Outfit',sans-serif}
 .lv .summary{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:14px 0 8px;font-size:15px}
 .lv .summary .lead{font-weight:700;margin-right:2px}
 .lv .fchip{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:3px 11px;font-size:14px;cursor:pointer}
@@ -121,10 +120,8 @@ export const LIVE_CSS = `
 .lv label.f{display:block;font-weight:700;font-size:14px;margin:12px 0 4px}
 .lv .tokens{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;min-height:44px;touch-action:none;user-select:none;-webkit-user-select:none;padding:8px;border:1px dashed var(--line);border-radius:10px;background:var(--surface)}
 .lv .tok{font:700 20px/1.6 Quicksand,'Outfit',sans-serif;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:2px 9px;cursor:pointer;color:var(--ink)}
-.lv .tok.w{text-underline-offset:6px;text-decoration-thickness:2px}
 .lv .pens{display:flex;flex-wrap:wrap;gap:6px}
 .lv .pen{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 10px;cursor:pointer;font-weight:700}
-.lv .pen .w{text-underline-offset:4px;text-decoration-thickness:2px}
 .lv .pen[aria-pressed="true"]{outline:3px solid var(--brand);outline-offset:1px;background:var(--brand-soft)}
 .lv .box{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:12px}
 .lv .list{display:flex;flex-direction:column;gap:6px}

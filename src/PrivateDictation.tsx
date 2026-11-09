@@ -837,6 +837,7 @@ export default function PrivateDictation({ unitTitle, onBack }: {
               {curIndex > 0 && (
                 <div style={{ borderTop: '1px solid var(--border)', paddingTop: '14px' }}>
                   <button
+                    onMouseDown={e => e.preventDefault()}
                     onClick={() => setPastListOpen(o => !o)}
                     style={{
                       background: 'none', border: 'none', padding: 0, cursor: 'pointer',

@@ -2150,6 +2150,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
           {curIndex > 0 && (
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: '14px' }}>
               <button
+                onMouseDown={e => e.preventDefault()}
                 onClick={() => setPastListOpen(o => !o)}
                 style={{
                   background: 'none', border: 'none', padding: 0, cursor: 'pointer',
@@ -4711,6 +4712,13 @@ function screenDepth(v: View): number {
 export default function App() {
   const [level, setLevel] = useState<Level>(() => levelFromUrl(getUrlParam('lvl')))
   const [view, setView] = useState<View>(() => viewFromUrl(getUrlParam('view')))
+  // Telefon (dar ekran): üst çubuk sıkışmasın diye daha dar düzen. Bilgisayarda değişmez.
+  const [narrowNav, setNarrowNav] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640)
+  useEffect(() => {
+    const fn = () => setNarrowNav(window.innerWidth < 640)
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [])
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(() => unitFromUrl(getUrlParam('u')))
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState<number | null>(() => {
     const v = getUrlParam('q')
@@ -5386,8 +5394,8 @@ export default function App() {
         zIndex: 20,
       }}>
         {/* Top bar */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', height: '58px' }}>
-          <button onClick={goHome} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: narrowNav ? '0 14px' : '0 28px', height: '58px', ...(narrowNav ? { gap: '10px' } : {}) }}>
+          <button onClick={goHome} aria-label="Ana sayfa" style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0 }}>
             <div style={{ width: '32px', height: '32px', borderRadius: '9px', background: 'linear-gradient(135deg, #4F46E5, #818CF8)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9.5 3.5c-1.8 0-3.2 1.3-3.4 3-1.4.4-2.4 1.7-2.4 3.2 0 .7.2 1.3.6 1.9-.5.6-.8 1.4-.8 2.2 0 1.6 1.1 2.9 2.6 3.3.1 1.7 1.5 3 3.2 3 .7 0 1.3-.2 1.8-.5" />
@@ -5399,28 +5407,36 @@ export default function App() {
                 <path d="M16 13.2c-.6.4-1.3.6-2 .6" />
               </svg>
             </div>
-            <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--foreground)' }}>
-              Neuro<span style={{ color: 'var(--primary)' }}>cosmos</span>
-            </span>
+            {!narrowNav && (
+              <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--foreground)' }}>
+                Neuro<span style={{ color: 'var(--primary)' }}>cosmos</span>
+              </span>
+            )}
           </button>
 
           {/* Breadcrumb */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            {breadcrumbs.map((b, i) => (
-              <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                {i > 0 && <span style={{ color: 'var(--muted-foreground)', fontSize: '12px' }}>/</span>}
-                <button onClick={b.onClick} disabled={!b.onClick || i === breadcrumbs.length - 1} style={{
-                  background: 'none', border: 'none', cursor: b.onClick && i < breadcrumbs.length - 1 ? 'pointer' : 'default',
-                  fontSize: '13px', fontWeight: i === breadcrumbs.length - 1 ? 600 : 400,
-                  color: i === breadcrumbs.length - 1 ? 'var(--foreground)' : 'var(--primary)',
-                  padding: '0',
-                }}>{b.label}</button>
-              </span>
-            ))}
+          {/* Telefonda yol kalan boşluğa sığar: önce ortadaki ünite adı "…" ile kısalır,
+              bulunulan bölümün adı mümkün olduğunca tam kalır. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', ...(narrowNav ? { flex: 1, minWidth: 0, justifyContent: 'center', overflow: 'hidden' } : {}) }}>
+            {breadcrumbs.map((b, i) => {
+              const isLast = i === breadcrumbs.length - 1
+              return (
+                <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', ...(narrowNav ? { minWidth: 0, flexShrink: isLast || i === 0 ? 0 : 1, ...(isLast ? { maxWidth: '48%' } : {}) } : {}) }}>
+                  {i > 0 && <span style={{ color: 'var(--muted-foreground)', fontSize: '12px', flexShrink: 0 }}>/</span>}
+                  <button onClick={b.onClick} disabled={!b.onClick || isLast} title={narrowNav ? String(b.label) : undefined} style={{
+                    background: 'none', border: 'none', cursor: b.onClick && !isLast ? 'pointer' : 'default',
+                    fontSize: '13px', fontWeight: isLast ? 600 : 400,
+                    color: isLast ? 'var(--foreground)' : 'var(--primary)',
+                    padding: '0',
+                    ...(narrowNav ? { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0, maxWidth: '100%' } : {}),
+                  }}>{b.label}</button>
+                </span>
+              )
+            })}
           </div>
 
           {/* User */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
             <InstallButton variant="auto" roundBg="#EEF2FF" roundFg="#4F46E5" />
             {isTeacher && (
               <button onClick={() => setShowStudentAdmin(true)} title="Öğrencileri yönet" aria-label="Öğrencileri yönet" style={{
@@ -5450,7 +5466,7 @@ export default function App() {
 
         {/* Level tabs — only on dashboard */}
         {view === 'dashboard' && (
-          <div style={{ display: 'flex', gap: '0', borderTop: '1px solid var(--border)', padding: '0 28px' }}>
+          <div style={{ display: 'flex', gap: '0', borderTop: '1px solid var(--border)', padding: narrowNav ? '0 6px' : '0 28px', ...(narrowNav ? { overflowX: 'auto', scrollbarWidth: 'none' } : {}) }}>
             {LEVELS.map(l => {
               const meta = LEVEL_META[l]
               // Kilit/erişim artık statik meta.disabled yerine giriş profiline göre:
@@ -5467,7 +5483,8 @@ export default function App() {
                   }}
                   disabled={!available}
                   style={{
-                    padding: '10px 24px', background: 'none', border: 'none',
+                    padding: narrowNav ? '10px 12px' : '10px 24px', background: 'none', border: 'none',
+                    ...(narrowNav ? { whiteSpace: 'nowrap', flexShrink: 0 } : {}),
                     borderBottom: `2.5px solid ${level === l && !looksLocked ? 'var(--primary)' : 'transparent'}`,
                     color: looksLocked ? 'var(--muted-foreground)' : (level === l ? 'var(--primary)' : 'var(--muted-foreground)'),
                     opacity: looksLocked ? 0.5 : 1,
@@ -5479,11 +5496,12 @@ export default function App() {
                   <span style={{
                     fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 700,
                   }}>{meta.code}{looksLocked && ' 🔒'}</span>
-                  <span style={{
+                  {/* Telefonda yalnızca seçili sekmenin açıklaması yazar. */}
+                  {(!narrowNav || (level === l && !looksLocked)) && <span style={{
                     fontSize: '11px', color: level === l && !looksLocked ? meta.color : 'var(--muted-foreground)',
                     background: level === l && !looksLocked ? `${meta.color}18` : 'transparent',
                     padding: '1px 6px', borderRadius: '4px',
-                  }}>{meta.label}</span>
+                  }}>{meta.label}</span>}
                 </button>
               )
             })}
