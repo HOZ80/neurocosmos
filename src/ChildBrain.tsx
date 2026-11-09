@@ -1,7 +1,7 @@
 // ─── Çocuk paneli: My Brain ───────────────────────────────────────────────────
-// Çocuğun beyni, öğretmenin My Brain tablosundan gelir (diğer öğrencilerle aynı
-// kural: My Brain öğrenci listesindeki ad = çocuğun adı). Kitaplık'taki
-// Biliyorum/Öğreneceğim işaretleri beyne gitmez; öğretmene rapor olarak gider.
+// Çocuğun beyni veritabanından gelir; yalnızca öğretmenin eklediği kayıtlardan
+// oluşur. Kitaplık'taki Biliyorum/Öğreneceğim işaretleri beyne kendiliğinden
+// gitmez; öğretmene rapor olarak gider, öğretmen "Beyne ekle" der.
 // Bu dosya hiçbir şey yazmaz, yalnızca gösterir.
 
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
@@ -15,7 +15,7 @@ export interface ChildBrainData {
   items: MemoryItem[]
 }
 
-// loader: çocuğun tablosunu bulup okur (App.tsx'teki My Brain okuma kurallarıyla)
+// loader: çocuğun beynini veritabanından okur (App.tsx'teki loadChildBrain)
 export function useChildBrain(loader: () => Promise<MemoryItem[]>): { data: ChildBrainData; reload: () => void } {
   const [data, setData] = useState<ChildBrainData>({ status: 'loading', items: [] })
   const [tick, setTick] = useState(0)

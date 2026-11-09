@@ -1,7 +1,7 @@
 // ─── Kitaplık kelime raporu (yalnızca öğretmen ekranı) ───────────────────────
 // Öğrencinin Kitaplık'ta Biliyorum / Öğreneceğim dediği kelimeler. Bu kelimeler
-// öğrencinin beynine kendiliğinden GİTMEZ: öğretmen emin olduklarını seçer,
-// "kopyala" der ve öğrencinin My Brain tablosuna yapıştırır.
+// öğrencinin beynine kendiliğinden GİTMEZ: öğretmen emin olduklarını seçer ve
+// "Beyne ekle" der; seçilenler öğrencinin beyninin en sonuna eklenir.
 // Karşılaşma: öğrencinin okuduğu sayfalarda kelimenin (çekimli halleri dahil)
 // yaklaşık kaç kez geçtiği. Tamamlanan bölümler okunma sayısı kadar sayılır,
 // yarıda kalan bölümde yalnızca açılan sayfalar sayılır.
@@ -13,8 +13,6 @@ import { loadContent, buildFormIndex, findSpans, tokenize } from './readerData'
 import type { Content } from './readerData'
 import { loadBrainMarks, loadStudentData } from './readerStore'
 import type { BrainMark, StudentData } from './readerStore'
-
-const DEFAULT_COLUMNS = ['unit_id', 'item', 'type', 'date', 'status']
 
 function dayOf(ts: string): string {
   const d = new Date(ts)
@@ -68,21 +66,23 @@ function countEncounters(content: Content, sd: StudentData): Map<string, number>
   return total
 }
 
-export default function KitaplikReport({ studentName, studentId, brainItems, columns }: {
+export default function KitaplikReport({ studentName, studentId, brainItems, onAdd }: {
   studentName: string
   studentId: string
   brainItems: MemoryItem[]
-  columns: string[] | null   // öğrencinin tablosundaki sütun sırası (tablo yoksa varsayılan)
+  onAdd: (items: MemoryItem[]) => Promise<void>   // seçilenleri öğrencinin beynine ekler
 }) {
   const [state, setState] = useState<{ status: 'loading' | 'ok' | 'error'; marks: BrainMark[]; sd: StudentData | null; content: Content | null }>(
     { status: 'loading', marks: [], sd: null, content: null })
   const [picked, setPicked] = useState<Set<string>>(new Set())
-  const [copied, setCopied] = useState<number | null>(null)
+  const [added, setAdded] = useState<number | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     setState({ status: 'loading', marks: [], sd: null, content: null })
-    setPicked(new Set()); setCopied(null)
+    setPicked(new Set()); setAdded(null); setAddError(null)
     Promise.all([loadBrainMarks(studentId), loadStudentData(studentId), loadContent().catch(() => null)])
       .then(([marks, sd, content]) => { if (!cancelled) setState({ status: 'ok', marks, sd, content }) })
       .catch(() => { if (!cancelled) setState(s => ({ ...s, status: 'error' })) })
@@ -116,37 +116,26 @@ export default function KitaplikReport({ studentName, studentId, brainItems, col
 
   const candidates = rows.filter(r => !r.inBrain)
   function toggle(k: string) {
-    setCopied(null)
+    setAdded(null); setAddError(null)
     setPicked(p => { const n = new Set(p); if (n.has(k)) n.delete(k); else n.add(k); return n })
   }
   function pickAll() {
-    setCopied(null)
+    setAdded(null); setAddError(null)
     setPicked(p => (candidates.every(r => p.has(r.key)) ? new Set() : new Set(candidates.map(r => r.key))))
   }
-  async function copy() {
-    const cols = columns && columns.length ? columns : DEFAULT_COLUMNS
+  async function addToBrain() {
     const today = dayOf(new Date().toISOString())
-    const sel = rows.filter(r => picked.has(r.key))
-    const text = sel.map(r => cols.map(c => {
-      switch (c) {
-        case 'unit_id': return r.book
-        case 'item': return r.word
-        case 'type': return 'word'
-        case 'date': return today
-        case 'status': return r.status
-        default: return ''
-      }
-    }).join('\t')).join('\n')
+    const sel = rows.filter(r => picked.has(r.key) && !r.inBrain)
+    if (!sel.length || busy) return
+    setBusy(true); setAddError(null)
     try {
-      await navigator.clipboard.writeText(text)
+      await onAdd(sel.map(r => ({ unit: r.book, item: r.word, type: 'word' as const, date: today, status: r.status })))
+      setPicked(new Set())
+      setAdded(sel.length)
     } catch {
-      const ta = document.createElement('textarea')
-      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'
-      document.body.appendChild(ta); ta.select()
-      try { document.execCommand('copy') } catch {}
-      document.body.removeChild(ta)
+      setAddError('Beyne eklenemedi. İnternet bağlantını kontrol edip tekrar dene.')
     }
-    setCopied(sel.length)
+    setBusy(false)
   }
 
   const chip = (bg: string, fg: string): CSSProperties => ({
@@ -154,6 +143,7 @@ export default function KitaplikReport({ studentName, studentId, brainItems, col
     background: bg, color: fg, fontSize: '12px', fontWeight: 700, whiteSpace: 'nowrap',
   })
   const allPicked = candidates.length > 0 && candidates.every(r => picked.has(r.key))
+  const pickedNew = rows.filter(r => picked.has(r.key) && !r.inBrain).length
 
   return (
     <section className="kr-root" style={{
@@ -163,7 +153,7 @@ export default function KitaplikReport({ studentName, studentId, brainItems, col
     }}>
       <h2 style={{ margin: '0 0 2px', fontSize: '1.2rem', fontWeight: 800 }}>📚 Kitaplık kelimeleri</h2>
       <p style={{ margin: '0 0 12px', fontSize: '.9rem', color: '#6B6890' }}>
-        {studentName} Kitaplık'ta bu kelimeleri işaretledi. Bunlar beynine kendiliğinden gitmez. Emin olduklarını seç, kopyala ve öğrencinin My Brain tablosunda ilk boş satırın en soldaki hücresine yapıştır.
+        {studentName} Kitaplık'ta bu kelimeleri işaretledi. Bunlar beynine kendiliğinden gitmez. Emin olduklarını seç ve "Beyne ekle"ye bas; beyninin en sonuna eklenir.
       </p>
 
       {state.status === 'loading' && <p style={{ margin: 0, fontSize: '.9rem', color: '#6B6890' }}>Yükleniyor…</p>}
@@ -180,14 +170,19 @@ export default function KitaplikReport({ studentName, studentId, brainItems, col
               border: '1.5px solid #B9B2E6', background: '#FFFFFF', color: '#23204A', cursor: candidates.length ? 'pointer' : 'default',
               opacity: candidates.length ? 1 : 0.5,
             }}>{allPicked ? 'Seçimi kaldır' : 'Beyninde olmayanların hepsini seç'}</button>
-            <button type="button" onClick={copy} disabled={picked.size === 0} style={{
+            <button type="button" onClick={addToBrain} disabled={pickedNew === 0 || busy} style={{
               font: 'inherit', fontWeight: 800, fontSize: '.85rem', padding: '7px 16px', borderRadius: '999px',
-              border: 'none', background: picked.size ? '#6A4CE0' : '#CFCAE8', color: '#FFFFFF', cursor: picked.size ? 'pointer' : 'default',
-            }}>Seçilenleri kopyala ({picked.size})</button>
+              border: 'none', background: pickedNew && !busy ? '#6A4CE0' : '#CFCAE8', color: '#FFFFFF', cursor: pickedNew && !busy ? 'pointer' : 'default',
+            }}>{busy ? 'Ekleniyor…' : `Beyne ekle (${pickedNew})`}</button>
           </div>
-          {copied !== null && (
+          {added !== null && (
             <p role="status" style={{ margin: '0 0 10px', padding: '8px 12px', borderRadius: '12px', background: '#E7F8EE', color: '#156A3A', fontSize: '.85rem', fontWeight: 700 }}>
-              ✓ {copied} satır kopyalandı. My Brain tablosunda ilk boş satırın en soldaki hücresine tıkla ve yapıştır.
+              ✓ {added} kelime {studentName} adlı öğrencinin beynine eklendi.
+            </p>
+          )}
+          {addError && (
+            <p role="alert" style={{ margin: '0 0 10px', padding: '8px 12px', borderRadius: '12px', background: '#FDEEE8', color: '#A2401F', fontSize: '.85rem', fontWeight: 700 }}>
+              {addError}
             </p>
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

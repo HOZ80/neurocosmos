@@ -2,11 +2,13 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { getAccessToken, normalizeLoginName } from './auth'
 import { sb, shortName } from './liveShared'
 
-// Unutmama kart bankası (yalnızca açılınca yüklenir)
+// Unutmama kart bankası ve öğrencinin Öğrenme sayfası (yalnızca açılınca yüklenir)
 const MemoryCardsAdmin = lazy(() => import('./MemoryCardsAdmin'))
+const StudentLearning = lazy(() => import('./StudentLearning'))
 
 // ─── Öğretmen paneli: Öğrenciler ──────────────────────────────────────────────
-// Öğrenci ekle, alan aç/kapat, şifre değiştir, pasife al / yeniden aç.
+// Öğrenci ekle, alan aç/kapat, şifre değiştir, pasife al / yeniden aç; öğrencinin
+// Öğrenme sayfası (beyin, Unutmama kartları, Drill, Kitaplık) buradan açılır.
 // Bütün işler Netlify'daki "ogrenci-yonetimi" görevinden geçer; o görev
 // çağıranın öğretmen olduğunu her seferinde kendisi doğrular.
 
@@ -95,12 +97,13 @@ function AreaChips({ value, onToggle, disabled }: { value: string[]; onToggle: (
   )
 }
 
-function StudentRow({ s, open, onOpen, onChanged, onMessage }: {
+function StudentRow({ s, open, onOpen, onChanged, onMessage, onLearning }: {
   s: Student
   open: boolean
   onOpen: () => void
   onChanged: (list: Student[]) => void
   onMessage: (m: string) => void
+  onLearning: () => void
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -189,7 +192,21 @@ function StudentRow({ s, open, onOpen, onChanged, onMessage }: {
 
       {open && (
         <div style={{ padding: '4px 16px 18px', display: 'flex', flexDirection: 'column', gap: '20px', borderTop: '1px solid var(--border)' }}>
-          <div style={{ paddingTop: '14px' }}>
+          <button onClick={onLearning} style={{
+            marginTop: '14px', width: '100%', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', textAlign: 'left',
+            background: '#F4F1FF', border: '1.5px solid #6A4CE033', borderRadius: '12px', cursor: 'pointer', fontFamily: 'inherit',
+          }}>
+            <span aria-hidden style={{
+              width: '38px', height: '38px', borderRadius: '10px', flexShrink: 0, display: 'grid', placeItems: 'center', fontSize: '20px',
+              background: 'radial-gradient(circle at 50% 40%, #3B2F8F 0%, #1A1838 75%)',
+            }}>🧠</span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: 700, color: 'var(--foreground)' }}>Öğrenme sayfası</span>
+              <span style={{ display: 'block', fontSize: '13px', color: 'var(--muted-foreground)', marginTop: '2px' }}>Beyni, Unutmama kartları, Drill ilerlemesi ve Kitaplık kelimeleri</span>
+            </span>
+            <span aria-hidden style={{ color: 'var(--muted-foreground)', fontSize: '18px' }}>›</span>
+          </button>
+          <div>
             <span style={fieldLabel}>Girebildiği alanlar (dokununca hemen kaydedilir)</span>
             <AreaChips value={s.areas} onToggle={toggleArea} disabled={busy || !s.active} />
             {!s.active && <p style={{ margin: '8px 2px 0', fontSize: '13px', color: 'var(--muted-foreground)' }}>Alanları değiştirmek için önce hesabı yeniden aç.</p>}
@@ -349,13 +366,18 @@ function NewStudentForm({ onDone, onCancel }: { onDone: (list: Student[], name: 
   )
 }
 
-export default function StudentAdmin({ onClose }: { onClose: () => void }) {
+export default function StudentAdmin({ onClose, unitTitles = {}, drillLabels = {} }: {
+  onClose: () => void
+  unitTitles?: Record<string, string>   // ünite/kitap kodu → ad (beyin kayıtlarında görünür)
+  drillLabels?: Record<string, string>  // Drill konu kimliği → konu adı
+}) {
   const [students, setStudents] = useState<Student[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [showCards, setShowCards] = useState(false)
+  const [learningId, setLearningId] = useState<string | null>(null)
   const listScroll = useRef(0)
 
   function load() {
@@ -368,6 +390,10 @@ export default function StudentAdmin({ onClose }: { onClose: () => void }) {
 
   function openCards() { listScroll.current = window.scrollY; setShowCards(true); window.scrollTo(0, 0) }
   function closeCards() { setShowCards(false); requestAnimationFrame(() => window.scrollTo(0, listScroll.current)) }
+  function openLearning(id: string) { listScroll.current = window.scrollY; setLearningId(id); window.scrollTo(0, 0) }
+  function closeLearning() { setLearningId(null); requestAnimationFrame(() => window.scrollTo(0, listScroll.current)) }
+  const learning = learningId ? students?.find(x => x.id === learningId) ?? null : null
+  const hidden = showCards || !!learning
 
   return (
     <>
@@ -376,7 +402,17 @@ export default function StudentAdmin({ onClose }: { onClose: () => void }) {
         <MemoryCardsAdmin onBack={closeCards} />
       </Suspense>
     )}
-    <div style={{ minHeight: '100vh', background: 'var(--background)', display: showCards ? 'none' : undefined }}>
+    {learning && (
+      <Suspense fallback={<p style={{ padding: '24px', color: 'var(--muted-foreground)', fontSize: '14px' }}>Yükleniyor…</p>}>
+        <StudentLearning
+          student={{ id: learning.id, name: learning.displayName, areas: learning.areas }}
+          onBack={closeLearning}
+          unitTitles={unitTitles}
+          drillLabels={drillLabels}
+        />
+      </Suspense>
+    )}
+    <div style={{ minHeight: '100vh', background: 'var(--background)', display: hidden ? 'none' : undefined }}>
       <div style={{ maxWidth: '560px', margin: '0 auto', padding: '20px 16px 48px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '20px' }}>
           <button onClick={onClose} style={{ ...quietBtn, padding: '9px 14px' }}>← Geri</button>
@@ -452,6 +488,7 @@ export default function StudentAdmin({ onClose }: { onClose: () => void }) {
                 onOpen={() => setOpenId(id => id === s.id ? null : s.id)}
                 onChanged={setStudents}
                 onMessage={m => setMessage(m)}
+                onLearning={() => openLearning(s.id)}
               />
             ))}
           </div>

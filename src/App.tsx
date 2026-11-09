@@ -3,8 +3,10 @@ import PrivateShadowing from './PrivateShadowing'
 import PrivateDictation from './PrivateDictation'
 import SceneView, { parseSceneRows, parseCharacterRows, FALLBACK_SCENE_DATA } from './SceneView'
 import type { Scene, SceneCharacter } from './SceneView'
-import { parseMemoryRows, parseMemoryStudents, UnitMemorySection } from './memoryShared'
-import type { MemoryItem, MemoryStudent } from './memoryShared'
+import { UnitMemorySection } from './memoryShared'
+import type { MemoryItem } from './memoryShared'
+import { fetchBrain, listBrainPeople, addBrainItems } from './brainStore'
+import type { BrainPerson } from './brainStore'
 import { useUnutmama, UnutmamaView, UnutmamaStrip, UnutmamaChildCard, UNUTMAMA_STUDENT_NAME } from './UnutmamaView'
 import {
   loadDrillProgressLocal, saveDrillProgressLocal, loadDrillTopicsLocal, saveDrillTopicsLocal,
@@ -17,8 +19,6 @@ import StudentAdmin from './StudentAdmin'
 import ChildReaderApp from './Reader'
 import { useChildBrain, ChildBrainCard, ChildBrainView } from './ChildBrain'
 import KitaplikReport from './KitaplikReport'
-import { listStudentAccounts } from './readerStore'
-import type { StudentAccount } from './readerStore'
 import { loadContent } from './readerData'
 import LiveTeacher, { clearLiveTeacherNav } from './LiveTeacher'
 import { useLiveStatus, LiveBanner, LiveOnlyHome, LiveStudentScreen } from './LiveStudent'
@@ -3067,10 +3067,12 @@ const GRAMMAR_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/
 // SAHNE TABLOSU — Sahneler sekmesi ve Karakterler sekmesi ayri ayri publish edilir.
 // Bos birakilirsa kod SceneView icindeki Tesla sahnesini kullanir (test icin).
 const SCENE_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRaUcai7WmP71DGXSTRXK95Tw1TLG0LlPvwM6Om7B5jq3wZPEdk3HimYd0hMTTgSw/pub?gid=1604637706&single=true&output=csv'
-// HAFIZA BEYNİ — Öğrenciler tablosu (student_name, profile, sheet_csv_url, active).
-// Her öğrencinin hafıza tablosunun bağlantısı bu tablodaki sheet_csv_url sütunundan okunur.
-const MEMORY_STUDENTS_SHEET_CSV_URL: string = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSoeVcC7FNlHGg-KUB7qDtQDuNmcnVv-D_6wXi1DHiaUjBcC5IBJTmjAYss2ZdyRbH4gZX1noopNBfJ/pub?gid=1004484577&single=true&output=csv'
+// MY BRAIN beyinleri veritabanında (brainStore.ts; öğretmen ekranı: Öğrencileri yönet >
+// öğrenci > Öğrenme sayfası). "Neurocosmos - Students Profiles" ve hafıza tabloları
+// (Group A / Group B) arşivdir; site onları okumaz.
 const EMPTY_MEMORY_ITEMS: MemoryItem[] = []
+// Owner'ın My Brain listesinde öğretmenin kendi Unutmama beyni için iç kimlik
+const UNUT_BRAIN_ID = '__unutmama__'
 
 // UNUTMAMA kartları artık veritabanında (memoryStore.ts; öğretmen ekranı:
 // Öğrencileri yönet > Unutmama kartları). "Neurocosmos - My Memory Cards"
@@ -4572,33 +4574,17 @@ function DrillView({ unit, onBack, sheetTopics, entryProfile }: { unit: Unit; on
 // "Konular" bölümleri Sheets'ten beslenecek, dinleme kartları gerçek <audio>
 // ile arka planda çalabilecek şekilde bağlanacak. Şu an hiçbir kart tıklanınca
 // bir şey açmıyor — bilerek böyle, içerik gelene kadar.
-// My Brain adı eşleşmesi: listedeki ad ile hesap adı aynı olmalı (büyük/küçük harf ve
-// baştaki/sondaki boşluk önemsiz).
-function sameName(a: string, b: string): boolean {
-  return a.trim().toLocaleLowerCase('tr') === b.trim().toLocaleLowerCase('tr')
+// Çocuk panelinin My Brain'i: veritabanındaki beyin. Çocuk kendi beynini okur; öğretmen
+// paneli önizlerken bu paneli kullanan öğrencinin (alanı açık olan hesap) beyni gösterilir.
+async function loadChildBrain(accountId: string, childArea: AreaId, asTeacher: boolean): Promise<MemoryItem[]> {
+  if (!asTeacher) return fetchBrain(accountId)
+  const owner = (await listBrainPeople()).find(p => p.areas.includes(childArea))
+  return owner ? fetchBrain(owner.id) : []
 }
 
-// Çocuk panelinin My Brain'i: My Brain öğrenci listesinde çocuğun adını bulur, o
-// satırdaki tabloyu okur. Satır yoksa beyin boş görünür.
-async function loadMemoryByName(name: string): Promise<MemoryItem[]> {
-  const bust = (u: string) => `${u}${u.includes('?') ? '&' : '?'}t=${Date.now()}`
-  const list = parseMemoryStudents(parseCSV(await (await fetch(bust(MEMORY_STUDENTS_SHEET_CSV_URL), { cache: 'no-store' })).text()))
-  const me = list.find(s => s.active && sameName(s.name, name))
-  if (!me) return []
-  const res = await fetch(bust(me.url), { cache: 'no-store' })
-  if (!res.ok) throw new Error('tablo okunamadı')
-  return parseMemoryRows(parseCSV(await res.text())).items
-}
-
-// Tablonun ilk satırındaki sütun adları, sırasıyla (Kitaplık raporu kopyalarken bu sırayı kullanır)
-function csvHeader(text: string): string[] {
-  const first = text.split(/\r?\n/)[0] ?? ''
-  return first.split(',').map(c => c.replace(/^"|"$/g, '').trim())
-}
-
-function ChildDashboard({ childName, unitTitles, onExit, accountId, memoryEnabled }: { childName: string; unitTitles: Record<string, string>; onExit: () => void; accountId: string; memoryEnabled: boolean }) {
-  // My Brain: öğretmenin My Brain tablosundan (ChildBrain.tsx)
-  const brain = useChildBrain(() => loadMemoryByName(childName))
+function ChildDashboard({ childName, childArea, unitTitles, onExit, accountId, memoryEnabled }: { childName: string; childArea: AreaId; unitTitles: Record<string, string>; onExit: () => void; accountId: string; memoryEnabled: boolean }) {
+  // My Brain: veritabanından (ChildBrain.tsx). memoryEnabled kapalıysa öğretmen önizliyor.
+  const brain = useChildBrain(() => loadChildBrain(accountId, childArea, !memoryEnabled))
   const [showBrain, setShowBrain] = useState(false)
   // Memory (Unutmama): yalnızca çocuğa atanmış kart varsa görünür.
   // Öğretmen paneli önizlerken kapalı (öğretmenin kendi kartları burada görünmesin).
@@ -5125,30 +5111,19 @@ export default function App() {
       .catch(() => { /* fallback: drill kartları kilitli görünür */ })
   }, [])
 
-  // ── Memory (hafıza beyni): Öğrenciler tablosu + seçili öğrencinin kendi hafıza tablosu ──
-  const [memoryStudents, setMemoryStudents] = useState<MemoryStudent[] | null>(null)
+  // ── My Brain: beyinler veritabanında (brainStore.ts) ──
   const [memoryStudentName, setMemoryStudentName] = useState<string | null>(null)
-  const [memoryLoad, setMemoryLoad] = useState<{ url: string; status: 'loading' | 'ok' | 'error'; items: MemoryItem[]; skipped: number; columns?: string[] } | null>(null)
   const memoryEnabled = entryProfile === 'A1' || entryProfile === 'A2' || entryProfile === 'owner'
   // Unutmama: Owner kendi kartlarını, yetişkin öğrenciler kendilerine atanmış kartları görür.
   const studentUnut = !isTeacher && (entryProfile === 'A1' || entryProfile === 'A2')
   const unut = useUnutmama(account?.id ?? null, entryProfile === 'owner' || studentUnut, isTeacher)
 
+  // Öğretmen için öğrenci hesapları (beyin listesi ve Kitaplık raporu)
+  const [brainPeople, setBrainPeople] = useState<BrainPerson[] | null>(null)
   useEffect(() => {
-    if (!MEMORY_STUDENTS_SHEET_CSV_URL || !memoryEnabled || memoryStudents) return
-    const bustedUrl = `${MEMORY_STUDENTS_SHEET_CSV_URL}${MEMORY_STUDENTS_SHEET_CSV_URL.includes('?') ? '&' : '?'}t=${Date.now()}`
-    fetch(bustedUrl, { cache: 'no-store' })
-      .then(res => res.text())
-      .then(text => setMemoryStudents(parseMemoryStudents(parseCSV(text))))
-      .catch(() => { /* Memory butonu görünmez, site etkilenmez */ })
-  }, [memoryEnabled])
-
-  // Öğretmen için öğrenci hesapları: Kitaplık raporu ve listede tablosu olmayan Kitaplık öğrencileri
-  const [studentAccounts, setStudentAccounts] = useState<StudentAccount[]>([])
-  useEffect(() => {
-    if (entryProfile !== 'owner') return
-    listStudentAccounts().then(setStudentAccounts).catch(() => { /* rapor görünmez, site etkilenmez */ })
-  }, [entryProfile])
+    if (!memoryEnabled || !isTeacher) return
+    listBrainPeople().then(setBrainPeople).catch(() => setBrainPeople([]))
+  }, [memoryEnabled, isTeacher])
 
   // Kitap adları: My Brain'de kitap kodu (örn. K001) yerine kitabın adı yazsın
   const [bookTitles, setBookTitles] = useState<Record<string, string>>({})
@@ -5160,59 +5135,61 @@ export default function App() {
       .catch(() => { /* kod olarak görünür */ })
   }, [wantsBookTitles])
 
-  // Bu giriş profilinin görebileceği öğrenciler: Owner hepsini (aktif olanları), diğerleri
-  // sadece profile sütunu kendi grubuyla aynı olan aktif öğrenciyi görür.
-  const memoryProfileLabel = entryProfile === 'A1' || entryProfile === 'A2' ? LEVEL_META[entryProfile].label : null
-  const visibleMemoryStudents: MemoryStudent[] = [
-    ...(memoryStudents ?? []).filter(s =>
-      s.active && (entryProfile === 'owner' || (memoryProfileLabel !== null && s.profile.trim().toLowerCase() === memoryProfileLabel.toLowerCase()))
-    ),
-    // Owner için: Kitaplık'ı olan ama listede (tabloda) adı olmayan öğrenciler; beyni boş, altında raporu görünür
-    ...(entryProfile === 'owner'
-      ? studentAccounts
-          .filter(a => (a.areas || []).includes('library') && !(memoryStudents ?? []).some(s => s.active && sameName(s.name, a.display_name)))
-          .map(a => ({ name: a.display_name, profile: 'Kitaplık', url: '', active: true }))
-      : []),
-    // Owner için, öğrencilerin ardına: kendi Unutmama kartlarından çıkan beyin
-    ...(entryProfile === 'owner' && unut.status === 'ok' && unut.cards.length > 0
-      ? [{ name: UNUTMAMA_STUDENT_NAME, profile: 'Owner', url: '', active: true }]
-      : []),
-  ]
+  // Bu girişte görülebilecek beyinler: öğrenci yalnızca kendi beynini görür. Öğretmen
+  // Owner'da bir alanı açık her öğrenciyi (ardından kendi Unutmama beynini), A1/A2
+  // önizlemesinde o alanın öğrencilerini görür.
+  const visibleMemoryStudents: { id: string; name: string; library: boolean }[] = !memoryEnabled ? [] : !isTeacher
+    ? (account ? [{ id: account.id, name: account.displayName, library: false }] : [])
+    : [
+        ...(brainPeople ?? [])
+          .filter(p => (entryProfile === 'owner' ? p.areas.length > 0 : p.areas.includes(entryProfile as string)))
+          .map(p => ({ id: p.id, name: p.name, library: p.areas.includes('library') })),
+        ...(entryProfile === 'owner' && unut.status === 'ok' && unut.cards.length > 0
+          ? [{ id: UNUT_BRAIN_ID, name: UNUTMAMA_STUDENT_NAME, library: false }]
+          : []),
+      ]
   const currentMemoryStudent = visibleMemoryStudents.find(s => s.name === memoryStudentName) ?? visibleMemoryStudents[0] ?? null
-  const isUnutStudent = currentMemoryStudent?.name === UNUTMAMA_STUDENT_NAME
-  const currentMemoryUrl = currentMemoryStudent && !isUnutStudent ? currentMemoryStudent.url : null
+  const isUnutStudent = currentMemoryStudent?.id === UNUT_BRAIN_ID
+  const currentBrainId = currentMemoryStudent && !isUnutStudent ? currentMemoryStudent.id : null
 
+  const [memoryLoad, setMemoryLoad] = useState<{ id: string; status: 'loading' | 'ok' | 'error'; items: MemoryItem[] } | null>(null)
+  const [brainTick, setBrainTick] = useState(0)
   useEffect(() => {
-    if (!currentMemoryUrl) return
+    if (!currentBrainId) return
     let cancelled = false
-    setMemoryLoad({ url: currentMemoryUrl, status: 'loading', items: EMPTY_MEMORY_ITEMS, skipped: 0 })
-    const bustedUrl = `${currentMemoryUrl}${currentMemoryUrl.includes('?') ? '&' : '?'}t=${Date.now()}`
-    fetch(bustedUrl, { cache: 'no-store' })
-      .then(res => { if (!res.ok) throw new Error('bad status'); return res.text() })
-      .then(text => {
-        if (cancelled) return
-        const { items, skipped } = parseMemoryRows(parseCSV(text))
-        setMemoryLoad({ url: currentMemoryUrl, status: 'ok', items, skipped, columns: csvHeader(text) })
+    setMemoryLoad(m => (m && m.id === currentBrainId ? m : { id: currentBrainId, status: 'loading', items: EMPTY_MEMORY_ITEMS }))
+    fetchBrain(currentBrainId)
+      .then(items => { if (!cancelled) setMemoryLoad({ id: currentBrainId, status: 'ok', items }) })
+      .catch(() => {
+        if (!cancelled) setMemoryLoad(m => (m && m.id === currentBrainId && m.status === 'ok' ? m : { id: currentBrainId, status: 'error', items: EMPTY_MEMORY_ITEMS }))
       })
-      .catch(() => { if (!cancelled) setMemoryLoad({ url: currentMemoryUrl, status: 'error', items: EMPTY_MEMORY_ITEMS, skipped: 0 }) })
     return () => { cancelled = true }
-  }, [currentMemoryUrl])
+  }, [currentBrainId, brainTick])
 
-  const memoryReady = !!memoryLoad && memoryLoad.url === currentMemoryUrl
-  const memoryNoSheet = !!currentMemoryStudent && !isUnutStudent && !currentMemoryStudent.url // tablosu henüz olmayan Kitaplık öğrencisi
-  const memoryStatus: 'loading' | 'ok' | 'error' = isUnutStudent ? unut.status : memoryNoSheet ? 'ok' : (memoryReady ? memoryLoad!.status : 'loading')
-  const memoryItems: MemoryItem[] = isUnutStudent ? unut.memoryItems : (memoryReady && !memoryNoSheet ? memoryLoad!.items : EMPTY_MEMORY_ITEMS)
-  // Öğretmen ekranındaki Kitaplık raporu: seçili öğrencinin adıyla eşleşen, Kitaplık'ı olan hesap
-  const reportAccount = entryProfile === 'owner' && currentMemoryStudent && !isUnutStudent
-    ? studentAccounts.find(a => (a.areas || []).includes('library') && sameName(a.display_name, currentMemoryStudent.name)) ?? null
-    : null
-  const memorySkipped = isUnutStudent ? 0 : (memoryReady ? memoryLoad!.skipped : 0)
+  const memoryReady = !!memoryLoad && memoryLoad.id === currentBrainId
+  const memoryStatus: 'loading' | 'ok' | 'error' = isUnutStudent ? unut.status : (memoryReady ? memoryLoad!.status : 'loading')
+  const memoryItems: MemoryItem[] = isUnutStudent ? unut.memoryItems : (memoryReady ? memoryLoad!.items : EMPTY_MEMORY_ITEMS)
+  // Öğretmen ekranındaki Kitaplık raporu: seçili öğrencinin Kitaplık'ı açıksa
+  const reportAccount = entryProfile === 'owner' && currentMemoryStudent && !isUnutStudent && currentMemoryStudent.library ? currentMemoryStudent : null
+  // Kitaplık raporundan "Beyne ekle": seçili öğrencinin beyninin en sonuna ekler, sonra beyni yeniden okur
+  async function addToCurrentBrain(items: MemoryItem[]) {
+    if (!currentBrainId) return
+    await addBrainItems(currentBrainId, items)
+    setBrainTick(t => t + 1)
+  }
   const memoryCounts: Record<string, number> = {}
   memoryItems.forEach(it => { memoryCounts[it.unit] = (memoryCounts[it.unit] ?? 0) + 1 })
   const memoryUnitTitles: Record<string, string> = { ...bookTitles }
   if (unitsSheetData) {
     Object.values(unitsSheetData.unitsByLevel).flat().forEach(u => { if (u.unit_id && u.unit_title) memoryUnitTitles[u.unit_id] = u.unit_title })
   }
+
+  // Öğrencinin Öğrenme sayfasındaki Drill bölümü için konu adları (konu kimliği → konu adı)
+  const drillLabels = useMemo(() => {
+    const out: Record<string, string> = {}
+    if (drillSheetData) Object.values(drillSheetData).flat().forEach(t => { if (t.id && t.label) out[t.id] = t.label })
+    return out
+  }, [drillSheetData])
 
   // ── Scene Sheet: sahneler + karakterler ────────────────────────────
   // URL boşsa ya da fetch düşerse SceneView içindeki Tesla sahnesi kullanılır.
@@ -5451,7 +5428,7 @@ export default function App() {
     : null
 
   if (showStudentAdmin && isTeacher) {
-    return <StudentAdmin onClose={() => setShowStudentAdmin(false)} />
+    return <StudentAdmin onClose={() => setShowStudentAdmin(false)} unitTitles={memoryUnitTitles} drillLabels={drillLabels} />
   }
 
   // Yalnızca canlı derse katılan (başka alanı açık olmayan) öğrenci: sade ekran.
@@ -5491,6 +5468,7 @@ export default function App() {
         {iosInstallBanner}
         <ChildDashboard
           childName={entryProfile === 'child_omur' ? 'Ömür' : 'Öztuğ'}
+          childArea={entryProfile}
           unitTitles={memoryUnitTitles}
           onExit={handleExitToEntry}
           accountId={account.id}
@@ -5677,7 +5655,7 @@ export default function App() {
                   studentName={currentMemoryStudent.name}
                   onSelectStudent={setMemoryStudentName}
                   items={memoryItems}
-                  skipped={memorySkipped}
+                  skipped={0}
                   showDiagnostics={entryProfile === 'owner'}
                   status={memoryStatus}
                   unitTitles={memoryUnitTitles}
@@ -5687,13 +5665,13 @@ export default function App() {
                     studentName={currentMemoryStudent.name}
                     studentId={reportAccount.id}
                     brainItems={memoryItems}
-                    columns={memoryNoSheet ? null : (memoryReady ? memoryLoad!.columns ?? null : null)}
+                    onAdd={addToCurrentBrain}
                   />
                 )}
               </Suspense>
             ) : (
               <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>
-                {memoryStudents === null ? 'Loading…' : 'No memory to show yet.'}
+                {isTeacher && brainPeople === null ? 'Loading…' : 'No memory to show yet.'}
               </p>
             )}
           </div>

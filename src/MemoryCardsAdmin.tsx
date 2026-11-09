@@ -321,7 +321,8 @@ async function downloadExcel(cards: BankCard[], assigns: BankAssignment[], progr
 }
 
 // ── Ana ekran ────────────────────────────────────────────────────────────────
-export default function MemoryCardsAdmin({ onBack, initialPersonId = '' }: { onBack: () => void; initialPersonId?: string }) {
+// embedded: öğrencinin Öğrenme sayfasında bir sekme olarak açılır (üst başlık ve Geri düğmesi o sayfada).
+export default function MemoryCardsAdmin({ onBack, initialPersonId = '', embedded = false }: { onBack: () => void; initialPersonId?: string; embedded?: boolean }) {
   const [data, setData] = useState<{ cards: BankCard[]; assignments: BankAssignment[]; progress: BankProgress[]; people: BankPerson[] } | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [mode, setMode] = useState<'list' | 'paste' | 'new'>('list')
@@ -454,13 +455,15 @@ export default function MemoryCardsAdmin({ onBack, initialPersonId = '' }: { onB
   })
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--background)' }}>
-      <div style={{ maxWidth: '760px', margin: '0 auto', padding: '20px 16px 48px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '18px' }}>
-          <button onClick={onBack} style={{ ...quietBtn, padding: '9px 14px', whiteSpace: 'nowrap', flexShrink: 0 }}>← Geri</button>
-          <h1 style={{ margin: 0, flex: 1, minWidth: 0, fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: 700, color: 'var(--foreground)', textAlign: 'center' }}>Unutmama kartları</h1>
-          <span style={{ flexShrink: 0, minWidth: '56px', textAlign: 'right', fontSize: '13px', color: 'var(--muted-foreground)', whiteSpace: 'nowrap' }}>{data ? `${cards.length} kart` : ''}</span>
-        </div>
+    <div style={embedded ? undefined : { minHeight: '100vh', background: 'var(--background)' }}>
+      <div style={embedded ? undefined : { maxWidth: '760px', margin: '0 auto', padding: '20px 16px 48px' }}>
+        {!embedded && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '18px' }}>
+            <button onClick={onBack} style={{ ...quietBtn, padding: '9px 14px', whiteSpace: 'nowrap', flexShrink: 0 }}>← Geri</button>
+            <h1 style={{ margin: 0, flex: 1, minWidth: 0, fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: 700, color: 'var(--foreground)', textAlign: 'center' }}>Unutmama kartları</h1>
+            <span style={{ flexShrink: 0, minWidth: '56px', textAlign: 'right', fontSize: '13px', color: 'var(--muted-foreground)', whiteSpace: 'nowrap' }}>{data ? `${cards.length} kart` : ''}</span>
+          </div>
+        )}
 
         {message && (
           <div role="status" style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', borderRadius: '12px', padding: '12px 14px', marginBottom: '14px', fontSize: '14px', lineHeight: 1.45 }}>

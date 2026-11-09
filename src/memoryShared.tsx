@@ -1,4 +1,4 @@
-// Hafıza beyni — ana pakette yer alan hafif parçalar (veri okuma, tarih işleme,
+// Hafıza beyni — ana pakette yer alan hafif parçalar (türler, tarih işleme,
 // stiller, ünite sayfasındaki "Memory" bölümü). Ağır olan 3D beyin ayrı dosyada
 // (MemoryBrain.tsx) ve sadece Memory sayfası açılınca yüklenir.
 
@@ -11,13 +11,6 @@ export interface MemoryItem {
   type: MemType
   date: string      // her zaman YYYY-MM-DD
   status: MemStatus
-}
-
-export interface MemoryStudent {
-  name: string
-  profile: string   // "English Group A" | "English Group B" | "Owner"
-  url: string
-  active: boolean
 }
 
 export const ST: Record<MemStatus, { label: string; hex: string; css: string }> = {
@@ -34,6 +27,7 @@ export function fmtDate(d: string): string {
   return `${x}.${m}.${y}`
 }
 
+// Tarih okuma (Sheets'ten yapıştırılan beyin ve kart satırları için).
 // Sadece iki biçim tanınır: 2026-09-15 ve 15.09.2026. Başka bir biçim (ör. 9/15/2026)
 // gün/ay karışıklığı yaratabileceği için tahmin edilmez, satır okunamayan sayılır.
 export function normalizeMemoryDate(raw: string): string | null {
@@ -48,43 +42,6 @@ export function normalizeMemoryDate(raw: string): string | null {
   }
   if (m < 1 || m > 12 || d < 1 || d > 31) return null
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-}
-
-// Sütunlar: unit_id, item, type, date, status. Satır sırası korunur (beyindeki
-// yer, tablodaki sıraya bağlı). Tamamen boş satırlar zaten CSV okuyucuda elenir.
-export function parseMemoryRows(rows: Record<string, string>[]): { items: MemoryItem[]; skipped: number } {
-  const items: MemoryItem[] = []
-  let skipped = 0
-  rows.forEach(r => {
-    const unit = (r.unit_id ?? '').trim()
-    const item = (r.item ?? '').trim()
-    const type = (r.type ?? '').trim().toLowerCase()
-    const status = (r.status ?? '').trim().toLowerCase()
-    const date = normalizeMemoryDate(r.date ?? '')
-    if (!item || !date || (type !== 'word' && type !== 'structure') || (status !== 'known' && status !== 'learning' && status !== 'fading')) {
-      skipped++
-      return
-    }
-    items.push({ unit, item, type, date, status })
-  })
-  return { items, skipped }
-}
-
-// Sütunlar: student_name, profile, sheet_csv_url, active
-export function parseMemoryStudents(rows: Record<string, string>[]): MemoryStudent[] {
-  const out: MemoryStudent[] = []
-  rows.forEach(r => {
-    const name = (r.student_name ?? '').trim()
-    const url = (r.sheet_csv_url ?? '').trim()
-    if (!name || !/^https:\/\//i.test(url)) return
-    out.push({
-      name,
-      profile: (r.profile ?? '').trim(),
-      url,
-      active: (r.active ?? '').trim().toLowerCase() === 'true',
-    })
-  })
-  return out
 }
 
 // ─── Stiller ───────────────────────────────────────────────────────────────────
