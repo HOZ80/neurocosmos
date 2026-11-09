@@ -120,6 +120,12 @@ export const LIVE_CSS = `
 .lv label.f{display:block;font-weight:700;font-size:14px;margin:12px 0 4px}
 .lv .tokens{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;min-height:44px;touch-action:none;user-select:none;-webkit-user-select:none;padding:8px;border:1px dashed var(--line);border-radius:10px;background:var(--surface)}
 .lv .tok{font:700 20px/1.6 Quicksand,'Outfit',sans-serif;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:2px 9px;cursor:pointer;color:var(--ink)}
+.lv .tok.r-ozne{color:var(--r-ozne)}
+.lv .tok.r-fiil{color:var(--r-fiil)}
+.lv .tok.r-nesne{color:var(--r-nesne)}
+.lv .tok.r-zaman{color:var(--r-zaman)}
+.lv .tok.r-baglac{color:var(--r-baglac)}
+.lv .tok.r-kiremit{color:var(--r-kiremit)}
 .lv .pens{display:flex;flex-wrap:wrap;gap:6px}
 .lv .pen{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 10px;cursor:pointer;font-weight:700}
 .lv .pen[aria-pressed="true"]{outline:3px solid var(--brand);outline-offset:1px;background:var(--brand-soft)}
