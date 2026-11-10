@@ -110,6 +110,7 @@ export function ChildBrainView({ childName, data, unitTitles, onBack }: {
             showDiagnostics={false}
             status={data.status}
             unitTitles={unitTitles}
+            latestLabel="reading"
           />
         </Suspense>
       </div>

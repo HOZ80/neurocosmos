@@ -36,6 +36,8 @@ export interface PageRow {
   image: string
   timing: string
   sectionName: string // bolum_adi: bölümün yalnızca ilk sayfa satırına yazılır
+  place: string // yer: sahnenin altındaki bilgi şeridinde (ör. Parkta, güneşli bir gün)
+  characters: string[] // karakterler: "|" ile ayrılır; şeritte isim etiketleri (yalnızca geniş ekranda)
 }
 
 export interface VocabEntry {
@@ -179,6 +181,8 @@ function build(t: { books: string; pages: string; vocab: string; questions: stri
       image: r['gorsel'] || '',
       timing: r['kelime_zamanlama'] || '',
       sectionName: r['bolum_adi'] || '',
+      place: r['yer'] || '',
+      characters: splitBar(r['karakterler'] || '').filter(Boolean),
     }))
   const vocab: VocabEntry[] = toObjects(t.vocab)
     .filter(r => r['kitap_kodu'] && r['kelime'])

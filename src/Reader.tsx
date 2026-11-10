@@ -628,6 +628,9 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   // cümleleri okur ve kelime vurgusu tahmini zamanlamayla yürür. Öğretmen
   // önizlemesinde "MP3 dene" ile geçici bir dosya da denenebilir.
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  // Bütün sayfalarda aynı ses öğesi kullanılır: iPhone/iPad'de çocuk bir kez
+  // oynata bastıktan sonra sonraki sayfalar da kendiliğinden başlayabilsin.
+  const audioEl = useRef<HTMLAudioElement | null>(null)
   const [duration, setDuration] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [audioError, setAudioError] = useState(false)
@@ -690,7 +693,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
     // Düz dosya adı Supabase'te bulunamazsa sitenin kitaplar klasörüne bakılır
     const fb = !overrideActive && page.audio ? fileUrlFallback(page.audio) : null
     let usedFb = false
-    const a = new Audio()
+    const a = audioEl.current ?? (audioEl.current = new Audio())
     a.preload = 'auto'
     a.src = realSrc
     a.playbackRate = live.current.rate
@@ -717,6 +720,32 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   }, [pageKey, realSrc])  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { if (audioRef.current) audioRef.current.playbackRate = rate }, [rate])
+
+  // ── Sayfa açılınca okuma kendiliğinden başlar ─────────────────────────
+  // Kitap açıldığında, sayfa çevrildiğinde ya da yeni bölüme geçildiğinde: ses
+  // hazır olunca ve sayfa çevirme hareketi bitince ilk cümleden başlar. Çocuk
+  // durdurursa aynı sayfada yeniden kendiliğinden başlamaz.
+  const autoKey = useRef('')
+  const autoSeen = useRef('')
+  if (autoSeen.current !== pageKey) { autoSeen.current = pageKey; autoKey.current = page ? pageKey : '' }
+  const playingRef = useRef(playing)
+  playingRef.current = playing
+  const pageKeyRef = useRef(pageKey)
+  pageKeyRef.current = pageKey
+  useEffect(() => {
+    if (!page || autoKey.current !== pageKey) return
+    if (audioError) { autoKey.current = ''; return }
+    const ready = live.current.demo ? duration > 0 : audioReady !== '' && !!audioRef.current
+    if (!ready) return
+    const key = pageKey
+    const t = window.setTimeout(() => {
+      if (autoKey.current !== key || pageKeyRef.current !== key) return
+      autoKey.current = ''
+      if (playingRef.current) return
+      seekTo(0, true)
+    }, canAnimate() ? 650 : 50)
+    return () => window.clearTimeout(t)
+  }, [pageKey, duration, audioReady, audioError])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ses dosyası açılınca cümle bitişlerini ölç (yalnızca gerçek ses dosyasında)
   useEffect(() => {
@@ -1405,8 +1434,14 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
                 wordMode={effHl === 'word'} aspect={sceneAspect.img === page.image ? sceneAspect.a : 0} />
             )}
             <div className="rd-sweep" />
-            {!wide && (
-              <div className="rd-strip" aria-label={`Sayfa ${pos.idx + 1} / ${secPages.length}`}>
+            {wide ? (page.place || page.characters.length > 0) && (
+              <div className="rd-strip info">
+                {page.place && <><Ic n="pin" /><span className="pl">{page.place}</span></>}
+                {page.characters.length > 0 && <span className="who">{page.characters.map((c, i) => <span key={i}>{c}</span>)}</span>}
+              </div>
+            ) : (
+              <div className={'rd-strip' + (page.place ? ' info' : '')} aria-label={`Sayfa ${pos.idx + 1} / ${secPages.length}`}>
+                {page.place && <><Ic n="pin" /><span className="pl">{page.place}</span></>}
                 <span className="pg">{secPages.map((_, i) => <i key={i} className={i === pos.idx ? 'on' : ''} />)}</span>
               </div>
             )}

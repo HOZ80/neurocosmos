@@ -91,6 +91,12 @@ export const READER_CSS = `
 .rd-strip .pg{display:flex;gap:4px}
 .rd-strip .pg i{display:block;width:7px;height:7px;border-radius:4px;background:rgba(255,255,255,.35);transition:width .3s}
 .rd-strip .pg i.on{width:18px;background:var(--sun)}
+.rd-strip.info{left:12px;padding:10px 14px;font-size:14px;min-width:0}
+.rd-strip.info .rd-i{width:18px;height:18px;color:var(--sun)}
+.rd-strip .pl{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rd-strip .who{margin-left:auto;display:flex;gap:6px;flex:none;max-width:60%;overflow:hidden}
+.rd-strip .who span{background:rgba(255,255,255,.16);padding:4px 10px;border-radius:999px;font-size:12px;white-space:nowrap}
+.rd-strip.info .pg{margin-left:auto;flex:none}
 .rd-text{position:relative;padding:20px 26px 22px;display:flex;flex-direction:column;gap:12px;background:var(--paper);border-radius:0 0 24px 24px;min-height:300px}
 .rd-spread.dbl .rd-text{padding:24px 30px 22px 34px;border-radius:0 24px 24px 0}
 .rd-flipclone{position:absolute;z-index:8;pointer-events:none;backface-visibility:hidden;-webkit-backface-visibility:hidden;background:var(--paper);box-shadow:0 0 36px rgba(20,10,60,.28);margin:0;will-change:transform}
@@ -330,6 +336,8 @@ body:has(.rd-app.reading) .nc-live-banner{bottom:calc(var(--rd-barh,0px) + 28px)
   .rd-app.reading .rd-art{flex:none}
   .rd-scene{width:100%;aspect-ratio:auto;height:clamp(180px,29dvh,250px);border-radius:18px}
   .rd-strip{right:8px;bottom:8px;padding:6px 10px;border-radius:11px;font-size:12px}
+  .rd-strip.info{left:8px;gap:6px;padding:6px 10px;font-size:12px}
+  .rd-strip.info .rd-i{width:15px;height:15px}
   .rd-text{padding:12px 12px 14px;gap:10px;min-height:0}
   .rd-app.reading .rd-text{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
   .rd-sents{gap:10px}

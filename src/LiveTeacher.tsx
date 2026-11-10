@@ -249,7 +249,7 @@ function HomeScreen({ busy, error, onExit, onStart, onDemo, onResume, onGo, onRe
 
       <div className="box">
         <h2 style={{ fontSize: 18, marginBottom: 4 }}>Söz sırası</h2>
-        <p className="muted small" style={{ margin: '0 0 10px' }}>Sözlü Meet dersi ya da yüz yüze sınıf için. Çocukların giriş yapması gerekmez.</p>
+        <p className="muted small" style={{ margin: '0 0 10px' }}>Çocuklar giriş yapmadan sözlü ders için. Neurocosmos'ta canlı ders yaparken söz sırası dersin içindeki Söz sırası sekmesinde.</p>
         <div className="row" style={{ marginTop: 0 }}><button className="btn primary" disabled={busy} onClick={() => onOral()}>Söz sırasını aç</button></div>
       </div>
 

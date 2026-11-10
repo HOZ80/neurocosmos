@@ -609,11 +609,12 @@ interface Props {
   showDiagnostics: boolean              // sadece Owner görür
   status: 'loading' | 'ok' | 'error'
   unitTitles: Record<string, string>    // unit_id → ünite başlığı
+  latestLabel?: string                  // "+N from your latest ..." (çocuklarda reading)
 }
 
 type Engine = ReturnType<typeof createEngine>
 
-export default function MemoryBrain({ students, studentName, onSelectStudent, items, skipped, showDiagnostics, status, unitTitles }: Props) {
+export default function MemoryBrain({ students, studentName, onSelectStudent, items, skipped, showDiagnostics, status, unitTitles, latestLabel = 'lesson' }: Props) {
   const spaceRef = useRef<HTMLDivElement>(null)
   const bubbleRef = useRef<HTMLDivElement>(null)
   const replayRef = useRef<HTMLButtonElement>(null)
@@ -707,7 +708,7 @@ export default function MemoryBrain({ students, studentName, onSelectStudent, it
       {status === 'ok' && items.length > 0 && (
         <>
           <p className="mb-count">Your memory holds <b>{counts.w} words</b> and <b>{counts.s} structures</b>.</p>
-          <p className="mb-newline">+{newCount} from your latest lesson ({fmtDate(last)}).</p>
+          <p className="mb-newline">+{newCount} from your latest {latestLabel} ({fmtDate(last)}).</p>
         </>
       )}
       {status === 'ok' && items.length === 0 && (
