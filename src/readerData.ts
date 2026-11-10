@@ -1,6 +1,7 @@
 // ─── Okuyucu: içerik (Google Sheets) ve metin işleme ─────────────────────────
 // Dört sekme ayrı ayrı yayınlanmış CSV olarak okunur. Yeni kitap eklemek için
 // aynı sekmelere yeni satır yazmak yeterli, yeni bağlantı gerekmez.
+// Beşinci sekme (Balonlar) isteğe bağlıdır: okunamazsa okuyucu balonsuz açılır.
 
 import { SUPABASE_URL } from './auth'
 
@@ -11,6 +12,7 @@ const SHEET_GID = {
   pages: '1667609147',
   vocab: '1368443294',
   questions: '374318237',
+  balloons: '1340620273',
 }
 
 const CACHE_KEY = 'nc_reader_content_v1'
@@ -56,11 +58,30 @@ export interface QuestionRow {
   explanation: string
 }
 
+// Balonlar sekmesi: kitap_kodu, bolum, sayfa, cumle_no, metin, x, y, kuyruk, konusan
+// x, y: kuyruğun ucunun resimdeki yeri (soldan ve yukarıdan yüzde, 0-100).
+// kuyruk: kuyruğun balonun hangi köşesinden çıktığı: sol-alt, sag-alt, sol-ust, sag-ust.
+export type TailDir = 'sol-alt' | 'sag-alt' | 'sol-ust' | 'sag-ust'
+export interface BalloonRow {
+  book: string
+  section: number
+  page: number
+  sentence: number // 1'den başlar
+  text: string
+  x: number // NaN = sayı değil
+  y: number
+  tail: TailDir
+  tailRaw: string // tabloda yazan (kontrol ekranı için)
+  speaker: string
+}
+
 export interface Content {
   books: Book[]
   pages: PageRow[]
   vocab: VocabEntry[]
   questions: QuestionRow[]
+  balloons: BalloonRow[]
+  balloonsUnread: boolean // Balonlar sekmesi okunamadı (yayında değil ya da bağlantı yanlış)
   // Kontrol ekranı için: tablodaki ham satır sayıları ve çift kitap kodları
   dupBookCodes: string[]
   stale: boolean // internet yokken kayıtlı kopya kullanıldı
@@ -115,7 +136,19 @@ function normGroup(v: string): string {
     .replace(/ö/g, 'o').replace(/ş/g, 's').replace(/ü/g, 'u')
 }
 
-function build(t: { books: string; pages: string; vocab: string; questions: string }): Content {
+const asNum = (v: string) => {
+  const t = (v || '').trim().replace('%', '').replace(',', '.')
+  return t === '' ? NaN : Number(t)
+}
+
+export function normTail(v: string): TailDir | null {
+  const t = normGroup(v || '').replace(/[\s_]+/g, '-')
+  if (!t) return 'sol-alt'
+  if (t === 'sol-alt' || t === 'sag-alt' || t === 'sol-ust' || t === 'sag-ust') return t
+  return null
+}
+
+function build(t: { books: string; pages: string; vocab: string; questions: string; balloons?: string | null }): Content {
   const bookRows = toObjects(t.books)
   const seen = new Set<string>()
   const dup = new Set<string>()
@@ -169,7 +202,21 @@ function build(t: { books: string; pages: string; vocab: string; questions: stri
       answer: r['dogru_cevap'] || '',
       explanation: r['aciklama'] || '',
     }))
-  return { books, pages, vocab, questions, dupBookCodes: Array.from(dup), stale: false }
+  const balloons: BalloonRow[] = toObjects(t.balloons || '')
+    .filter(r => r['kitap_kodu'])
+    .map(r => ({
+      book: r['kitap_kodu'],
+      section: asInt(r['bolum'], 1),
+      page: asInt(r['sayfa'], 1),
+      sentence: asInt(r['cumle_no'], 0),
+      text: r['metin'] || '',
+      x: asNum(r['x']),
+      y: asNum(r['y']),
+      tail: normTail(r['kuyruk'] || '') || 'sol-alt',
+      tailRaw: r['kuyruk'] || '',
+      speaker: r['konusan'] || '',
+    }))
+  return { books, pages, vocab, questions, balloons, balloonsUnread: t.balloons == null, dupBookCodes: Array.from(dup), stale: false }
 }
 
 async function fetchText(gid: string): Promise<string> {
@@ -182,12 +229,14 @@ async function fetchText(gid: string): Promise<string> {
 // İçeriği çeker. İnternet yoksa en son başarıyla çekilen kopyayı kullanır.
 export async function loadContent(): Promise<Content> {
   try {
-    const [books, pages, vocab, questions] = await Promise.all([
+    const [books, pages, vocab, questions, balloons] = await Promise.all([
       fetchText(SHEET_GID.books), fetchText(SHEET_GID.pages),
       fetchText(SHEET_GID.vocab), fetchText(SHEET_GID.questions),
+      // Balonlar okunamazsa boş geçer; okuyucunun geri kalanı etkilenmez
+      fetchText(SHEET_GID.balloons).catch(() => null),
     ])
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ books, pages, vocab, questions })) } catch {}
-    return build({ books, pages, vocab, questions })
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ books, pages, vocab, questions, balloons })) } catch {}
+    return build({ books, pages, vocab, questions, balloons })
   } catch (e) {
     try {
       const raw = localStorage.getItem(CACHE_KEY)
@@ -265,6 +314,21 @@ export function findSpans(tokens: string[], index: FormIndex[]): Span[] {
 }
 
 // ─── Zamanlama ───────────────────────────────────────────────────────────────
+// Balon yazısının kelimelerini cümledeki kelimelerle eşleştirir (yan yana, aynı
+// sırayla). Bulunursa balonun her kelimesi için cümledeki sıra numarası döner;
+// bulunamazsa null (balon yine görünür, yalnızca içinde kelime vurgusu yürümez).
+export function matchBalloon(text: string, sentence: string): number[] | null {
+  const bw = tokenize(text).map(normToken)
+  const sw = tokenize(sentence).map(normToken)
+  if (!bw.length || bw.some(w => !w)) return null
+  for (let k = 0; k + bw.length <= sw.length; k++) {
+    let ok = true
+    for (let j = 0; j < bw.length; j++) if (bw[j] !== sw[k + j]) { ok = false; break }
+    if (ok) return bw.map((_, j) => k + j)
+  }
+  return null
+}
+
 export interface PageTiming {
   exact: boolean // kelime zamanlaması geçerli mi
   starts: number[] // cümle başlangıçları (saniye)
@@ -478,6 +542,24 @@ export function checkContent(c: Content): Issue[] {
     for (const v of list) {
       if (!found.has(v.key)) add('hata', code, `Kelimeler · ${v.word}`, 'Hedef kelime kitabın metninde geçmiyor (çekimli halleri de arandı).')
     }
+  }
+
+  // Balonlar
+  if (c.balloonsUnread) add('uyari', '', 'Balonlar', 'Balonlar sekmesi okunamadı. Okuyucu balonsuz açılıyor.')
+  const pageByKey = new Map(c.pages.map(p => [`${p.book}#${p.section}#${p.page}`, p]))
+  for (const b of c.balloons) {
+    const where = `Balonlar · bölüm ${b.section}, sayfa ${b.page} · ${b.text.slice(0, 30) || 'yazısız'}`
+    if (!bookCodes.has(b.book)) { add('hata', b.book, where, 'Bu kitap kodu Kitaplar sekmesinde yok.'); continue }
+    const p = pageByKey.get(`${b.book}#${b.section}#${b.page}`)
+    if (!p) { add('hata', b.book, where, 'Bu bölüm ve sayfa Sayfalar sekmesinde yok. Balon görünmez.'); continue }
+    if (!b.text.trim()) add('hata', b.book, where, 'Balon yazısı (metin) boş. Balon görünmez.')
+    if (b.sentence < 1 || b.sentence > p.sentences.length) {
+      add('hata', b.book, where, `cumle_no 1 ile ${p.sentences.length} arasında olmalı. Balon görünmez.`)
+    } else if (b.text.trim() && !matchBalloon(b.text, p.sentences[b.sentence - 1])) {
+      add('uyari', b.book, where, `Balon yazısı ${b.sentence}. cümlede aynı sırayla geçmiyor. Balon görünür ama içinde kelime vurgusu yürümez.`)
+    }
+    if (!(b.x >= 0 && b.x <= 100) || !(b.y >= 0 && b.y <= 100)) add('hata', b.book, where, 'x ve y 0 ile 100 arasında bir sayı olmalı. Balon görünmez.')
+    if (!normTail(b.tailRaw)) add('uyari', b.book, where, `Kuyruk "${b.tailRaw}" tanınmadı; sol-alt kullanılıyor. Seçenekler: sol-alt, sag-alt, sol-ust, sag-ust.`)
   }
 
   // Sorular

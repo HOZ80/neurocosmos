@@ -3,12 +3,13 @@
 // işaretleri Supabase'ten gelir. Öğretmen hesabı "önizleme" olarak girer:
 // bütün kitaplar açık görünür, hiçbir şey veritabanına yazılmaz.
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Account } from './auth'
 import { READER_CSS } from './readerStyles'
 import InstallButton from './InstallButton'
 import {
   type Book, type Content, type PageRow, type VocabEntry, type PageTiming, type Issue, type DemoPlan,
+  type BalloonRow, matchBalloon,
   loadContent, fileUrl, fileUrlFallback, tokenize, buildFormIndex, findSpans, buildTiming, checkContent,
   buildDemoPlan, scalePlan, measureSpeechEnds,
 } from './readerData'
@@ -102,7 +103,7 @@ function SmartImg({ name, className, alt }: { name: string; className?: string; 
 
 // Sahne resmi: resim kırpılmadan tam görünür, kenarlardaki boşluğu aynı
 // resmin bulanık bir kopyası doldurur. Dosya bulma sırası SmartImg ile aynı.
-function SceneImg({ name }: { name: string }) {
+function SceneImg({ name, onAspect }: { name: string; onAspect?: (a: number) => void }) {
   const [stage, setStage] = useState(0)
   useEffect(() => { setStage(0) }, [name])
   const fb = fileUrlFallback(name)
@@ -112,8 +113,112 @@ function SceneImg({ name }: { name: string }) {
   return (
     <>
       <img className="bg" src={src} alt="" aria-hidden="true" />
-      <img className="fg" src={src} alt="Sayfa resmi" onError={onError} />
+      <img className="fg" src={src} alt="Sayfa resmi" onError={onError}
+        onLoad={e => { const im = e.currentTarget; if (onAspect && im.naturalWidth > 0 && im.naturalHeight > 0) onAspect(im.naturalWidth / im.naturalHeight) }} />
     </>
+  )
+}
+
+// ─── Konuşma balonları ─────────────────────────────────────────────────────
+// Resmin üstünde ayrı katman. Katman, resmin sahnede gerçekten göründüğü
+// dikdörtgene oturur (telefonda sahne daha yayvan, resim ortada), böylece
+// x/y yüzdeleri her ekranda resmin aynı noktasına düşer. Balon, cümlesi ilk
+// kez okunmaya başlayınca patlayarak çıkar ve sayfa değişene kadar kalır.
+const BL_PUFF: [number, number][] = [[-1, -1], [1, -1.2], [1.3, 0.2], [-1.3, 0.3], [0, -1.5], [0.6, 1]]
+
+function SceneBalloons({ items, sentences, reached, active, wordMode, aspect }: {
+  items: BalloonRow[]
+  sentences: string[]
+  reached: { si: number; wi: number } // bu sayfada okunmaya başlanmış en ileri cümle ve kelime
+  active: { si: number; wi: number }
+  wordMode: boolean
+  aspect: number
+}) {
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [box, setBox] = useState({ w: 0, h: 0 })
+  useLayoutEffect(() => {
+    const el = wrapRef.current?.parentElement
+    if (!el) return
+    const read = () => setBox(b => (b.w === el.clientWidth && b.h === el.clientHeight ? b : { w: el.clientWidth, h: el.clientHeight }))
+    read()
+    if (typeof ResizeObserver === 'undefined') { window.addEventListener('resize', read); return () => window.removeEventListener('resize', read) }
+    const ro = new ResizeObserver(read)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  // Resmin sahnedeki gerçek yeri (object-fit: contain)
+  const a = aspect > 0 ? aspect : 4 / 3
+  let iw = box.w, ih = box.w / a
+  if (ih > box.h) { ih = box.h; iw = box.h * a }
+  const il = (box.w - iw) / 2, it = (box.h - ih) / 2
+  const maps = useMemo(() => items.map(b => matchBalloon(b.text, sentences[b.sentence - 1] || '')), [items, sentences])
+
+  // Yerleşim: kuyruğun ucu tablodaki x/y noktasına gelir, balon resmin içinde kalır
+  const layerRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const layer = layerRef.current
+    if (!layer || iw <= 0) return
+    const els = Array.from(layer.querySelectorAll<HTMLElement>('.rd-bl'))
+    els.forEach((el, i) => {
+      const b = items[i]
+      const body = el.querySelector<HTMLElement>('.body')
+      if (!b || !body) return
+      const bw = body.offsetWidth, bh = body.offsetHeight
+      const fs = parseFloat(getComputedStyle(body).fontSize) || 14
+      const tipX = 1.5 * 1.35 * fs / 26, tipY = 20.5 * 1.2 * fs / 22
+      const TX = (b.x / 100) * iw, TY = (b.y / 100) * ih
+      const right = b.tail.startsWith('sag'), up = b.tail.endsWith('ust')
+      const off = fs * 1.3
+      let inside = right ? bw - off : off
+      let left = Math.max(4, Math.min(iw - bw - 4, TX - inside))
+      inside = Math.max(fs * 0.9, Math.min(bw - fs * 0.9, TX - left))
+      left = TX - inside
+      let top = up ? TY - 4 + tipY : TY - (bh - 4 + tipY)
+      top = Math.max(4, Math.min(ih - bh - 4, top))
+      el.style.left = left + 'px'
+      el.style.top = top + 'px'
+      el.style.setProperty('--ox', inside + 'px')
+      if (right) el.style.setProperty('--tr', (bw - inside - tipX + 7) + 'px')
+      else el.style.setProperty('--tx', (inside - tipX + 7) + 'px')
+    })
+  })
+  // Yazı tipi geç yüklenirse balon genişliği değişir; bir kez daha yerleştir
+  const [, bump] = useState(0)
+  useEffect(() => {
+    const f = (document as any).fonts
+    if (f && f.ready) f.ready.then(() => bump(n => n + 1)).catch(() => {})
+  }, [])
+
+  return (
+    <div ref={wrapRef} className="rd-bls-wrap" aria-hidden={reached.si < 0 ? true : undefined}>
+      <div ref={layerRef} className="rd-bls" style={{ left: il, top: it, width: iw, height: ih }}>
+        {items.map((b, i) => {
+          const si = b.sentence - 1
+          const shown = reached.si >= si
+          const map = maps[i]
+          const toks = tokenize(b.text)
+          const cur = active.si === si
+          return (
+            <div key={i} className={'rd-bl t-' + b.tail + (shown ? ' show' : '') + (cur && !wordMode ? ' cur' : '') + (i % 2 ? ' b2' : '')}>
+              <div className="in">
+                <div className="body">
+                  {toks.map((w, k) => {
+                    let c = ''
+                    if (map && wordMode) {
+                      if (active.si === si && active.wi === map[k]) c = ' on'
+                      else if (reached.si > si || (reached.si === si && reached.wi >= map[k])) c = ' done'
+                    }
+                    return <Fragment key={k}><span className={'w' + c}>{w}</span>{k < toks.length - 1 ? ' ' : ''}</Fragment>
+                  })}
+                </div>
+                <svg className="tail" viewBox="0 0 26 22" aria-hidden="true"><path d="M7 0 Q9 11 1.5 20.5 Q15 14 21 0 Z" /><rect x="6" y="-3" width="16.5" height="5" /></svg>
+                <div className="puff">{BL_PUFF.map((d, k) => <i key={k} style={{ '--dx': d[0] * 2.2 + 'em', '--dy': d[1] * 1.6 + 'em' } as React.CSSProperties} />)}</div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -446,6 +551,10 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   const secPages = useMemo(() => pagesOf(pos.section), [pagesOf, pos.section])
   const page: PageRow | undefined = pos.bitti ? undefined : secPages[pos.idx]
   const pageKey = page ? `${page.section}:${page.page}` : 'bitti'
+  // Sahne resminin en/boy oranı (balon katmanı için) ve bu sayfada okunmaya
+  // başlanmış en ileri cümle (balonlar sayfa değişene kadar kalır)
+  const [sceneAspect, setSceneAspect] = useState<{ img: string; a: number }>({ img: '', a: 0 })
+  const [reached, setReached] = useState<{ key: string; si: number; wi: number }>({ key: '', si: -1, wi: -1 })
   const sectionQs = useMemo(
     () => content.questions.filter(q =>
       q.book === book.code && q.section === pos.section && q.question.trim() &&
@@ -539,6 +648,17 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   useEffect(() => () => { if (ovRef.current) URL.revokeObjectURL(ovRef.current.url); stopSpeech() }, [])
   const prevSi = useRef(-1)
   const demo = useRef({ t: 0, last: 0, spoken: -1 })
+  // Sayfa değişince önceki sayfanın etkin cümlesi yeni sayfaya sayılmasın
+  const reachKey = useRef(pageKey)
+  useEffect(() => {
+    if (reachKey.current !== pageKey) { reachKey.current = pageKey; return }
+    if (active.si < 0) return
+    setReached(r => {
+      const nx = { key: pageKey, si: active.si, wi: active.wi }
+      if (r.key !== pageKey) return nx
+      return r.si > active.si || (r.si === active.si && r.wi >= active.wi) ? r : nx
+    })
+  }, [active.si, active.wi, pageKey])
   const overrideActive = !!override && override.key === pageKey
   const realSrc = !page ? '' : overrideActive ? override!.url : page.audio ? fileUrl(page.audio) : ''
   const hasReal = !!realSrc
@@ -992,6 +1112,11 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   const canPlay = !!page
   function canPlayNow() { return !!page && !audioError }
   const effHl = timing.exact && hl === 'word' ? 'word' : 'sent'
+  // Bu sayfanın balonları (tablodaki hatalı satırlar gösterilmez; kontrol ekranında listelenir)
+  const pageBalloons = useMemo(() => !page ? [] : content.balloons.filter(b =>
+    b.book === book.code && b.section === page.section && b.page === page.page && b.text.trim() &&
+    b.sentence >= 1 && b.sentence <= page.sentences.length &&
+    b.x >= 0 && b.x <= 100 && b.y >= 0 && b.y <= 100), [content.balloons, book.code, page])
 
   // ── Kelime sayıları ve çekmece ─────────────────────────────────────────
   const counts = useMemo(() => {
@@ -1273,7 +1398,12 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
       <div className={'rd-spread' + (double ? ' dbl' : '')}>
         <div className="rd-art">
           <div className="rd-scene">
-            {page.image ? <SceneImg name={page.image} /> : <div className="rd-ph"><Ic n="image" />Resim yakında</div>}
+            {page.image ? <SceneImg name={page.image} onAspect={a => setSceneAspect({ img: page.image, a })} /> : <div className="rd-ph"><Ic n="image" />Resim yakında</div>}
+            {page.image && pageBalloons.length > 0 && (
+              <SceneBalloons key={pageKey} items={pageBalloons} sentences={page.sentences}
+                reached={reached.key === pageKey ? reached : { si: -1, wi: -1 }} active={active}
+                wordMode={effHl === 'word'} aspect={sceneAspect.img === page.image ? sceneAspect.a : 0} />
+            )}
             <div className="rd-sweep" />
             {!wide && (
               <div className="rd-strip" aria-label={`Sayfa ${pos.idx + 1} / ${secPages.length}`}>
