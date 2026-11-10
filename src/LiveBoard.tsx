@@ -11,7 +11,7 @@ export const LIVE_CSS = `
   --brand:#6A3BD1;--brand-soft:#ECE4FC;
   --ok:#1D7F54;--ok-bg:#E2F3EA;--near:#A0640A;--near-bg:#FBEFD6;--bad:#C2372E;--bad-bg:#FBE3E0;
   --wait:#7D829E;--wait-bg:#EFEFF5;--neutral:#6A3BD1;--neutral-bg:#EEE7FC;
-  --r-ozne:#2257C4;--r-fiil:#AE1F79;--r-nesne:#BF540A;--r-zaman:#0B7473;--r-baglac:#5E2A6B;--r-kiremit:#A33E26;
+  --r-ozne:#2257C4;--r-fiil:#AE1F79;--r-nesne:#BF540A;--r-zaman:#0B7473;--r-baglac:#5E2A6B;--r-kiremit:#D33C07;
   --hl:#FFE95C;
   background:var(--bg);color:var(--ink);min-height:100vh;font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}

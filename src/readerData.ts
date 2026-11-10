@@ -223,35 +223,82 @@ function build(t: { books: string; pages: string; vocab: string; questions: stri
   return { books, pages, vocab, questions, balloons, balloonsUnread: t.balloons == null, dupBookCodes: Array.from(dup), stale: false }
 }
 
-async function fetchText(gid: string): Promise<string> {
+async function fetchOnce(gid: string): Promise<string> {
   // Sitenin diğer tablo okumaları gibi: önbelleğe takılmasın diye zaman damgası eklenir.
   const res = await fetch(`${SHEET_BASE}${gid}&t=${Date.now()}`, { cache: 'no-store' })
   if (!res.ok) throw new Error('sheet ' + res.status)
   return res.text()
 }
 
+// Google bazen tek bir isteğe cevap vermiyor; kısa bir aradan sonra bir kez daha denenir.
+async function fetchText(gid: string): Promise<string> {
+  try {
+    return await fetchOnce(gid)
+  } catch {
+    await new Promise(r => setTimeout(r, 1200))
+    return fetchOnce(gid)
+  }
+}
+
+function readCacheRaw(): string | null {
+  try { return localStorage.getItem(CACHE_KEY) } catch { return null }
+}
+
+// Bu cihazda en son başarıyla okunan kopya (yoksa null). Bekletmeden gösterilir;
+// tablo arkada okunur (refreshContent).
+export function loadCachedContent(): Content | null {
+  try {
+    const raw = readCacheRaw()
+    return raw ? build(JSON.parse(raw)) : null
+  } catch { return null }
+}
+
+type RawSheets = { books: string; pages: string; vocab: string; questions: string; balloons: string | null }
+
+async function fetchAll(): Promise<RawSheets> {
+  const [books, pages, vocab, questions, balloons] = await Promise.all([
+    fetchText(SHEET_GID.books), fetchText(SHEET_GID.pages),
+    fetchText(SHEET_GID.vocab), fetchText(SHEET_GID.questions),
+    // Balonlar okunamazsa boş geçer; okuyucunun geri kalanı etkilenmez
+    fetchText(SHEET_GID.balloons).catch(() => null),
+  ])
+  return { books, pages, vocab, questions, balloons }
+}
+
+function staleFromCache(): Content | null {
+  const c = loadCachedContent()
+  if (c) c.stale = true
+  return c
+}
+
 // İçeriği çeker. İnternet yoksa en son başarıyla çekilen kopyayı kullanır.
 export async function loadContent(): Promise<Content> {
   try {
-    const [books, pages, vocab, questions, balloons] = await Promise.all([
-      fetchText(SHEET_GID.books), fetchText(SHEET_GID.pages),
-      fetchText(SHEET_GID.vocab), fetchText(SHEET_GID.questions),
-      // Balonlar okunamazsa boş geçer; okuyucunun geri kalanı etkilenmez
-      fetchText(SHEET_GID.balloons).catch(() => null),
-    ])
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ books, pages, vocab, questions, balloons })) } catch {}
-    return build({ books, pages, vocab, questions, balloons })
+    const raw = await fetchAll()
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(raw)) } catch {}
+    return build(raw)
   } catch (e) {
-    try {
-      const raw = localStorage.getItem(CACHE_KEY)
-      if (raw) {
-        const c = build(JSON.parse(raw))
-        c.stale = true
-        return c
-      }
-    } catch {}
+    const c = staleFromCache()
+    if (c) return c
     throw e
   }
+}
+
+// Tabloyu baştan okur. changed: bu cihazdaki kayıtlı kopyadan farklı bir içerik geldi mi.
+// Tablo okunamazsa kayıtlı kopya stale işaretiyle döner (changed true, uyarı görünsün diye).
+export async function refreshContent(): Promise<{ content: Content; changed: boolean }> {
+  const before = readCacheRaw()
+  let raw: RawSheets
+  try {
+    raw = await fetchAll()
+  } catch (e) {
+    const c = staleFromCache()
+    if (c) return { content: c, changed: true }
+    throw e
+  }
+  const text = JSON.stringify(raw)
+  try { localStorage.setItem(CACHE_KEY, text) } catch {}
+  return { content: build(raw), changed: text !== before }
 }
 
 export function fileUrl(name: string): string {

@@ -10,7 +10,7 @@ import InstallButton from './InstallButton'
 import {
   type Book, type Content, type PageRow, type VocabEntry, type PageTiming, type Issue, type DemoPlan,
   type BalloonRow, matchBalloon,
-  loadContent, fileUrl, fileUrlFallback, tokenize, buildFormIndex, findSpans, buildTiming, checkContent,
+  loadContent, loadCachedContent, refreshContent, fileUrl, fileUrlFallback, tokenize, buildFormIndex, findSpans, buildTiming, checkContent,
   buildDemoPlan, scalePlan, measureSpeechEnds,
 } from './readerData'
 import {
@@ -250,11 +250,21 @@ export default function ChildReaderApp({ account, childName, group, onExit }: {
   onExit: () => void
 }) {
   const preview = account.role === 'teacher'
-  const [content, setContent] = useState<Content | null>(null)
+  // Kitap listesi bekletmeden açılır: bu cihazdaki son kopya hemen gösterilir, tablo
+  // arkada okunur, değişiklik varsa sessizce güncellenir. Öğrencinin kendi verisi
+  // (kilitler, kaldığı yer) her açılışta beklenir; liste o gelmeden çizilmez.
+  const [content, setContent] = useState<Content | null>(() => loadCachedContent())
   const [sd, setSd] = useState<StudentData>(EMPTY_DATA)
+  const [sdReady, setSdReady] = useState(false)
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
   const [screen, setScreen] = useState<{ kind: 'list' } | { kind: 'book'; code: string } | { kind: 'check' }>({ kind: 'list' })
+  const screenRef = useRef(screen)
+  screenRef.current = screen
+  // Kitap açıkken gelen yeni içerik bekletilir; okuma sırasında sayfa yerinden oynamaz.
+  const pending = useRef<Content | null>(null)
+  useEffect(() => {
+    if (screen.kind !== 'book' && pending.current) { setContent(pending.current); pending.current = null }
+  }, [screen])
 
   // Telefonun/tarayıcının geri tuşu: kitaptan listeye, listeden ana sayfaya.
   const depth = useRef(0)
@@ -297,16 +307,22 @@ export default function ChildReaderApp({ account, childName, group, onExit }: {
   }
 
   const load = useCallback(async () => {
-    setLoading(true); setError('')
+    setError('')
+    const failed = () => { if (mounted.current) setError('Kitaplar yüklenemedi. İnternet bağlantını kontrol edip tekrar dene.') }
+    const shown = !!loadCachedContent()
+    // İkisi aynı anda istenir (eskiden tablo bitince öğrenci verisi isteniyordu).
+    const sdP = preview ? Promise.resolve(EMPTY_DATA) : loadStudentData(account.id)
+    const contentP = refreshContent()
+    contentP.then(({ content: c, changed }) => {
+      if (!mounted.current || (shown && !changed)) return
+      if (screenRef.current.kind === 'book') pending.current = c
+      else setContent(c)
+    }).catch(() => { if (!shown) failed() })
     try {
-      const c = await loadContent()
-      let data = EMPTY_DATA
-      if (!preview) data = await loadStudentData(account.id)
-      setContent(c); setSd(data)
+      const data = await sdP
+      if (mounted.current) { setSd(data); setSdReady(true) }
     } catch {
-      setError('Kitaplar yüklenemedi. İnternet bağlantını kontrol edip tekrar dene.')
-    } finally {
-      setLoading(false)
+      failed()
     }
   }, [account.id, preview])
 
@@ -319,16 +335,17 @@ export default function ChildReaderApp({ account, childName, group, onExit }: {
       .sort((a, b) => a.order - b.order || a.code.localeCompare(b.code))
   }, [content, group])
 
+  const ready = !!content && sdReady
   let body: React.ReactNode
-  if (loading && !content) {
-    body = <p className="rd-muted" style={{ padding: 20 }}>Kitaplar yükleniyor…</p>
-  } else if (error && !content) {
+  if (error && !ready) {
     body = (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'flex-start' }}>
         <div className="rd-warn">{error}</div>
         <button className="rd-btn pri" onClick={load}>Tekrar dene</button>
       </div>
     )
+  } else if (!ready) {
+    body = <p className="rd-muted" style={{ padding: 20 }}>Kitaplar yükleniyor…</p>
   } else if (content && screen.kind === 'book' && content.books.some(b => b.code === screen.code)) {
     const book = content.books.find(b => b.code === screen.code) as Book
     return (
