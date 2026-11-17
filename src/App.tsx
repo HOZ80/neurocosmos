@@ -30,7 +30,7 @@ const MemoryBrain = lazy(() => import('./MemoryBrain'))
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Level = 'A1' | 'A2' | 'B1' | 'B2' | 'P'
-type View = 'dashboard' | 'unit' | 'grammar' | 'audio' | 'dictation' | 'shadowing' | 'dictationAll' | 'shadowingAll' | 'drill' | 'scene' | 'memory' | 'unutmama'
+type View = 'dashboard' | 'unit' | 'grammar' | 'audio' | 'dictation' | 'shadowing' | 'dictationAll' | 'shadowingAll' | 'drill' | 'scene' | 'memory' | 'unutmama' | 'dialogue'
 
 interface DictationSegment {
   start: number
@@ -64,6 +64,13 @@ interface QuestionItem {
   postAnalogy?: string
   blocks?: GrammarBlock[]
   videoUrl?: string
+}
+
+// Günlük Diyaloglar kartının içindeki her diyalog: public klasöründeki ayrı bir HTML sayfası (sesli çizgi roman vb.)
+interface DialogueItem {
+  title: string
+  description: string
+  url: string  // örn. '/lunchroom-talk.html' — dosya public klasörüne konur
 }
 
 interface Unit {
@@ -100,6 +107,7 @@ interface Unit {
   passiveVideo?: boolean
   customGrammarBlocks?: GrammarBlock[]
   questionChain?: QuestionItem[]
+  dialogueChain?: DialogueItem[]  // doluysa ünite sayfası diyalog kartlarını listeler
 }
 
 // ─── Drill engine types (Private-area retrieval practice) ─────────────────────
@@ -454,6 +462,56 @@ function Chip({ label, color, bg }: { label: string; color: string; bg: string }
       letterSpacing: '0.06em', textTransform: 'uppercase',
       color, background: bg, padding: '2px 7px', borderRadius: '4px',
     }}>{label}</span>
+  )
+}
+
+// ─── Daily Dialogues (H / English Group B) ──────────────────────────────────
+// Sabit (hardcode) kart: Sheet'e bağlı değil, 100Q kartının hemen arkasında durur.
+// Yeni diyalog eklemek için: HTML dosyasını public klasörüne yükle, aşağıdaki
+// dialogueChain listesine bir satır ekle.
+// id 900: diğer kartların numaralarını kaydırmamak için ayrı bir numara.
+const DIALOGUES_UNIT: Unit = {
+  id: 900,
+  title: 'Daily Dialogues',
+  topic: 'Real Life',
+  grammar: 'Everyday conversations',
+  completed: false,
+  locked: false,
+  progress: 0,
+  dictationSentence: '',
+  translation: '',
+  transcript: '',
+  unitLabel: 'Dialogues',
+  hidePracticeSentence: true,
+  dialogueChain: [
+    { title: 'Lunchroom Talk', description: 'Four short scenes from the school kitchen', url: '/lunchroom-talk.html' },
+  ],
+}
+function withDialogues(lv: Level, list: Unit[]): Unit[] {
+  if (lv !== 'A2' || list.some(u => u.id === DIALOGUES_UNIT.id)) return list
+  const i = list.findIndex(u => u.unitLabel === '100Q')
+  const at = i >= 0 ? i + 1 : list.length
+  return [...list.slice(0, at), DIALOGUES_UNIT, ...list.slice(at)]
+}
+
+function DialogueView({ item, onBack }: { item: DialogueItem; onBack: () => void }) {
+  return (
+    <div className="anim-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+        <BackBtn onClick={onBack} label="Daily Dialogues" />
+        <a href={item.url} target="_blank" rel="noopener noreferrer" style={{
+          fontSize: '13px', fontWeight: 600, color: 'var(--primary)', textDecoration: 'none',
+        }}>Open full screen ↗</a>
+      </div>
+      <iframe
+        src={item.url}
+        title={item.title}
+        style={{
+          width: '100%', height: 'calc(100dvh - 170px)', minHeight: '520px',
+          border: '1px solid var(--border)', borderRadius: '14px', background: '#F4EFE6',
+        }}
+      />
+    </div>
   )
 }
 
@@ -1180,13 +1238,14 @@ function DashboardView({ level, units, onSelectUnit, onMemory, memoryCounts, unu
   )
 }
 
-function UnitDetailView({ unit, level, onBack, onModule, onGrammar, onQuestion, onDictationAll, onShadowingAll, onDrill, onScene, grammarSlots, memoryItems }: {
+function UnitDetailView({ unit, level, onBack, onModule, onGrammar, onQuestion, onDialogue, onDictationAll, onShadowingAll, onDrill, onScene, grammarSlots, memoryItems }: {
   unit: Unit
   level: Level
   onBack: () => void
   onModule: (m: keyof typeof MODULE_META) => void
   onGrammar: (slot: number) => void
   onQuestion: (index: number) => void
+  onDialogue: (index: number) => void
   onDictationAll: () => void
   onShadowingAll: () => void
   onDrill: () => void
@@ -1210,7 +1269,38 @@ function UnitDetailView({ unit, level, onBack, onModule, onGrammar, onQuestion, 
         <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>Grammar focus: {unit.grammar}</p>
       </div>
 
-      {unit.questionChain ? (
+      {unit.dialogueChain ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+          {unit.dialogueChain.map((d, i) => (
+            <button
+              key={i}
+              onClick={() => onDialogue(i)}
+              style={{
+                textAlign: 'left', background: 'var(--card)',
+                border: '1px solid var(--border)', borderRadius: '16px',
+                padding: '24px', cursor: 'pointer',
+                boxShadow: '0 1px 5px rgba(15,23,42,0.06)',
+                transition: 'all 0.18s', display: 'flex', flexDirection: 'column', gap: '14px',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 6px 24px ${MODULE_META.audio.color}22`; e.currentTarget.style.borderColor = `${MODULE_META.audio.color}44` }}
+              onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 5px rgba(15,23,42,0.06)'; e.currentTarget.style.borderColor = 'var(--border)' }}
+            >
+              <div style={{
+                width: '48px', height: '48px', borderRadius: '12px',
+                background: MODULE_META.audio.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '22px',
+              }}>💬</div>
+              <div>
+                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, margin: '0 0 4px' }}>{d.title}</h3>
+                <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', lineHeight: 1.5 }}>{d.description}</p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill={MODULE_META.audio.color}><path d="M10 17l5-5-5-5v10z" /></svg>
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : unit.questionChain ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
           {unit.questionChain.map((q, i) => (
             <button
@@ -4685,7 +4775,7 @@ function LibraryPanel({ account, onExit }: { account: Account; onExit: () => voi
 // mevcut ekran (seviye, görünüm, ünite, gramer sekmesi, soru) adres satırına
 // yazılır; sayfa yeniden yüklendiğinde ya da geri/ileri tuşuna basıldığında
 // buradan okunup ekran o hale geri getirilir.
-const VALID_VIEWS: View[] = ['dashboard', 'unit', 'grammar', 'audio', 'dictation', 'shadowing', 'dictationAll', 'shadowingAll', 'drill', 'scene', 'memory', 'unutmama']
+const VALID_VIEWS: View[] = ['dashboard', 'unit', 'grammar', 'audio', 'dictation', 'shadowing', 'dictationAll', 'shadowingAll', 'drill', 'scene', 'memory', 'unutmama', 'dialogue']
 function getUrlParam(name: string): string | null {
   try { return new URLSearchParams(window.location.search).get(name) } catch { return null }
 }
@@ -5228,14 +5318,14 @@ export default function App() {
   const units = (() => {
     const sheetLevelUnits = unitsSheetData?.unitsByLevel[level]
     if (unitsSheetData && sheetLevelUnits && sheetLevelUnits.length > 0) {
-      return buildUnitsFromSheet(level, unitsSheetData).map(u =>
+      return withDialogues(level, buildUnitsFromSheet(level, unitsSheetData).map(u =>
         (u.unitLabel === '100Q' && sheetQuestions) ? { ...u, questionChain: sheetQuestions } : u
-      )
+      ))
     }
     const base = buildUnits(level)
-    return base.map(u =>
+    return withDialogues(level, base.map(u =>
       (u.unitLabel === '100Q' && sheetQuestions) ? { ...u, questionChain: sheetQuestions } : u
-    )
+    ))
   })()
 
   const selectedUnitLive = selectedUnit ? units.find(u => u.id === selectedUnit.id) ?? selectedUnit : null
@@ -5247,6 +5337,7 @@ export default function App() {
   function goModule(m: keyof typeof MODULE_META) { setSelectedQuestionIndex(null); setView(m as View) }
   function goGrammar(slot: number) { setSelectedGrammarSlot(slot); setSelectedQuestionIndex(null); setView('grammar') }
   function goQuestion(i: number) { setSelectedQuestionIndex(i); setView('grammar') }
+  function goDialogue(i: number) { setSelectedQuestionIndex(i); setView('dialogue') }
   function goDictationAll() { setSelectedQuestionIndex(null); setView('dictationAll') }
   function goShadowingAll() { setSelectedQuestionIndex(null); setView('shadowingAll') }
   function goDrill() { setSelectedQuestionIndex(null); setView('drill') }
@@ -5295,7 +5386,7 @@ export default function App() {
   const breadcrumbs = [
     { label: LEVEL_META[level].code, onClick: () => { setView('dashboard'); setSelectedUnit(null) } },
     ...(selectedUnitLive ? [{ label: selectedUnitLive.unitLabel ?? `Unit ${selectedUnitLive.id}`, onClick: () => { setView('unit'); setSelectedQuestionIndex(null) } }] : []),
-    ...(view !== 'dashboard' && view !== 'unit' ? [{ label: view === 'dictationAll' ? 'Dictation All' : view === 'shadowingAll' ? 'Shadowing All' : view === 'drill' ? 'Drill' : view === 'scene' ? 'Scene' : view === 'memory' ? 'My Brain' : view === 'unutmama' ? 'Memory' : (selectedQuestion?.label ?? MODULE_META[view as keyof typeof MODULE_META]?.label) }] : []),
+    ...(view !== 'dashboard' && view !== 'unit' ? [{ label: view === 'dictationAll' ? 'Dictation All' : view === 'shadowingAll' ? 'Shadowing All' : view === 'drill' ? 'Drill' : view === 'scene' ? 'Scene' : view === 'memory' ? 'My Brain' : view === 'unutmama' ? 'Memory' : view === 'dialogue' ? (selectedUnitLive?.dialogueChain?.[selectedQuestionIndex ?? -1]?.title ?? 'Dialogue') : (selectedQuestion?.label ?? MODULE_META[view as keyof typeof MODULE_META]?.label) }] : []),
   ]
 
   // Giriş yapılmamış: telefonda kayıtlı oturum kontrol edilirken kısa bir
@@ -5533,6 +5624,7 @@ export default function App() {
             onModule={goModule}
             onGrammar={goGrammar}
             onQuestion={goQuestion}
+            onDialogue={goDialogue}
             onDictationAll={goDictationAll}
             onShadowingAll={goShadowingAll}
             onDrill={goDrill}
@@ -5583,6 +5675,10 @@ export default function App() {
             <UnutmamaView unut={unut} />
           </div>
         )}
+        {view === 'dialogue' && selectedUnitLive && (() => {
+          const d = selectedUnitLive.dialogueChain?.[selectedQuestionIndex ?? -1]
+          return d ? <DialogueView item={d} onBack={() => { setView('unit'); setSelectedQuestionIndex(null) }} /> : null
+        })()}
         {view === 'dictationAll' && selectedUnitLive && (
           <DictationAllView unit={selectedUnitLive} onBack={() => setView('unit')} />
         )}
