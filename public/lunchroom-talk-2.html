@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lunchroom Talk 2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@700&family=Fredoka:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{--ink:#2B2B2B;--paper:#FFFDF7;--accent:#E07A5F;--key:#FFF3B0}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#F4EFE6;color:var(--ink);font-family:'Fredoka',system-ui,sans-serif}
+  .wrap{max-width:1000px;margin:0 auto;padding:14px 14px 90px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+  header h1{font-size:22px;margin:0;font-weight:600}
+  header .count{font-size:15px;opacity:.7}
+  .scene-title{font-size:20px;font-weight:600;margin:4px 0 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .scene-title .tag{background:var(--accent);color:#fff;border-radius:999px;padding:2px 12px;font-size:14px}
+  .grid{display:grid;grid-template-columns:1fr;gap:12px}
+  @media (min-width:720px){.grid{grid-template-columns:1fr 1fr}}
+  .panel{position:relative;container-type:inline-size;border:3px solid var(--ink);border-radius:10px;overflow:hidden;background:#fff;box-shadow:4px 4px 0 rgba(0,0,0,.18)}
+  .panel svg{display:block;width:100%;height:auto}
+  .num{position:absolute;left:0;bottom:0;background:var(--ink);color:#fff;font:600 3.2cqw/1 'Fredoka',sans-serif;padding:1.2cqw 2cqw;border-top-right-radius:8px}
+  .bubble{--bg:#fff;--tx:50%;--rot:0deg;position:absolute;background:var(--bg);border:2.5px solid var(--ink);border-radius:4.5cqw;
+    padding:1.6cqw 2.6cqw;font:700 3.9cqw/1.22 'Comic Neue','Comic Sans MS','Chalkboard SE',system-ui,sans-serif;cursor:pointer;
+    text-align:center;text-wrap:balance;user-select:none;transition:transform .15s, box-shadow .15s}
+  .bubble.key{--bg:var(--key)}
+  .bubble .tr{display:none;font:italic 400 3.3cqw/1.2 'Fredoka',system-ui,sans-serif;color:#8C8C8C;margin-top:.6cqw}
+  body.show-tr .bubble .tr{display:block}
+  .hbtns{display:flex;gap:8px;align-items:center}
+  .hbtns button{padding:6px 14px;font-size:14px;white-space:nowrap}
+  @media (max-width:480px){#count{display:none} header h1{font-size:17px;white-space:nowrap}}
+  @media (max-width:480px){nav button{padding:7px 13px;font-size:15px;white-space:nowrap} .dots{gap:5px} .dot{width:10px;height:10px}}
+  #trBtn.on{background:var(--ink);color:#fff}
+  .warn{display:none;background:#FFE3DA;border:2px solid var(--accent);border-radius:12px;padding:10px 14px;margin:0 0 12px;font-size:15px}
+  body.no-speech .warn{display:block}
+  .tip{margin:12px 2px 0;background:#fff;border:2.5px dashed var(--accent);border-radius:14px;padding:10px 14px;font-size:16px}
+  .tip .trtip{display:none;font-style:italic;color:#8C8C8C;font-size:14px;margin-top:4px}
+  body.show-tr .tip .trtip{display:block}
+  .bubble::before,.bubble::after{content:'';position:absolute;left:var(--tx);width:0;height:0;transform:translateX(-50%) rotate(var(--rot));transform-origin:50% 0}
+  .bubble::before{top:100%;border-left:1.9cqw solid transparent;border-right:1.9cqw solid transparent;border-top:3.6cqw solid var(--ink)}
+  .bubble::after{top:calc(100% - 3px);border-left:1.25cqw solid transparent;border-right:1.25cqw solid transparent;border-top:2.6cqw solid var(--bg)}
+  .bubble:hover{transform:scale(1.03)}
+  .bubble.speaking{box-shadow:0 0 0 4px #5FB0E0;transform:scale(1.05)}
+  .hint{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:12px 2px 0;font-size:15px}
+  .chip{display:inline-flex;align-items:center;gap:6px}
+  .sw{width:18px;height:14px;border:2px solid var(--ink);border-radius:5px;background:var(--key)}
+  button{font:600 16px 'Fredoka',system-ui,sans-serif;border:2.5px solid var(--ink);border-radius:999px;padding:8px 18px;background:#fff;color:var(--ink);cursor:pointer;box-shadow:2px 2px 0 var(--ink)}
+  button:active{transform:translate(2px,2px);box-shadow:none}
+  button.primary{background:var(--accent);color:#fff}
+  button:disabled{opacity:.35;cursor:default}
+  nav{position:fixed;left:0;right:0;bottom:0;background:rgba(244,239,230,.96);border-top:2px solid rgba(0,0,0,.08);padding:10px 14px}
+  nav .in{max-width:1000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .dots{display:flex;gap:8px}
+  .dot{width:12px;height:12px;border-radius:50%;border:2px solid var(--ink);background:#fff;cursor:pointer;padding:0;box-shadow:none}
+  .dot.on{background:var(--ink)}
+  .cover{text-align:center}
+  .cover h2{font-size:34px;margin:6px 0 4px}
+  .cover p{margin:0 0 14px;font-size:17px;opacity:.8}
+  .cover .panel{max-width:640px;margin:0 auto 16px}
+  .list{max-width:640px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:10px;text-align:left}
+  .list button{width:100%;text-align:left;border-radius:14px;box-shadow:2px 2px 0 var(--ink)}
+  .list small{display:block;font-weight:500;opacity:.65;font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>Lunchroom Talk 2</h1><div class="hbtns"><span class="count" id="count"></span>
+    <button id="trBtn" aria-pressed="false">TR</button><button id="homeBtn">&#8962; Home</button></div></header>
+  <div class="warn">Sound doesn't work here. Open this page in Chrome or Safari, or on a computer.</div>
+  <main id="stage"></main>
+</div>
+<nav><div class="in">
+  <button id="prev">&larr; Back</button>
+  <div class="dots" id="dots"></div>
+  <button id="next" class="primary">Next &rarr;</button>
+</div></nav>
+
+<script>
+const OUT = '#2B2B2B';
+const P = {
+  me:    {skin:'#E9B48C', hair:'#3A271C', style:'bun',   shirt:'#4FA3C7', pitch:1.05, label:'Hatice'},
+  arlen: {skin:'#C68A5E', hair:'#24201D', style:'short', shirt:'#7DB46C', pitch:0.8,  label:'Arlen'},
+  emily: {skin:'#F3D0B5', hair:'#D2D2D2', style:'bob',   shirt:'#B583C9', pitch:1.25, label:'Emily', glasses:true},
+  leo:   {skin:'#F1C6A0', hair:'#C9772E', style:'kid',   shirt:'#F6C453', pitch:1.7,  label:'Leo'}
+};
+
+/* ---------- character ---------- */
+function armsFor(pose, d){
+  const down = s => [s*48,-80, s*64,-40, s*58,-8];
+  switch(pose){
+    case 'point':   return [down(-d), [d*48,-80, d*92,-72, d*124,-94]];
+    case 'handsup': return [[-48,-80,-90,-74,-82,-124],[48,-80,90,-74,82,-124]];
+    case 'chin':    return [down(-d), [d*48,-80, d*50,-52, d*20,-90]];
+    case 'phone':   return [down(-d), [d*48,-80, d*74,-96, d*37,-124]];
+    case 'hold':    return [[-48,-80,-62,-50,-36,-66],[48,-80,62,-50,36,-66]];
+    case 'show':    return [down(-d), [d*48,-80, d*84,-50, d*66,-74]];
+    case 'reach':   return [down(-d), [d*48,-80, d*92,-108, d*112,-150]];
+    case 'wave':    return [down(-d), [d*48,-80, d*82,-96, d*68,-148]];
+    default:        return [down(-1), down(1)];
+  }
+}
+function arm(p, a, pose, d, idx){
+  const [sx,sy,cx,cy,hx,hy] = a;
+  const path = `M${sx} ${sy} Q${cx} ${cy} ${hx} ${hy}`;
+  let s = `<path d="${path}" stroke="${OUT}" stroke-width="21" fill="none" stroke-linecap="round"/>`+
+          `<path d="${path}" stroke="${p.shirt}" stroke-width="15.5" fill="none" stroke-linecap="round"/>`;
+  if(pose==='point' && idx===1){
+    s += `<path d="M${hx} ${hy} l${d*15} ${-3}" stroke="${OUT}" stroke-width="9" stroke-linecap="round"/>`+
+         `<path d="M${hx} ${hy} l${d*15} ${-3}" stroke="${p.skin}" stroke-width="5" stroke-linecap="round"/>`;
+  }
+  s += `<circle cx="${hx}" cy="${hy}" r="${pose==='handsup'?11:9.5}" fill="${p.skin}" stroke="${OUT}" stroke-width="2.5"/>`;
+  return s;
+}
+function eyes(face, look){
+  const ex=13, ey=-126, lx=look||0; let s='';
+  const dot = x => `<ellipse cx="${x+lx}" cy="${ey}" rx="3.8" ry="4.8" fill="${OUT}"/><circle cx="${x+lx+1.3}" cy="${ey-1.8}" r="1.3" fill="#fff"/>`;
+  if(face==='happy'){
+    s = [-ex,ex].map(x=>`<path d="M${x-5} ${ey+2} Q${x} ${ey-6} ${x+5} ${ey+2}" stroke="${OUT}" stroke-width="3" fill="none" stroke-linecap="round"/>`).join('');
+  } else if(face==='surprised'){
+    s = [-ex,ex].map(x=>`<circle cx="${x+lx}" cy="${ey}" r="5.6" fill="${OUT}"/><circle cx="${x+lx+1.8}" cy="${ey-2}" r="1.8" fill="#fff"/>`).join('')+
+        `<path d="M-20 -142 Q-13 -148 -6 -142 M6 -142 Q13 -148 20 -142" stroke="${OUT}" stroke-width="2.6" fill="none" stroke-linecap="round"/>`;
+  } else if(face==='worried'){
+    s = dot(-ex)+dot(ex)+`<path d="M-21 -136 L-8 -141 M8 -141 L21 -136" stroke="${OUT}" stroke-width="2.6" stroke-linecap="round"/>`;
+  } else {
+    s = dot(-ex)+dot(ex);
+  }
+  return s;
+}
+function mouth(m){
+  switch(m){
+    case 'grin': return `<path d="M-10 -109 Q0 -96 10 -109 Z" fill="#8A3B3B" stroke="${OUT}" stroke-width="2.4" stroke-linejoin="round"/>`;
+    case 'o':    return `<ellipse cx="0" cy="-105" rx="4.5" ry="5.5" fill="#8A3B3B" stroke="${OUT}" stroke-width="2.2"/>`;
+    case 'flat': return `<path d="M-6 -106 L6 -106" stroke="${OUT}" stroke-width="2.6" stroke-linecap="round"/>`;
+    case 'frown':return `<path d="M-8 -102 Q0 -109 8 -102" stroke="${OUT}" stroke-width="2.6" fill="none" stroke-linecap="round"/>`;
+    case 'wavy': return `<path d="M-9 -105 q3 -3 6 0 t6 0 t6 0" stroke="${OUT}" stroke-width="2.4" fill="none" stroke-linecap="round"/>`;
+    default:     return `<path d="M-9 -108 Q0 -100 9 -108" stroke="${OUT}" stroke-width="2.6" fill="none" stroke-linecap="round"/>`;
+  }
+}
+function hairBack(p){
+  if(p.style==='bun') return `<circle cx="0" cy="-172" r="17" fill="${p.hair}" stroke="${OUT}" stroke-width="2.5"/>`;
+  if(p.style==='bob') return `<path d="M-47 -128 Q-52 -84 -30 -86 L30 -86 Q52 -84 47 -128 Z" fill="${p.hair}" stroke="${OUT}" stroke-width="2.5"/>`;
+  return '';
+}
+function hairFront(p){
+  const f = {
+    bun:   'M-40 -120 Q-45 -172 0 -170 Q45 -172 40 -120 Q36 -146 14 -152 Q-8 -140 -40 -120 Z',
+    short: 'M-40 -122 Q-44 -174 0 -172 Q44 -174 40 -122 Q38 -142 28 -147 Q0 -138 -28 -147 Q-38 -142 -40 -122 Z',
+    bob:   'M-43 -118 Q-47 -175 0 -173 Q47 -175 43 -118 Q34 -150 0 -146 Q-34 -150 -43 -118 Z',
+    kid:   'M-40 -124 Q-50 -150 -32 -160 Q-30 -178 -10 -172 Q0 -186 14 -172 Q34 -180 34 -158 Q50 -150 40 -124 Q36 -144 18 -148 Q8 -140 -6 -148 Q-26 -144 -40 -124 Z'
+  }[p.style];
+  return `<path d="${f}" fill="${p.hair}" stroke="${OUT}" stroke-width="2.5" stroke-linejoin="round"/>`;
+}
+function item(type){
+  switch(type){
+    case 'pot': return `<g>
+      <path d="M-40 -22 h-8 v12 h8 M40 -22 h8 v12 h-8" stroke="${OUT}" stroke-width="4" fill="none"/>
+      <rect x="-32" y="-28" width="64" height="42" rx="6" fill="#B9C3CC" stroke="${OUT}" stroke-width="2.5"/>
+      <rect x="-37" y="-33" width="74" height="9" rx="4" fill="#DCE2E7" stroke="${OUT}" stroke-width="2.5"/>
+      <path d="M-22 -18 v24" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".7"/></g>`;
+    case 'milk': return `<g>
+      <path d="M-13 -24 L-8 -36 L8 -36 L13 -24 Z" fill="#fff" stroke="${OUT}" stroke-width="2.3" stroke-linejoin="round"/>
+      <rect x="-13" y="-24" width="26" height="36" fill="#fff" stroke="${OUT}" stroke-width="2.3"/>
+      <rect x="-13" y="-14" width="26" height="12" fill="#5B9BD5"/>
+      <text x="0" y="-5" text-anchor="middle" font-family="Fredoka,sans-serif" font-size="8" font-weight="600" fill="#fff">MILK</text>
+      <rect x="-13" y="-24" width="26" height="36" fill="none" stroke="${OUT}" stroke-width="2.3"/></g>`;
+    case 'yogurt': {
+      let s = `<rect x="-38" y="6" width="76" height="8" rx="3" fill="#E9D8B8" stroke="${OUT}" stroke-width="2.3"/>`;
+      [-24,0,24].forEach((x,i)=>{
+        s += `<path d="M${x-11} -18 L${x-8} 6 L${x+8} 6 L${x+11} -18 Z" fill="#fff" stroke="${OUT}" stroke-width="2.2" stroke-linejoin="round"/>`+
+             `<rect x="${x-12}" y="-22" width="24" height="5" rx="2" fill="${['#F28CA8','#F6C453','#8CC9E8'][i]}" stroke="${OUT}" stroke-width="2"/>`;
+      });
+      return `<g>${s}</g>`;
+    }
+    case 'flyer': return `<g transform="rotate(-6)"><rect x="-22" y="-30" width="44" height="54" rx="3" fill="#fff" stroke="${OUT}" stroke-width="2.3"/>
+      <rect x="-22" y="-30" width="44" height="14" fill="#E07A5F" stroke="${OUT}" stroke-width="2.3"/>
+      <text x="0" y="-19.5" text-anchor="middle" font-family="Fredoka,sans-serif" font-size="8" font-weight="600" fill="#fff">LUNCH</text>
+      <text x="0" y="-2" text-anchor="middle" font-family="Fredoka,sans-serif" font-size="8.5" font-weight="600" fill="${OUT}">FRIDAY</text>
+      <circle cx="-8" cy="11" r="5" fill="#F6C453" stroke="${OUT}" stroke-width="1.6"/><circle cx="8" cy="11" r="5" fill="#8CC9E8" stroke="${OUT}" stroke-width="1.6"/></g>`;
+    case 'menu': return `<g transform="rotate(5)"><rect x="-24" y="-32" width="48" height="58" rx="3" fill="#fff" stroke="${OUT}" stroke-width="2.3"/>
+      <text x="0" y="-20" text-anchor="middle" font-family="Fredoka,sans-serif" font-size="8" font-weight="600" fill="${OUT}">MENU</text>
+      <path d="M-17 -12 q4 -3 8 0 t8 0 t8 0 t8 0 M-17 -3 q4 -3 8 0 t8 0 t8 0 M-17 6 q4 -3 8 0 t8 0 t8 0 t8 0 M-17 15 q4 -3 8 0 t8 0" stroke="#8C8C8C" stroke-width="1.8" fill="none"/></g>`;
+    case 'cup': return `<g><path d="M-12 -18 L-9 12 L9 12 L12 -18 Z" fill="#fff" stroke="${OUT}" stroke-width="2.3" stroke-linejoin="round"/><path d="M-11 -8 L11 -8" stroke="#F6A623" stroke-width="2"/></g>`;
+    case 'phone': return '';
+    default: return '';
+  }
+}
+function char(o){
+  const p = P[o.who], d = o.dir||1, pose = o.pose||'down';
+  const [a0,a1] = armsFor(pose, d);
+  let s = hairBack(p);
+  s += `<path d="M-60 2 L-60 -58 Q-60 -88 -30 -90 L30 -90 Q60 -88 60 -58 L60 2 Z" fill="${p.shirt}" stroke="${OUT}" stroke-width="2.5"/>`;
+  s += `<rect x="-10" y="-100" width="20" height="14" fill="${p.skin}"/>`;
+  s += `<path d="M-14 -90 L0 -74 L14 -90 Z" fill="${p.skin}" stroke="${OUT}" stroke-width="2.2" stroke-linejoin="round"/>`;
+  if(p.glasses) s += `<path d="M-16 -88 L-6 -60 M16 -88 L6 -60" stroke="#fff" stroke-width="3" opacity=".8"/>`;
+  s += `<circle cx="-38" cy="-125" r="7" fill="${p.skin}" stroke="${OUT}" stroke-width="2.3"/><circle cx="38" cy="-125" r="7" fill="${p.skin}" stroke="${OUT}" stroke-width="2.3"/>`;
+  s += `<circle cx="0" cy="-128" r="38" fill="${p.skin}" stroke="${OUT}" stroke-width="2.5"/>`;
+  s += `<circle cx="-23" cy="-113" r="6" fill="#F28C8C" opacity=".45"/><circle cx="23" cy="-113" r="6" fill="#F28C8C" opacity=".45"/>`;
+  s += eyes(o.face, o.look) + mouth(o.mouth);
+  s += hairFront(p);
+  if(p.glasses) s += `<g fill="rgba(255,255,255,.25)" stroke="${OUT}" stroke-width="2.2"><circle cx="-14" cy="-126" r="10"/><circle cx="14" cy="-126" r="10"/><path d="M-4 -127 L4 -127" fill="none"/></g>`;
+  // held items (behind hands)
+  if(pose==='hold' && o.item) s += `<g transform="translate(0,-62)">${item(o.item)}</g>`;
+  if(pose==='show' && o.item) s += `<g transform="translate(${d*(o.item==='yogurt'?60:64)},-94)">${item(o.item)}</g>`;
+  if(pose==='phone') s += `<rect x="${d*37-7}" y="-152" width="14" height="30" rx="3" fill="#333" stroke="${OUT}" stroke-width="2"/>`;
+  s += arm(p,a0,pose,d,0) + arm(p,a1,pose,d,1);
+  const sc = o.s||1;
+  return `<g transform="translate(${o.x},${o.y||300}) scale(${sc})">${s}</g>`;
+}
+
+/* ---------- backgrounds & props ---------- */
+function tiles(color, h){
+  let s='';
+  for(let x=0;x<=400;x+=40) s+=`<path d="M${x} -60 V${h}" stroke="${color}" stroke-width="1.5"/>`;
+  for(let y=-40;y<=h;y+=40) s+=`<path d="M0 ${y} H400" stroke="${color}" stroke-width="1.5"/>`;
+  return s;
+}
+function kitchen(){ return `<rect y="-60" width="400" height="360" fill="#E8F4EF"/>${tiles('#D2E8DF',250)}`; }
+function clock(x,y){ return `<g transform="translate(${x},${y})"><circle r="19" fill="#fff" stroke="${OUT}" stroke-width="2.5"/><path d="M0 0 V-11 M0 0 L8 4" stroke="${OUT}" stroke-width="2.5" stroke-linecap="round"/></g>`; }
+function counter(){ return `<rect x="-5" y="246" width="410" height="60" fill="#C5CED6" stroke="${OUT}" stroke-width="2.5"/><rect x="-5" y="246" width="410" height="9" fill="#E4E9ED" stroke="${OUT}" stroke-width="2.5"/>`; }
+function notepad(x){ return `<path d="M${x-26} 254 L${x-18} 247 L${x+26} 247 L${x+18} 254 Z" fill="#fff" stroke="${OUT}" stroke-width="2"/>`; }
+function spill(x){
+  return `<ellipse cx="${x}" cy="250" rx="38" ry="5" fill="#fff" stroke="#9FB3C2" stroke-width="2"/>
+  <path d="M${x+10} 254 v14 a4 4 0 0 0 8 0 v-14 Z" fill="#fff" stroke="#9FB3C2" stroke-width="2"/>
+  <g transform="translate(${x-30},242) rotate(-80)">${item('milk')}</g>`;
+}
+function lunchbag(x){
+  return `<g transform="translate(${x},234)">
+    <path d="M-12 -24 Q0 -44 12 -24" fill="none" stroke="${OUT}" stroke-width="4"/>
+    <rect x="-28" y="-26" width="56" height="40" rx="8" fill="#E07A5F" stroke="${OUT}" stroke-width="2.5"/>
+    <g transform="translate(18,6) rotate(-8)"><rect x="-4" y="-8" width="40" height="17" rx="3" fill="#fff" stroke="${OUT}" stroke-width="2"/>
+    <text x="16" y="4.5" text-anchor="middle" font-family="Fredoka,sans-serif" font-weight="600" font-size="10" fill="${OUT}">EMILY</text></g></g>`;
+}
+function shelf(filled){
+  let s = `<rect x="236" y="56" width="7" height="192" fill="#8E9AA5" stroke="${OUT}" stroke-width="2"/><rect x="386" y="56" width="7" height="192" fill="#8E9AA5" stroke="${OUT}" stroke-width="2"/>`;
+  // top board items: plates and bowls
+  for(let i=0;i<5;i++) s += `<ellipse cx="275" cy="${114-i*6}" rx="24" ry="5" fill="#fff" stroke="${OUT}" stroke-width="2"/>`;
+  s += `<path d="M322 98 Q345 124 368 98 Z" fill="#F6C453" stroke="${OUT}" stroke-width="2.2"/><path d="M326 88 Q345 110 364 88 Z" fill="#8CC9E8" stroke="${OUT}" stroke-width="2.2"/>`;
+  s += `<rect x="232" y="118" width="166" height="7" fill="#AEB8C1" stroke="${OUT}" stroke-width="2"/>`;
+  // lower board: pan + spot for the pot
+  s += `<rect x="248" y="178" width="34" height="20" rx="4" fill="#6F7B86" stroke="${OUT}" stroke-width="2.2"/>`;
+  if(filled) s += `<g transform="translate(331,186)">${item('pot')}</g>`;
+  else s += `<rect x="294" y="152" width="76" height="46" rx="6" fill="rgba(224,122,95,.08)" stroke="#E07A5F" stroke-width="2.5" stroke-dasharray="7 5"/>`;
+  s += `<rect x="232" y="198" width="166" height="7" fill="#AEB8C1" stroke="${OUT}" stroke-width="2"/>`;
+  return s;
+}
+function fridge(){
+  let s = `<rect x="262" y="20" width="140" height="230" rx="7" fill="#DCE3E8" stroke="${OUT}" stroke-width="2.5"/>
+    <rect x="272" y="30" width="122" height="216" fill="#F2FAFF" stroke="${OUT}" stroke-width="2.2"/>`;
+  [92,152,208].forEach(y=> s+=`<rect x="272" y="${y}" width="122" height="5" fill="#C9D6DF" stroke="${OUT}" stroke-width="1.5"/>`);
+  [292,322,352].forEach(x=> s+=`<g transform="translate(${x},80) scale(.8)">${item('milk')}</g>`);
+  s += `<g transform="translate(330,140) scale(.7)">${item('yogurt')}</g>`;
+  return s;
+}
+function calendar(x,y){
+  return `<g transform="translate(${x},${y})"><rect width="50" height="54" rx="5" fill="#fff" stroke="${OUT}" stroke-width="2.5"/>
+    <rect width="50" height="16" rx="5" fill="#E07A5F" stroke="${OUT}" stroke-width="2.5"/>
+    <text x="25" y="12.5" text-anchor="middle" font-family="Fredoka,sans-serif" font-size="11" font-weight="600" fill="#fff">NOV</text>
+    <text x="25" y="45" text-anchor="middle" font-family="Fredoka,sans-serif" font-size="24" font-weight="600" fill="${OUT}">17</text></g>`;
+}
+function zoomDate(cx,cy){
+  return `<g><circle cx="${cx}" cy="${cy}" r="86" fill="#fff" stroke="${OUT}" stroke-width="4"/>
+    <clipPath id="zc"><circle cx="${cx}" cy="${cy}" r="84"/></clipPath>
+    <g clip-path="url(#zc)"><g transform="translate(${cx},${cy+48}) scale(3.6)">${item('milk')}</g>
+    <g transform="translate(${cx},${cy-62}) rotate(-6)"><rect x="-56" y="-17" width="112" height="34" rx="4" fill="#fff" stroke="#D64545" stroke-width="3"/>
+    <text x="0" y="8" text-anchor="middle" font-family="Fredoka,sans-serif" font-weight="600" font-size="19" fill="#D64545">EXP 11/10</text></g></g>
+    <path d="M${cx-70} ${cy+56} L${cx-104} ${cy+92}" stroke="${OUT}" stroke-width="9" stroke-linecap="round"/></g>`;
+}
+function home(){
+  return `<rect y="-60" width="400" height="360" fill="#FCE9D6"/>
+    <rect x="262" y="40" width="96" height="84" fill="#BFE3F5" stroke="${OUT}" stroke-width="2.5"/>
+    <path d="M310 40 V124 M262 82 H358" stroke="${OUT}" stroke-width="2.5"/>
+    <path d="M252 34 Q262 90 248 132 L262 132 Q272 90 266 34 Z M368 34 Q358 90 372 132 L358 132 Q348 90 354 34 Z" fill="#E8A87C" stroke="${OUT}" stroke-width="2"/>
+    <rect x="-5" y="250" width="410" height="60" fill="#D9A06A" stroke="${OUT}" stroke-width="2.5"/>`;
+}
+let clipN = 0;
+function split(left, right){
+  const id = 'c'+(clipN++);
+  return `<clipPath id="${id}L"><path d="M0 -60 H208.4 L194 300 H0 Z"/></clipPath>
+    <clipPath id="${id}R"><path d="M208.4 -60 H400 V300 H194 Z"/></clipPath>
+    <g clip-path="url(#${id}L)">${left}</g><g clip-path="url(#${id}R)">${right}</g>
+    <path d="M208.4 -60 L194 300" stroke="#fff" stroke-width="9"/><path d="M208.4 -60 L194 300" stroke="${OUT}" stroke-width="3"/>`;
+}
+
+/* ---------- story ---------- */
+// bubble: [who, text, x%, y%, w%, tail% (inside bubble), rot(deg), key]
+const SCENES = [
+  { title:'The Friday Lunch', panels:[
+    { svg: ()=> kitchen()+clock(40,40)+char({who:'me',x:105,mouth:'smile',look:3})+char({who:'emily',x:290,pose:'show',dir:-1,item:'flyer',face:'happy',mouth:'smile'})+counter(),
+      b:[['emily','We have a staff lunch on Friday. Are you coming?',50,3,47,62,0,0,'Cuma günü personel yemeğimiz var. Geliyor musun?'],
+         ['me',"If everyone is coming, I'll come too.",3,8,46,40,0,1,'Herkes gelecekse, ben de gelirim.']] },
+    { svg: ()=> kitchen()+char({who:'me',x:105,face:'happy',mouth:'smile'})+char({who:'emily',x:300,face:'happy',mouth:'grin',look:-3})+counter(),
+      b:[['emily','Everyone is bringing food.',54,5,42,55,0,0,'Herkes yemek getiriyor.'],
+         ['me',"If everyone is doing it, I'll do it too.",3,14,46,40,0,1,'Herkes yapacaksa, ben de yaparım.']] },
+    { svg: ()=> kitchen()+char({who:'arlen',x:110,face:'surprised',mouth:'o',look:3})+char({who:'emily',x:300,face:'happy',mouth:'grin',look:-3})+counter(),
+      b:[['arlen','Are you coming too?',4,8,40,50,0,0,'Sen de geliyor musun?'],
+         ['emily','Yes! All of us will be there.',52,15,44,55,0,1,'Evet! Hepimiz orada olacağız.']] },
+    { svg: ()=> kitchen()+char({who:'arlen',x:72,face:'happy',mouth:'smile'})+char({who:'me',x:200,face:'happy',mouth:'grin'})+char({who:'emily',x:328,face:'happy',mouth:'grin'})+counter()+partyFood(),
+      b:[['emily',"Let's eat all together!",54,4,43,72,-12,1,'Hep birlikte yiyelim!'],
+         ['arlen','Great idea!',2,14,30,40,0,0,'Harika fikir!']] }
+  ]},
+  { title:'Who Made This?', tip:true, panels:[
+    { svg: ()=> kitchen()+char({who:'me',x:100,face:'happy',mouth:'smile'})+char({who:'emily',x:310,face:'surprised',mouth:'o',look:-3})+counter()+fruitTray(205),
+      b:[['emily','Wow! Who made this?',52,6,44,62,0,0,'Vay! Bunu kim yaptı?']] },
+    { svg: ()=> kitchen()+char({who:'me',x:100,face:'happy',mouth:'smile'})+char({who:'emily',x:305,mouth:'smile',look:-3})+counter()+fruitTray(205),
+      b:[['emily','Did Arlen help you?',56,5,40,55,0,0,'Arlen sana yardım etti mi?'],
+         ['me','No, I did it by myself.',3,14,42,45,0,1,'Hayır, yalnız yaptım.']] },
+    { svg: ()=> kitchen()+char({who:'me',x:100,face:'happy',mouth:'grin'})+char({who:'emily',x:305,face:'surprised',mouth:'o',look:-3})+counter()+fruitTray(205),
+      b:[['emily','Really? All of it?',58,5,38,55,0,0,'Gerçekten mi? Hepsini mi?'],
+         ['me','Yes, I made it on my own.',3,14,44,45,0,1,'Evet, yalnız başıma yaptım.']] },
+    { svg: ()=> kitchen()+char({who:'me',x:120,face:'worried',mouth:'flat'})+char({who:'emily',x:320,mouth:'flat',look:-3})+counter(),
+      b:[['emily','Where is Arlen today?',58,5,38,55,0,0,'Arlen bugün nerede?'],
+         ['me',"He's sick. I'm alone in the kitchen today.",2,12,52,46,0,1,'Hasta. Bugün mutfakta yalnızım.']] }
+  ]},
+  { title:'Hard to Understand', panels:[
+    { svg: ()=> kitchen()+char({who:'me',x:95,face:'surprised',mouth:'o',look:3})+char({who:'leo',x:270,s:.72,pose:'show',dir:-1,item:'cup',face:'happy',mouth:'grin'})+counter(),
+      b:[['leo','Mmh… moh-joosh… pease!',40,14,44,62,0,0,'']] },
+    { svg: ()=> kitchen()+char({who:'me',x:95,pose:'chin',face:'worried',mouth:'wavy'})+char({who:'emily',x:315,face:'happy',mouth:'smile',look:-3})+char({who:'leo',x:205,s:.6,face:'happy',mouth:'grin'})+counter(),
+      b:[['me',"I can't understand him at all.",3,6,46,40,0,1,'Onu hiç anlayamıyorum.'],
+         ['emily','He wants more juice.',56,16,40,58,0,0,'Daha fazla meyve suyu istiyor.']] },
+    { svg: ()=> kitchen()+clock(40,40)+char({who:'me',x:110,mouth:'smile',look:3})+char({who:'arlen',x:295,pose:'show',dir:-1,item:'menu',mouth:'smile'})+counter(),
+      b:[['arlen','Here is the new menu.',50,5,44,60,0,0,'İşte yeni menü.']] },
+    { svg: ()=> kitchen()+char({who:'me',x:120,pose:'show',dir:1,item:'menu',face:'worried',mouth:'o'})+char({who:'arlen',x:315,face:'worried',mouth:'wavy',look:-3})+counter(),
+      b:[['me',"I can't understand it at all!",3,5,48,40,0,1,'Onu hiç anlayamıyorum!'],
+         ['arlen','Me neither!',62,16,32,50,0,0,'Ben de!']] }
+  ]},
+  { title:'The Cold Oven', panels:[
+    { svg: ()=> kitchen()+oven()+char({who:'me',x:115,pose:'point',dir:1,face:'surprised',mouth:'o'})+counter(),
+      b:[['me','Why is the oven like this?',3,7,46,40,0,1,'Fırın neden böyle?']] },
+    { svg: ()=> kitchen()+oven()+char({who:'arlen',x:120,pose:'chin',face:'worried',mouth:'flat',look:3})+counter(),
+      b:[['arlen',"It's broken again.",4,9,40,45,0,0,'Yine bozuldu.']] },
+    { svg: ()=> kitchen()+oven()+char({who:'me',x:105,pose:'handsup',face:'worried',mouth:'wavy'})+char({who:'arlen',x:300,face:'worried',mouth:'flat',look:-3})+counter(),
+      b:[['me','Again? Why is it like this?',3,4,46,42,0,1,'Yine mi? Neden böyle?'],
+         ['arlen',"I don't know.",62,17,34,55,0,0,'Bilmiyorum.']] },
+    { svg: ()=> kitchen()+oven()+char({who:'me',x:105,face:'happy',mouth:'grin'})+char({who:'emily',x:300,pose:'phone',dir:-1,face:'happy',mouth:'smile'})+counter(),
+      b:[['emily',"Don't worry. The repairman is coming.",46,3,50,62,0,0,'Merak etmeyin. Tamirci geliyor.'],
+         ['me','Thank goodness!',3,17,36,45,0,0,'Neyse ki!']] }
+  ]}
+];
+
+const TIP = `<div class="tip"><b>alone</b> = no one is with you. &nbsp; <b>lonely</b> = you feel sad because you are alone.
+  <span class="trtip">(alone = yanında kimse yok. lonely = yalnız olduğun için üzgün hissediyorsun.)</span></div>`;
+
+/* ---------- extra props for part 2 ---------- */
+function partyFood(){
+  let s='';
+  [[60,'#F6C453'],[200,'#8CC9E8'],[340,'#F28CA8']].forEach(([x,c])=>{
+    s+=`<ellipse cx="${x}" cy="250" rx="34" ry="6" fill="#fff" stroke="${OUT}" stroke-width="2"/>`+
+       `<path d="M${x-22} 249 L${x-6} 236 L${x+6} 249 Z" fill="#F3D9A4" stroke="${OUT}" stroke-width="2" stroke-linejoin="round"/>`+
+       `<path d="M${x+2} 249 L${x+14} 238 L${x+24} 249 Z" fill="${c}" stroke="${OUT}" stroke-width="2" stroke-linejoin="round"/>`;
+  });
+  [130,270].forEach(x=> s+=`<path d="M${x-8} 232 L${x-6} 252 L${x+6} 252 L${x+8} 232 Z" fill="#fff" stroke="${OUT}" stroke-width="2"/><rect x="${x-8}" y="236" width="16" height="6" fill="#F28C8C"/>`);
+  return s;
+}
+function fruitTray(x){
+  let s=`<ellipse cx="${x}" cy="249" rx="50" ry="9" fill="#E9D8B8" stroke="${OUT}" stroke-width="2.3"/>`;
+  const fr=[[-34,-2,'#E4572E',7],[-20,-6,'#F6A623',8],[-4,-3,'#8E5BB5',6],[4,-8,'#8E5BB5',6],[14,-4,'#7DB46C',8],[28,-5,'#E4572E',7],[38,-1,'#F6A623',6],[-10,-11,'#E4572E',6],[22,-12,'#7DB46C',6]];
+  fr.forEach(([dx,dy,c,r])=> s+=`<circle cx="${x+dx}" cy="${246+dy}" r="${r}" fill="${c}" stroke="${OUT}" stroke-width="1.8"/>`);
+  s+=`<path d="M${x-30} 222 l3 -7 l3 7 M${x+34} 218 l3 -7 l3 7 M${x+2} 214 l3 -7 l3 7" stroke="#F6C453" stroke-width="2.5" stroke-linecap="round" fill="none"/>`;
+  return s;
+}
+function oven(){
+  let s=`<rect x="238" y="104" width="156" height="146" rx="8" fill="#D9DEE3" stroke="${OUT}" stroke-width="2.5"/>
+    <rect x="238" y="104" width="156" height="30" rx="8" fill="#B9C3CC" stroke="${OUT}" stroke-width="2.5"/>
+    <circle cx="258" cy="119" r="7" fill="#fff" stroke="${OUT}" stroke-width="2"/><circle cx="280" cy="119" r="7" fill="#fff" stroke="${OUT}" stroke-width="2"/>
+    <rect x="330" y="110" width="52" height="18" rx="3" fill="#1F2A33" stroke="${OUT}" stroke-width="2"/>
+    <text x="356" y="124" text-anchor="middle" font-family="Fredoka,sans-serif" font-weight="600" font-size="13" fill="#7FD3F7">0°</text>
+    <rect x="252" y="146" width="128" height="10" rx="4" fill="#8E9AA5" stroke="${OUT}" stroke-width="2"/>
+    <rect x="256" y="164" width="120" height="74" rx="6" fill="#3B4752" stroke="${OUT}" stroke-width="2.5"/>`;
+  const cx=316, cy=200;
+  s+=`<g stroke="#9EE0FF" stroke-width="3.2" stroke-linecap="round">`;
+  for(let a=0;a<6;a++){ const r=a*Math.PI/3, x2=cx+20*Math.cos(r), y2=cy+20*Math.sin(r);
+    s+=`<path d="M${cx} ${cy} L${x2.toFixed(1)} ${y2.toFixed(1)}"/>`;
+    const bx=cx+12*Math.cos(r), by=cy+12*Math.sin(r);
+    s+=`<path d="M${(bx+6*Math.cos(r+0.9)).toFixed(1)} ${(by+6*Math.sin(r+0.9)).toFixed(1)} L${bx.toFixed(1)} ${by.toFixed(1)} L${(bx+6*Math.cos(r-0.9)).toFixed(1)} ${(by+6*Math.sin(r-0.9)).toFixed(1)}"/>`; }
+  return s+`</g>`;
+}
+
+/* ---------- rendering ---------- */
+const stage = document.getElementById('stage');
+let page = 0; const PAGES = SCENES.length + 1;
+
+function bubbleHTML(b){
+  const [who,t,x,y,w,tx,rot,key,tr] = b;
+  return `<div class="bubble${key?' key':''}" data-who="${who}" style="left:${x}%;top:${y}%;width:${w}%;--tx:${tx}%;--rot:${rot}deg"><span class="en">${t}</span>${tr?`<span class="tr">(${tr})</span>`:''}</div>`;
+}
+function panelHTML(svg, bubbles, n){
+  return `<div class="panel"><svg viewBox="${showTr?'0 -40 400 340':'0 0 400 300'}" xmlns="http://www.w3.org/2000/svg">${svg}</svg>${bubbles.map(bubbleHTML).join('')}${n?`<div class="num">${n}</div>`:''}</div>`;
+}
+function render(){
+  stopSpeech();
+  if(page===0){
+    const cover = kitchen()+char({who:'arlen',x:70,face:'happy',mouth:'smile'})+char({who:'emily',x:332,face:'happy',mouth:'smile'})+char({who:'me',x:200,pose:'wave',face:'happy',mouth:'grin'})+counter()+
+      [['Arlen',70],['Hatice',200],['Emily',332]].map(([n,x])=>`<rect x="${x-40}" y="262" width="80" height="26" rx="13" fill="#fff" stroke="${OUT}" stroke-width="2.2"/><text x="${x}" y="280.5" text-anchor="middle" font-family="Fredoka,sans-serif" font-weight="600" font-size="15" fill="${OUT}">${n}</text>`).join('');
+    stage.innerHTML = `<div class="cover"><h2>Lunchroom Talk 2</h2><p>Four more scenes from the school kitchen</p>
+      ${panelHTML(cover,[['me','Hi again!',36,8,30,45,0,0,'Yine merhaba!']])}
+      <div class="list">${SCENES.map((s,i)=>`<button data-go="${i+1}"><small>Scene ${i+1}</small>${s.title}</button>`).join('')}</div></div>`;
+    stage.querySelectorAll('[data-go]').forEach(btn=>btn.onclick=()=>go(+btn.dataset.go));
+  } else {
+    const s = SCENES[page-1];
+    stage.innerHTML = `<div class="scene-title"><span class="tag">Scene ${page}</span>${s.title}</div>
+      <div class="grid">${s.panels.map((p,i)=>panelHTML(p.svg(),p.b,i+1)).join('')}</div>${s.tip?TIP:''}
+      <div class="hint"><button id="play">&#9654; Play scene</button>
+        <span>Tap a bubble to hear it.</span><span class="chip"><span class="sw"></span>Key phrase</span></div>`;
+    document.getElementById('play').onclick = playScene;
+  }
+  stage.querySelectorAll('.bubble').forEach(el=>el.onclick=()=>{stopSpeech(); speak(el);});
+  document.getElementById('count').textContent = page ? `Scene ${page} of ${SCENES.length}` : '';
+  document.getElementById('prev').disabled = page===0;
+  document.getElementById('homeBtn').style.display = page===0 ? 'none' : '';
+  document.getElementById('next').disabled = page===PAGES-1;
+  document.getElementById('next').innerHTML = page===0 ? 'Start &rarr;' : 'Next &rarr;';
+  document.getElementById('dots').innerHTML = Array.from({length:PAGES},(_,i)=>`<button class="dot${i===page?' on':''}" data-p="${i}" aria-label="Page ${i}"></button>`).join('');
+  document.querySelectorAll('.dot').forEach(d=>d.onclick=()=>go(+d.dataset.p));
+  window.scrollTo(0,0);
+}
+function go(n){ page = Math.max(0, Math.min(PAGES-1, n)); render(); }
+document.getElementById('prev').onclick = ()=>go(page-1);
+document.getElementById('homeBtn').onclick = ()=>go(0);
+let showTr = false;
+document.getElementById('trBtn').onclick = ()=>{
+  showTr = !showTr;
+  document.body.classList.toggle('show-tr', showTr);
+  const b = document.getElementById('trBtn'); b.classList.toggle('on', showTr); b.setAttribute('aria-pressed', String(showTr));
+  const y = window.scrollY; render(); window.scrollTo(0, y);
+};
+if(!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') document.body.classList.add('no-speech');
+document.getElementById('next').onclick = ()=>go(page+1);
+document.addEventListener('keydown', e=>{ if(e.key==='ArrowRight') go(page+1); if(e.key==='ArrowLeft') go(page-1); });
+
+/* ---------- speech ---------- */
+let voices = [], playing = false;
+function loadVoices(){ try{ voices = speechSynthesis.getVoices().filter(v=>/^en[-_]/i.test(v.lang)); }catch(e){ voices=[]; } }
+try{ loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }catch(e){}
+function pickVoice(who){
+  if(!voices.length) return null;
+  const us = voices.filter(v=>/en[-_]US/i.test(v.lang)); const pool = us.length ? us : voices;
+  const fem = /female|samantha|zira|aria|jenny|karen|susan|victoria|allison|ava|joanna|salli/i;
+  const mal = /\bmale\b|david|alex|guy|daniel|fred|mark|tom|matthew|joey/i;
+  const want = who==='arlen' ? pool.find(v=>mal.test(v.name) && !/female/i.test(v.name)) : pool.find(v=>fem.test(v.name));
+  return want || pool[0];
+}
+function clean(t){ return t.replace(/…/g,', '); }
+function speak(el, done){
+  try{
+    const who = el.dataset.who, en = el.querySelector('.en'), u = new SpeechSynthesisUtterance(clean((en||el).textContent));
+    u.lang = 'en-US'; u.rate = 0.88; u.pitch = P[who].pitch;
+    const v = pickVoice(who); if(v) u.voice = v;
+    document.querySelectorAll('.bubble.speaking').forEach(b=>b.classList.remove('speaking'));
+    el.classList.add('speaking');
+    u.onend = u.onerror = ()=>{ el.classList.remove('speaking'); if(done) done(); };
+    speechSynthesis.speak(u);
+  }catch(e){ if(done) done(); }
+}
+function stopSpeech(){
+  playing = false;
+  try{ speechSynthesis.cancel(); }catch(e){}
+  document.querySelectorAll('.bubble.speaking').forEach(b=>b.classList.remove('speaking'));
+  const pb = document.getElementById('play'); if(pb) pb.innerHTML = '&#9654; Play scene';
+}
+function playScene(){
+  if(playing){ stopSpeech(); return; }
+  stopSpeech(); playing = true;
+  const list = [...stage.querySelectorAll('.bubble')]; let i = 0;
+  document.getElementById('play').innerHTML = '&#9632; Stop';
+  const next = ()=>{
+    if(!playing || i>=list.length){ stopSpeech(); return; }
+    const el = list[i++]; el.scrollIntoView({block:'nearest',behavior:'smooth'});
+    speak(el, ()=> setTimeout(next, 350));
+  };
+  next();
+}
+render();
+</script>
+</body>
+</html>
