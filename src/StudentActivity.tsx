@@ -16,7 +16,9 @@ export interface ActSession {
   id: string; student_id: string; started_at: string; ended_at: string; active_seconds: number
   device_kind: string; device_info: string; ip: string | null; activity_items: ActItem[]
 }
-interface Miss { id: string; unit_key: string; expected: string; typed: string; created_at: string }
+interface Miss { id: string; kind?: string; unit_key: string; expected: string; typed: string; created_at: string }
+// Zorlandığı cümlenin kaynağı: ünite diktesi ya da soru kartları diktesi (Dictation All)
+const missSource = (m: Miss) => m.kind === 'dictationAll' ? 'Soru kartları' : 'Ünite diktesi'
 interface Speech {
   id: string; unit_key: string; question_text: string; question_type: 'free' | 'fixed' | 'critical'
   raw_text: string; confirmed_text: string; input_mode: 'voice' | 'text'; result: 'correct' | 'wrong' | null; created_at: string
@@ -324,9 +326,9 @@ async function downloadExcel(fileBase: string, students: ActStudent[], sessions:
     { data: s3, sheet: 'Oturumlar', stickyRowsCount: 1, columns: [w(18), w(18), w(18), w(9), w(12), w(34), w(16), w(60)] },
   ]
   if (misses && misses.length) {
-    const s4: any[][] = [head(['Tarih', 'Ünite', 'Doğrusu', 'İlk yazdığı'])]
-    for (const m of misses) { const d = new Date(m.created_at); s4.push([`${d.toLocaleDateString('tr-TR')} ${hhmm(d)}`, m.unit_key || null, m.expected, m.typed]) }
-    sheets.push({ data: s4, sheet: 'Dikte', stickyRowsCount: 1, columns: [w(18), w(10), w(50), w(50)] })
+    const s4: any[][] = [head(['Tarih', 'Ünite', 'Kaynak', 'Doğrusu', 'İlk yazdığı'])]
+    for (const m of misses) { const d = new Date(m.created_at); s4.push([`${d.toLocaleDateString('tr-TR')} ${hhmm(d)}`, m.unit_key || null, missSource(m), m.expected, m.typed]) }
+    sheets.push({ data: s4, sheet: 'Dikte', stickyRowsCount: 1, columns: [w(18), w(10), w(14), w(50), w(50)] })
   }
   const blob: Blob = await (writeExcelFile as any)(sheets).toBlob()
   const url = URL.createObjectURL(blob)
@@ -478,7 +480,7 @@ export function ActivityTab({ student, unitTitles }: { student: ActStudent; unit
     const sid = student.id
     Promise.all([
       fetchSessions(from, pEnd, sid),
-      getAll<Miss>(`activity_misses?select=id,unit_key,expected,typed,created_at&student_id=eq.${sid}&created_at=gte.${enc(pStart)}&created_at=lt.${enc(pEnd)}&order=created_at.desc`),
+      getAll<Miss>(`activity_misses?select=id,kind,unit_key,expected,typed,created_at&student_id=eq.${sid}&created_at=gte.${enc(pStart)}&created_at=lt.${enc(pEnd)}&order=created_at.desc`),
       getAll<Speech>(`speech_answers?select=id,unit_key,question_text,question_type,raw_text,confirmed_text,input_mode,result,created_at&student_id=eq.${sid}&created_at=gte.${enc(pStart)}&created_at=lt.${enc(pEnd)}&order=created_at.desc`),
       getAll<Monthly>(`activity_monthly?select=month,active_seconds,sessions,days,by_card,by_unit&student_id=eq.${sid}&order=month.asc`),
       fetchOverview(),
@@ -580,12 +582,15 @@ function ActivityBody({ student, unitTitles, days, per, all, ps, misses, speech,
   const units = [...byUnit.entries()].filter(([, e]) => e.sec >= 30 || e.its.some(i => Object.keys(i.stats || {}).length)).sort((a, b) => b[1].sec - a[1].sec)
 
   // Dikte
-  const dic = itemsOf('dictation')
+  // Ünite diktesi ve soru kartları diktesi (Dictation All) birlikte sayılır
+  const isDic = (c: string) => c === 'dictation' || c === 'dictationAll'
+  const dic = items.filter(i => isDic(i.card))
   const written = sum(dic, 'written'), first = sum(dic, 'first'), hinted = sum(dic, 'hinted')
+  const writtenAll = sum(itemsOf('dictationAll'), 'written')
   const today = startOfDay(new Date())
   const weeks = [3, 2, 1, 0].map(k => {
     const from = addDays(mondayOf(today), -7 * k), to = addDays(from, 7)
-    const its = all.filter(s => { const t = new Date(s.started_at); return t >= from && t < to }).flatMap(s => (s.activity_items || []).filter(i => i.card === 'dictation'))
+    const its = all.filter(s => { const t = new Date(s.started_at); return t >= from && t < to }).flatMap(s => (s.activity_items || []).filter(i => isDic(i.card)))
     const w = sum(its, 'written')
     return w ? Math.round(sum(its, 'first') / w * 100) : null
   })
@@ -696,6 +701,7 @@ function ActivityBody({ student, unitTitles, days, per, all, ps, misses, speech,
             <div><div className="v">{Math.round(first / written * 100)}%</div><div className="k">ilk denemede doğru</div></div>
             <div><div className="v">{hinted}</div><div className="k">ipucuyla tamamladı</div></div>
           </div>
+          {writtenAll > 0 && <p className="note" style={{ margin: '0 0 8px' }}>{written - writtenAll > 0 ? `Ünite diktesi ${written - writtenAll} cümle · soru kartları ${writtenAll} cümle` : `Hepsi soru kartları diktesinden (${writtenAll} cümle)`}</p>}
           <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--muted-foreground)' }}>İlk denemede doğru, haftadan haftaya</div>
           <div className="trend">
             {weeks.map((v, i) => v == null
@@ -709,7 +715,7 @@ function ActivityBody({ student, unitTitles, days, per, all, ps, misses, speech,
                 const df = wordDiff(m.expected, m.typed)
                 return (
                   <div key={m.id} className="sent">
-                    <div className="src">{m.unit_key ? m.unit_key + ' · ' : ''}ilk yazdığı</div>
+                    <div className="src">{m.unit_key ? m.unit_key + ' · ' : ''}{m.kind === 'dictationAll' ? 'soru kartları · ' : ''}ilk yazdığı</div>
                     <div className="row2"><span className="k">Doğrusu</span><span>{df.A.map((w, i) => <span key={i}>{i ? ' ' : ''}{df.okA[i] ? w : <span className="miss">{w}</span>}</span>)}</span></div>
                     <div className="row2"><span className="k">Yazdığı</span><span>{df.B.map((w, i) => <span key={i}>{i ? ' ' : ''}{df.okB[i] ? w : <span className="bad">{w}</span>}</span>)}</span></div>
                   </div>

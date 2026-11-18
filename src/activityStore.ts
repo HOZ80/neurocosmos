@@ -157,10 +157,19 @@ function ensureSession(now: number): Sess | null {
     const b = deviceBasics()
     cur = { id: uuid(), started_at: now, ended_at: now, ms: 0, device_kind: b.kind, device_info: '', items: {}, misses: [], dirty: true }
     const mine = cur
-    deviceInfo().then(info => { if (cur === mine) { mine.device_info = info; mine.dirty = true; saveLocal() } }).catch(() => { /* yok */ })
+    refreshDevice(mine)
     saveLocal()
   }
   return cur
+}
+function refreshDevice(s: Sess) {
+  deviceInfo().then(info => {
+    if (cur !== s || !info || s.device_info === info) return
+    s.device_info = info
+    if (!s.device_kind) s.device_kind = deviceBasics().kind
+    s.dirty = true
+    saveLocal()
+  }).catch(() => { /* yok */ })
 }
 function itemFor(s: Sess, card?: string): Item {
   const p = currentPlace()
@@ -256,6 +265,9 @@ function startTracking(id: string) {
   cur = lsGet<Sess | null>(curKey(id), null)
   if (cur && (typeof cur.id !== 'string' || typeof cur.items !== 'object')) cur = null
   if (cur && Date.now() - cur.ended_at > NEW_SESSION_GAP_MS) finishCurrent()
+  // Cihazdan geri yüklenen oturumda cihaz bilgisi yeniden okunur; boşsa ya da
+  // farklıysa yazılır ve bir sonraki gönderimde kesin gider.
+  if (cur) refreshDevice(cur)
   dropIdle()
   lastInteraction = Date.now()
   lastTick = Date.now()
@@ -316,6 +328,7 @@ export async function flushActivity(keepalive = false) {
   const pend = readPending()
   const live = cur && cur.dirty ? cur : null
   if (!pend.length && !live) return
+  if (live && !live.device_info) refreshDevice(live)
   const batch = pend.slice(0, live ? 19 : 20)
   const sentMissIds = live ? live.misses.map(m => m.id) : []
   const payload = [...batch.map(toPayload), ...(live ? [toPayload(live)] : [])]
