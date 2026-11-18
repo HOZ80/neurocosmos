@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { getAccessToken, normalizeLoginName } from './auth'
+import { adoptSession, getAccessToken, normalizeLoginName } from './auth'
 import { sb, shortName } from './liveShared'
 
 // Unutmama kart bankası ve öğrencinin Öğrenme sayfası (yalnızca açılınca yüklenir)
@@ -141,7 +141,7 @@ function StudentRow({ s, open, onOpen, onChanged, onMessage, onLearning }: {
     run(async () => {
       await call('sifre', { id: s.id, sifre: newPw })
       setNewPw('')
-      onMessage(`${s.displayName} için şifre değiştirildi. Yeni şifreyi Keep'ine yazmayı unutma.`)
+      onMessage(`${s.displayName} için şifre değiştirildi. Yeni şifreyi Şifre Yöneticisi'ne ya da deftere yaz.`)
     })
   }
 
@@ -366,6 +366,117 @@ function NewStudentForm({ onDone, onCancel }: { onDone: (list: Student[], name: 
   )
 }
 
+// ─── Kendi şifremi değiştir (yalnızca öğretmenin kendi hesabı) ────────────────
+// Şu anki şifre sunucuda doğrulanır; değişince bu cihaz dışındaki bütün
+// oturumlar kapatılır. Şifreler hiçbir yere kaydedilmez, ekranda gizli durur.
+const OWN_PW_MIN = 12
+
+function OwnPasswordCard({ onMessage }: { onMessage: (m: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [again, setAgain] = useState('')
+  const [show, setShow] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function reset() { setCurrent(''); setNext(''); setAgain(''); setShow(false); setError(null) }
+  function toggle() { if (open) reset(); setOpen(o => !o) }
+
+  async function save() {
+    setError(null)
+    if (!current) { setError('Şu anki şifreni yaz.'); return }
+    if (next.length < OWN_PW_MIN) { setError(`Yeni şifre en az ${OWN_PW_MIN} karakter olmalı.`); return }
+    if (next.length > 72) { setError('Yeni şifre en fazla 72 karakter olabilir.'); return }
+    if (next === current) { setError('Yeni şifre şu anki şifreyle aynı olamaz.'); return }
+    if (next !== again) { setError('Yeni şifre ile tekrarı aynı değil.'); return }
+    setBusy(true)
+    try {
+      const data = await call('kendi-sifre', { eskiSifre: current, yeniSifre: next })
+      if (data && data.session) adoptSession(data.session)
+      reset(); setOpen(false)
+      const note = ' Yeni şifreyi Şifre Yöneticisi\'ne ya da deftere yaz.'
+      if (!data || !data.session) {
+        onMessage('Şifren değiştirildi. Bu cihazda da kısa süre içinde yeni şifreyle yeniden girmen istenebilir.' + note)
+      } else if (data.otherSessionsClosed === false) {
+        onMessage('Şifren değiştirildi. Diğer cihazlardaki oturumlar kapatılamadı; o cihazlardan çıkış yapmayı unutma.' + note)
+      } else {
+        onMessage('Şifren değiştirildi. Diğer cihazlardaki oturumlar kapatıldı, bu cihazda devam ediyorsun.' + note)
+      }
+    } catch (e: any) {
+      setError(e?.message || 'Şifre değiştirilemedi.')
+    }
+    setBusy(false)
+  }
+
+  const pwInput = (id: string, value: string, set: (v: string) => void, auto: string) => (
+    <input
+      id={id}
+      type={show ? 'text' : 'password'}
+      value={value}
+      onChange={e => set(e.target.value)}
+      autoComplete={auto}
+      autoCapitalize="none"
+      spellCheck={false}
+      disabled={busy}
+      style={input}
+    />
+  )
+
+  return (
+    <div style={{ ...card, marginBottom: '16px' }}>
+      <button onClick={toggle} aria-expanded={open} style={{
+        width: '100%', display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px',
+        background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+      }}>
+        <span aria-hidden style={{
+          width: '40px', height: '40px', borderRadius: '10px', flexShrink: 0, display: 'grid', placeItems: 'center',
+          background: 'rgba(79,70,229,0.10)',
+        }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" />
+          </svg>
+        </span>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: 'var(--foreground)' }}>Kendi şifremi değiştir</span>
+          <span style={{ display: 'block', fontSize: '13px', color: 'var(--muted-foreground)', marginTop: '2px' }}>Öğretmen hesabının şifresi</span>
+        </span>
+        <span aria-hidden style={{ color: 'var(--muted-foreground)', fontSize: '18px', transform: open ? 'rotate(90deg)' : undefined, transition: 'transform 0.15s' }}>›</span>
+      </button>
+      {open && (
+        <form onSubmit={e => { e.preventDefault(); void save() }} style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div>
+            <label htmlFor="own-pw-current" style={fieldLabel}>Şu anki şifre</label>
+            {pwInput('own-pw-current', current, setCurrent, 'current-password')}
+          </div>
+          <div>
+            <label htmlFor="own-pw-new" style={fieldLabel}>Yeni şifre (en az {OWN_PW_MIN} karakter)</label>
+            {pwInput('own-pw-new', next, setNext, 'new-password')}
+          </div>
+          <div>
+            <label htmlFor="own-pw-again" style={fieldLabel}>Yeni şifre (tekrar)</label>
+            {pwInput('own-pw-again', again, setAgain, 'new-password')}
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: 'var(--muted-foreground)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={show} onChange={e => setShow(e.target.checked)} disabled={busy} />
+            Şifreleri göster
+          </label>
+          <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted-foreground)', lineHeight: 1.45 }}>
+            Şifre değişince bu cihaz dışındaki bütün cihazlarda hesaptan çıkılır; oralarda yeni şifreyle yeniden girersin.
+          </p>
+          {error && <p role="alert" style={{ margin: 0, color: '#991B1B', fontSize: '14px' }}>{error}</p>}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button type="submit" disabled={busy} style={{ ...primaryBtn, flex: 1, opacity: busy ? 0.5 : 1 }}>
+              {busy ? 'Değiştiriliyor…' : 'Şifremi değiştir'}
+            </button>
+            <button type="button" onClick={toggle} disabled={busy} style={quietBtn}>Vazgeç</button>
+          </div>
+        </form>
+      )}
+    </div>
+  )
+}
+
 export default function StudentAdmin({ onClose, unitTitles = {}, drillLabels = {} }: {
   onClose: () => void
   unitTitles?: Record<string, string>   // ünite/kitap kodu → ad (beyin kayıtlarında görünür)
@@ -427,6 +538,8 @@ export default function StudentAdmin({ onClose, unitTitles = {}, drillLabels = {
           </div>
         )}
 
+        <OwnPasswordCard onMessage={m => setMessage(m)} />
+
         <button onClick={openCards} style={{
           ...card, width: '100%', display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px',
           marginBottom: '16px', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
@@ -453,7 +566,7 @@ export default function StudentAdmin({ onClose, unitTitles = {}, drillLabels = {
               onDone={(list, name, login) => {
                 setStudents(list)
                 setAdding(false)
-                setMessage(`${name} eklendi. Giriş adı: ${login}. Şifreyi Keep'ine yazmayı unutma.`)
+                setMessage(`${name} eklendi. Giriş adı: ${login}. Şifreyi Şifre Yöneticisi'ne ya da deftere yaz.`)
               }}
             />
           </div>

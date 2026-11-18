@@ -11,6 +11,8 @@
 // GÜVENLİK: Her istekte önce çağıranın giriş anahtarı Supabase'e sorulur.
 // Çağıran aktif bir öğretmen değilse hiçbir şey yapılmadan reddedilir.
 // Öğretmen hesapları bu görevle değiştirilemez (yalnızca öğrenciler).
+// Tek istisna "kendi-sifre": öğretmen yalnızca KENDİ şifresini, şu anki
+// şifresini doğru yazarak değiştirebilir. Şifreler hiçbir yere yazılmaz.
 
 const SUPABASE_URL = 'https://enacdiolibbxakxoslla.supabase.co'
 const PUBLISHABLE_KEY = 'sb_publishable_dx8Rx1zdfhvhg6G0TEZUHQ_JSQg-Z-Q'
@@ -83,7 +85,28 @@ async function verifyTeacher(userToken, secret) {
   const rows = await readJson(profRes)
   const p = Array.isArray(rows) ? rows[0] : null
   if (!p || p.role !== 'teacher' || p.active !== true) return null
-  return p
+  return { ...p, email: typeof user.email === 'string' ? user.email : '' }
+}
+
+// E-posta + şifreyle Supabase'e giriş dener. Şu anki şifreyi doğrulamak ve
+// şifre değiştikten sonra bu cihaza yeni bir oturum vermek için kullanılır.
+async function tokenLogin(email, password) {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    headers: { apikey: PUBLISHABLE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
+  const data = await readJson(res)
+  return { ok: res.ok && !!(data && data.access_token), status: res.status, data }
+}
+
+// Bu isteği yapan oturum dışındaki bütün oturumları kapatır.
+async function signOutOthers(userToken) {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/logout?scope=others`, {
+    method: 'POST',
+    headers: { apikey: PUBLISHABLE_KEY, Authorization: `Bearer ${userToken}` },
+  }).catch(() => null)
+  return !!(res && res.ok)
 }
 
 async function getStudent(id, secret) {
@@ -157,6 +180,38 @@ export const handler = async (event) => {
       const students = await listStudents(secret)
       if (!students) return json(500, { error: 'Öğrenci listesi okunamadı.' })
       return json(200, { students })
+    }
+
+    if (islem === 'kendi-sifre') {
+      const oldPw = String(body.eskiSifre || '')
+      const newPw = String(body.yeniSifre || '')
+      if (!oldPw) return json(400, { error: 'Şu anki şifreni yaz.' })
+      if (newPw.length < 12) return json(400, { error: 'Yeni şifre en az 12 karakter olmalı.' })
+      if (newPw.length > 72) return json(400, { error: 'Yeni şifre en fazla 72 karakter olabilir.' })
+      if (newPw === oldPw) return json(400, { error: 'Yeni şifre şu anki şifreyle aynı olamaz.' })
+      if (!teacher.email) return json(500, { error: 'Hesap bilgisi okunamadı.' })
+
+      const check = await tokenLogin(teacher.email, oldPw)
+      if (!check.ok) {
+        if (check.status === 429) return json(429, { error: 'Çok fazla deneme yapıldı. Birkaç dakika bekleyip tekrar dene.' })
+        return json(400, { error: 'Şu anki şifre yanlış.' })
+      }
+
+      const r = await adminUpdateUser(teacher.id, { password: newPw }, secret)
+      if (!r.ok) {
+        const msg = String((r.data && (r.data.msg || r.data.message || r.data.error_code)) || '')
+        if (/weak|pwned|leak|password/i.test(msg)) return json(400, { error: 'Bu şifre kabul edilmedi (çok zayıf ya da sızdırılmış şifreler listesinde). Başka bir şifre seç.' })
+        return json(500, { error: 'Şifre değiştirilemedi.' })
+      }
+      // Supabase şifre değişince eski oturumları geçersiz sayabilir. Bu cihaz
+      // çıkış yapmak zorunda kalmasın diye yeni şifreyle yeni bir oturum açılıp
+      // bu cihaza verilir; sonra o oturum dışındaki bütün oturumlar kapatılır.
+      const fresh = await tokenLogin(teacher.email, newPw)
+      const session = fresh.ok
+        ? { access_token: fresh.data.access_token, refresh_token: fresh.data.refresh_token, expires_at: fresh.data.expires_at, expires_in: fresh.data.expires_in }
+        : null
+      const otherSessionsClosed = await signOutOthers(session ? session.access_token : userToken)
+      return json(200, { ok: true, otherSessionsClosed, session })
     }
 
     if (islem === 'ekle') {

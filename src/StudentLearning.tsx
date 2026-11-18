@@ -382,7 +382,7 @@ function fmtDay(iso: string | null): string {
   return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/Istanbul' })
 }
 
-function DrillTab({ student, drillLabels }: { student: LearningStudent; drillLabels: Record<string, string> }) {
+function DrillTab({ student, drillLabels, unitTitles }: { student: LearningStudent; drillLabels: Record<string, string>; unitTitles: Record<string, string> }) {
   const [state, setState] = useState<{
     status: 'loading' | 'ok' | 'error'
     progress: { unit_key: string; topic_id: string; review_stage: number; next_review: string | null; last_at: string | null }[]
@@ -433,6 +433,14 @@ function DrillTab({ student, drillLabels }: { student: LearningStudent; drillLab
     .sort((a, b) => a.localeCompare(b, 'tr', { numeric: true }))
   if (!units.length) return <p style={muted}>{student.name} henüz Drill çalışmadı.</p>
 
+  // Ünite başlığı: gerçek kimlik ("A1-U02") + adı. Kasım 2026'dan önceki kayıtlar
+  // ünitenin sıra numarasıyla tutuluyordu; onlar "eski kayıt" olarak görünür.
+  const unitHeading = (u: string) => {
+    if (/^\d+$/.test(u)) return `Eski kayıt (ünite sırası ${u})`
+    const name = unitTitles[u]
+    return name ? `${u} · ${name}` : u
+  }
+
   const now = Date.now()
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -442,7 +450,7 @@ function DrillTab({ student, drillLabels }: { student: LearningStudent; drillLab
         const custom = customByUnit.get(u)
         return (
           <div key={u} style={{ ...card, padding: '14px 16px' }}>
-            <h3 style={{ margin: '0 0 8px', fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: 700, color: 'var(--foreground)' }}>Ünite {u}</h3>
+            <h3 style={{ margin: '0 0 8px', fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: 700, color: 'var(--foreground)' }}>{unitHeading(u)}</h3>
             {rows.length === 0 && <p style={muted}>Bu ünitede henüz tamamlanan konu yok.</p>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {rows.map(p => {
@@ -536,7 +544,7 @@ export default function StudentLearning({ student, onBack, unitTitles, drillLabe
           </Suspense>
         )}
 
-        {tab === 'drill' && <DrillTab student={student} drillLabels={drillLabels} />}
+        {tab === 'drill' && <DrillTab student={student} drillLabels={drillLabels} unitTitles={unitTitles} />}
 
         {tab === 'library' && (
           hasLibrary ? (

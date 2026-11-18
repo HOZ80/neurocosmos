@@ -10,7 +10,7 @@ import type { BrainPerson } from './brainStore'
 import { useUnutmama, UnutmamaView, UnutmamaStrip, UnutmamaChildCard, UNUTMAMA_STUDENT_NAME } from './UnutmamaView'
 import {
   loadDrillProgressLocal, saveDrillProgressLocal, loadDrillTopicsLocal, saveDrillTopicsLocal,
-  migrateLegacyDrill, syncDrillUnit, flushDrillPending,
+  migrateLegacyDrill, syncDrillUnit, flushDrillPending, adoptNumericDrillProgress, mergeNewerDrill,
 } from './memoryStore'
 import { restoreSession, getCachedAccount, signOut, canUseArea } from './auth'
 import type { Account, AreaId } from './auth'
@@ -21,6 +21,7 @@ import ChildReaderApp from './Reader'
 import { useChildBrain, ChildBrainCard, ChildBrainView } from './ChildBrain'
 import KitaplikReport from './KitaplikReport'
 import { loadContent } from './readerData'
+import { loadCachedThenFresh, readCachedText, fetchFreshText, writeCachedText } from './sheetCache'
 import LiveTeacher, { clearLiveTeacherNav } from './LiveTeacher'
 import { useLiveStatus, LiveBanner, LiveOnlyHome, LiveStudentScreen } from './LiveStudent'
 
@@ -146,51 +147,6 @@ interface DrillProgress {
 }
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
-
-const GRAMMAR_RULES: Record<string, { rule: string; ruleTr: string; examples: { en: string; tr: string; highlight: string }[] }> = {
-  'Subject Pronouns': {
-    rule: 'Subject pronouns replace nouns as the subject of a sentence. They tell us who or what performs the action of the verb.',
-    ruleTr: 'Özne zamirleri, cümlenin öznesi olarak isimlerin yerini alır. Eylemi kimin veya neyin yaptığını gösterirler.',
-    examples: [
-      { en: 'I am a student.', tr: 'Ben bir öğrenciyim.', highlight: 'I' },
-      { en: 'She speaks English very well.', tr: 'O İngilizceyi çok iyi konuşuyor.', highlight: 'She' },
-      { en: 'They live in London.', tr: 'Onlar Londra\'da yaşıyor.', highlight: 'They' },
-    ],
-  },
-  'Simple Present': {
-    rule: 'Use the simple present for habits, routines, and general truths. Add -s/-es for third person singular (he/she/it).',
-    ruleTr: 'Alışkanlıklar, rutinler ve genel doğrular için geniş zaman kullanılır. Üçüncü tekil şahısta (he/she/it) fiile -s/-es eklenir.',
-    examples: [
-      { en: 'She works at a hospital every day.', tr: 'O her gün bir hastanede çalışıyor.', highlight: 'works' },
-      { en: 'The sun rises in the east.', tr: 'Güneş doğudan doğar.', highlight: 'rises' },
-      { en: 'We study English together.', tr: 'Birlikte İngilizce çalışıyoruz.', highlight: 'study' },
-    ],
-  },
-  'Present Continuous': {
-    rule: 'Use present continuous for actions happening right now or temporary situations. Form: am/is/are + verb-ing.',
-    ruleTr: 'Şu anda gerçekleşen eylemler veya geçici durumlar için şimdiki zaman kullanılır. Yapısı: am/is/are + fiil-ing.',
-    examples: [
-      { en: 'I am reading a book right now.', tr: 'Şu an bir kitap okuyorum.', highlight: 'am reading' },
-      { en: 'They are working on a new project.', tr: 'Yeni bir proje üzerinde çalışıyorlar.', highlight: 'are working' },
-    ],
-  },
-  'Past Simple': {
-    rule: 'Use past simple for completed actions in the past. Regular verbs add -ed; irregular verbs change form.',
-    ruleTr: 'Geçmişte tamamlanmış eylemler için geçmiş zaman kullanılır. Düzenli fiillere -ed eklenir; düzensiz fiiller farklı bir forma bürünür.',
-    examples: [
-      { en: 'She visited Paris last summer.', tr: 'Geçen yaz Paris\'i ziyaret etti.', highlight: 'visited' },
-      { en: 'We went to the cinema yesterday.', tr: 'Dün sinemaya gittik.', highlight: 'went' },
-    ],
-  },
-  'Future Plans': {
-    rule: 'Use "going to" for plans and intentions you\'ve already decided, or for predictions based on evidence.',
-    ruleTr: 'Önceden karar verilmiş planlar/niyetler için ya da kanıta dayalı tahminler için "going to" kullanılır.',
-    examples: [
-      { en: 'I am going to study abroad next year.', tr: 'Gelecek yıl yurt dışında okuyacağım.', highlight: 'am going to' },
-      { en: 'It is going to rain soon.', tr: 'Yakında yağmur yağacak.', highlight: 'is going to' },
-    ],
-  },
-}
 
 function buildUnits(level: Level): Unit[] {
   const sets: Record<Level, Omit<Unit, 'id' | 'completed' | 'locked' | 'progress'>[]> = {
@@ -847,56 +803,6 @@ const iconBtn: React.CSSProperties = {
 
 // ─── Views ────────────────────────────────────────────────────────────────────
 
-function PasswordModal({ onSubmit, onClose, error, title }: {
-  onSubmit: (pw: string) => void
-  onClose: () => void
-  error: boolean
-  title?: string  // başlık — belirtilmezse varsayılan gösterilir
-}) {
-  const [value, setValue] = useState('')
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
-      }}
-    >
-      <div onClick={e => e.stopPropagation()} style={{
-        background: 'var(--card)', borderRadius: '16px', padding: '24px',
-        width: '280px', boxShadow: '0 12px 40px rgba(15,23,42,0.25)',
-        display: 'flex', flexDirection: 'column', gap: '12px',
-      }}>
-        <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: 700, color: 'var(--foreground)' }}>
-          🔒 {title ?? 'Kişisel alan'}
-        </h3>
-        <input
-          type="password"
-          value={value}
-          autoFocus
-          onChange={e => setValue(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') onSubmit(value) }}
-          placeholder="Şifre"
-          style={{
-            padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)',
-            fontSize: '14px', outline: 'none', fontFamily: 'inherit',
-          }}
-        />
-        {error && <span style={{ fontSize: '12px', color: '#DC2626' }}>Yanlış şifre.</span>}
-        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
-          <button onClick={onClose} style={{
-            background: 'none', border: 'none', fontSize: '13px', color: 'var(--muted-foreground)', cursor: 'pointer', padding: '8px 4px',
-          }}>Vazgeç</button>
-          <button onClick={() => onSubmit(value)} style={{
-            background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '8px',
-            padding: '8px 16px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-          }}>Aç</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function EntryScreen({ onPickProfile, onPickOwner, canUse, greetingName, isTeacher, onLogout, onAdmin, live, onLive }: {
   onPickProfile: (p: 'A1' | 'A2' | 'child_omur' | 'child_oztug' | 'library') => void
   onPickOwner: () => void
@@ -1098,9 +1004,10 @@ function EntryScreen({ onPickProfile, onPickOwner, canUse, greetingName, isTeach
   return screen
 }
 
-function DashboardView({ level, units, onSelectUnit, onMemory, memoryCounts, unutmama }: {
+function DashboardView({ level, units, loading, onSelectUnit, onMemory, memoryCounts, unutmama }: {
   level: Level
   units: Unit[]
+  loading?: boolean   // ünite listesi henüz gelmedi (ilk açılış)
   onSelectUnit: (u: Unit) => void
   onMemory?: () => void
   memoryCounts?: Record<string, number>
@@ -1114,7 +1021,9 @@ function DashboardView({ level, units, onSelectUnit, onMemory, memoryCounts, unu
             {LEVEL_META[level].label}
           </h1>
           <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>
-            {units.filter(u => u.completed).length} of {units.length} units completed · {Math.round(units.filter(u => u.completed).length / units.length * 100)}% progress
+            {loading
+              ? 'Üniteler yükleniyor…'
+              : <>{units.filter(u => u.completed).length} of {units.length} units completed · {Math.round(units.filter(u => u.completed).length / units.length * 100)}% progress</>}
           </p>
         </div>
         {onMemory && (
@@ -1151,7 +1060,13 @@ function DashboardView({ level, units, onSelectUnit, onMemory, memoryCounts, unu
         gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
         gap: '14px',
       }}>
-        {units.filter(u => !((level === 'A1' || level === 'A2') && u.locked)).map(unit => {
+        {loading && [0, 1, 2].map(i => (
+          <div key={`yukleniyor-${i}`} aria-hidden style={{
+            height: '120px', borderRadius: '14px', border: '1px solid var(--border)',
+            background: 'var(--secondary)', opacity: 0.6,
+          }} />
+        ))}
+        {!loading && units.filter(u => !((level === 'A1' || level === 'A2') && u.locked)).map(unit => {
           const isLocked = unit.locked
           return (
             <button
@@ -3476,6 +3391,12 @@ function parseDrillSheet(rows: Record<string, string>[]): DrillSheetData {
   return drillTopicsByUnit
 }
 
+// Gelen metin gerçekten tablo mu? (Google bazen hata sayfası döndürür; o
+// saklanmaz ve ekrana verilmez.)
+function looksLikeCsv(text: string): boolean {
+  return !/^\s*</.test(text) && parseCSV(text).length > 0
+}
+
 // Minimal CSV parser: handles quoted fields, commas/newlines inside quotes, and "" escaped quotes.
 function parseCSV(text: string): Record<string, string>[] {
   const rows: string[][] = []
@@ -3863,11 +3784,12 @@ type DrillQueueItem = { stageKey: keyof DrillTopic['stages']; stageName: string;
 // İlerleme veritabanında (memoryStore.ts); burada tarayıcıdaki hesap kopyası okunur/yazılır,
 // değişenler veritabanına gönderilir. Eski (cihaz başına) kayıt bir kereye mahsus
 // hesaba aktarılır ve yedek olarak tarayıcıda kalır.
-function loadDrillProgress(unitId: number): Record<string, DrillProgress> {
-  return loadDrillProgressLocal(String(unitId))
+// Anahtar ünitenin gerçek kimliğidir (örn. "A1-U02"); eskiden sıra numarasıydı.
+function loadDrillProgress(drillKey: string): Record<string, DrillProgress> {
+  return loadDrillProgressLocal(drillKey)
 }
-function saveDrillProgress(unitId: number, data: Record<string, DrillProgress>) {
-  saveDrillProgressLocal(String(unitId), data)
+function saveDrillProgress(drillKey: string, data: Record<string, DrillProgress>) {
+  saveDrillProgressLocal(drillKey, data)
 }
 
 // AI kullanımı için günlük giriş kotası: profil + o günün tarihine göre,
@@ -3886,23 +3808,23 @@ function incrementAiQuotaUsed(profile: string) {
 
 // Elle eklenen konular da veritabanında (ünite başına liste). sync=false: yalnızca
 // bu tarayıcıda (ilk açılıştaki örnek konu başka cihazdaki gerçek listeyi ezmesin).
-function loadDrillTopics(unitId: number): DrillTopic[] {
-  return loadDrillTopicsLocal(String(unitId)) as DrillTopic[]
+function loadDrillTopics(drillKey: string): DrillTopic[] {
+  return loadDrillTopicsLocal(drillKey) as DrillTopic[]
 }
-function saveDrillTopicsToStorage(unitId: number, topics: DrillTopic[], sync = true) {
-  saveDrillTopicsLocal(String(unitId), topics, sync)
+function saveDrillTopicsToStorage(drillKey: string, topics: DrillTopic[], sync = true) {
+  saveDrillTopicsLocal(drillKey, topics, sync)
 }
 
 // Bir ünite için Drill konularının hangi kaynaktan geleceğini belirler.
 // Hem ilk açılışta hem de (aynı ekran açık kalıp arkadan ünite değiştiğinde)
 // yeniden senkronize etmek için kullanılıyor — DrillView içinde iki yerden çağrılıyor.
-function computeInitialDrillTopics(unitId: number, sheetTopics?: DrillTopic[]): DrillTopic[] {
+function computeInitialDrillTopics(drillKey: string, sheetTopics?: DrillTopic[]): DrillTopic[] {
   // Öncelik sırası:
   // 1. sheetTopics (B2 Sheets'ten canlı gelen konular)
   // 2. localStorage'da kayıtlı konular (P alanı manuel ekleme)
   // 3. Örnek konu (P alanı ilk açılış)
   if (sheetTopics && sheetTopics.length > 0) return sheetTopics
-  const existing = loadDrillTopics(unitId)
+  const existing = loadDrillTopics(drillKey)
   if (existing.length > 0) return existing
   const seeded = rowsToDrillTopics([{
     topic_id: 'sample_past_simple',
@@ -3916,13 +3838,13 @@ function computeInitialDrillTopics(unitId: number, sheetTopics?: DrillTopic[]): 
     question_prompts: 'What did you do yesterday?|Tell me about somewhere you went last weekend.',
     notes: 'Örnek konu — silip kendi konularını ekleyebilirsin.',
   }])
-  saveDrillTopicsToStorage(unitId, seeded, false)
+  saveDrillTopicsToStorage(drillKey, seeded, false)
   return seeded
 }
 
-function DrillView({ unit, onBack, sheetTopics, entryProfile }: { unit: Unit; onBack: () => void; sheetTopics?: DrillTopic[]; entryProfile: string | null }) {
-  const [topics, setTopics] = useState<DrillTopic[]>(() => computeInitialDrillTopics(unit.id, sheetTopics))
-  const [progress, setProgress] = useState<Record<string, DrillProgress>>(() => loadDrillProgress(unit.id))
+function DrillView({ unit, drillKey, onBack, sheetTopics, entryProfile }: { unit: Unit; drillKey: string; onBack: () => void; sheetTopics?: DrillTopic[]; entryProfile: string | null }) {
+  const [topics, setTopics] = useState<DrillTopic[]>(() => computeInitialDrillTopics(drillKey, sheetTopics))
+  const [progress, setProgress] = useState<Record<string, DrillProgress>>(() => loadDrillProgress(drillKey))
   const [activeTopicId, setActiveTopicId] = useState<string | null>(null)
 
   // "konu ekle" panel state
@@ -3954,13 +3876,13 @@ function DrillView({ unit, onBack, sheetTopics, entryProfile }: { unit: Unit; on
   // seviye/üniteye geçilse bile — örn. geri/ileri ile) tüm kart içeriğini ve
   // ilerlemeyi o ünitenin kendi verisiyle yeniden yükle. Aksi halde başlık
   // güncellenip içindeki konu listesi bir önceki üniteden kalıyordu.
-  const drillUnitKey = unit.unitId ?? `${unit.title}::${unit.id}`
+  const drillUnitKey = drillKey
   // Sheets'ten gelen gerçek liste bu ünite için zaten uygulandı mı — aşağıda
   // hem ünite değişince hem de liste geldiğinde kullanılıyor.
   const sheetTopicsAppliedRef = useRef(false)
   useEffect(() => {
-    setTopics(computeInitialDrillTopics(unit.id, sheetTopics))
-    setProgress(loadDrillProgress(unit.id))
+    setTopics(computeInitialDrillTopics(drillKey, sheetTopics))
+    setProgress(loadDrillProgress(drillKey))
     setActiveTopicId(null)
     setAddPanel(null)
     setQueue(null)
@@ -3987,10 +3909,10 @@ function DrillView({ unit, onBack, sheetTopics, entryProfile }: { unit: Unit; on
   useEffect(() => {
     let cancelled = false
     migrateLegacyDrill()
-      .then(() => syncDrillUnit(String(unit.id)))
+      .then(() => syncDrillUnit(drillKey))
       .then(r => {
         if (cancelled || !r) return
-        setProgress(r.progress)
+        setProgress(prev => mergeNewerDrill(prev, r.progress))
         const fromSheet = sheetTopicsRef.current && sheetTopicsRef.current.length > 0
         if (!fromSheet && r.topics && r.topics.length) setTopics(r.topics as DrillTopic[])
       })
@@ -4019,9 +3941,26 @@ function DrillView({ unit, onBack, sheetTopics, entryProfile }: { unit: Unit; on
     setTopics(sheetTopics)
   }, [sheetTopics])
 
+  // Eski numaralı Drill kayıtları: bu ünitenin konu listesindeki konuların
+  // eski kayıtları yeni ünite kimliğine taşınır (memoryStore.ts). Konu listesi
+  // Sheets'ten sonradan gelirse yeniden bakılır.
+  const topicIdsKey = topics.map(t => t.id).join('|')
+  useEffect(() => {
+    let cancelled = false
+    const ids = topicIdsKey ? topicIdsKey.split('|') : []
+    adoptNumericDrillProgress(drillKey, ids)
+      .then(adopted => {
+        if (cancelled || !adopted) return
+        setProgress(prev => mergeNewerDrill(prev, adopted))
+      })
+      .catch(() => { /* bir sonraki açılışta yeniden denenir */ })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drillKey, topicIdsKey])
+
   function persistTopics(next: DrillTopic[]) {
     setTopics(next)
-    saveDrillTopicsToStorage(unit.id, next)
+    saveDrillTopicsToStorage(drillKey, next)
   }
 
   function upsertTopics(newTopics: DrillTopic[]): { added: number; updated: number } {
@@ -4122,7 +4061,7 @@ function DrillView({ unit, onBack, sheetTopics, entryProfile }: { unit: Unit; on
     const nextReview = Date.now() + DRILL_REVIEW_STAGES[nextStage].ms
     const updated = { ...progress, [topic.id]: { reviewStage: nextStage, nextReview } }
     setProgress(updated)
-    saveDrillProgress(unit.id, updated)
+    saveDrillProgress(drillKey, updated)
     setSummary({ correct: finalCorrect, wrong: finalWrong, stageLabel: DRILL_REVIEW_STAGES[nextStage].label, nextReview })
     setQueue(null)
   }
@@ -4271,7 +4210,7 @@ function DrillView({ unit, onBack, sheetTopics, entryProfile }: { unit: Unit; on
           {/* Aşama açıklaması — sadece Sheet'te bu aşama için bir hint yazılmışsa gösterilir */}
           {activeTopic?.hints?.[item.stageKey] && (
             <div style={{ fontSize: '11px', color: 'var(--muted-foreground)', background: 'var(--secondary)', borderRadius: '7px', padding: '7px 10px', marginBottom: '12px' }}>
-              {renderInlineMarkup(activeTopic.hints[item.stageKey])}
+              {renderInlineMarkup(activeTopic.hints[item.stageKey] ?? '')}
             </div>
           )}
 
@@ -4996,48 +4935,37 @@ export default function App() {
   // keep the hardcoded fallback so the site never breaks.
   const [sheetQuestions, setSheetQuestions] = useState<QuestionItem[] | null>(null)
 
-  useEffect(() => {
-    // cache: 'no-store' plus a timestamp query param ensures the browser
-    // never serves a stale cached response — otherwise a visitor can keep
-    // seeing old Sheet content even after Google's own copy has updated.
-    const bustedUrl = `${QUESTIONS_SHEET_CSV_URL}${QUESTIONS_SHEET_CSV_URL.includes('?') ? '&' : '?'}t=${Date.now()}`
-    fetch(bustedUrl, { cache: 'no-store' })
-      .then(res => res.text())
-      .then(text => {
-        const parsed = rowsToQuestionChain(parseCSV(text))
-        if (parsed.length > 0) setSheetQuestions(parsed)
-      })
-      .catch(() => { /* keep hardcoded fallback on any error */ })
-  }, [])
+  // Tablolar: önce bu tarayıcıda kayıtlı son kopya hemen gösterilir, arkada
+  // taze kopya indirilir; değişmişse ekran güncellenir (sheetCache.ts).
+  // Taze kopya inmezse kayıtlı kopya, o da yoksa sabit yedek içerik kalır.
+  useEffect(() => loadCachedThenFresh(QUESTIONS_SHEET_CSV_URL, text => {
+    const parsed = rowsToQuestionChain(parseCSV(text))
+    if (parsed.length > 0) setSheetQuestions(parsed)
+  }, { accept: looksLikeCsv }), [])
 
   // ── Grammar Sheet ────────────────────────────────────────────────────────────
   const [grammarSheetData, setGrammarSheetData] = useState<Record<string, GrammarSlotMeta[]> | null>(null)
 
   useEffect(() => {
     if (!GRAMMAR_SHEET_CSV_URL) return
-    const bustedUrl = `${GRAMMAR_SHEET_CSV_URL}${GRAMMAR_SHEET_CSV_URL.includes('?') ? '&' : '?'}t=${Date.now()}`
-    fetch(bustedUrl, { cache: 'no-store' })
-      .then(res => res.text())
-      .then(text => {
-        const rows = parseCSV(text)
-        if (rows.length > 0) setGrammarSheetData(parseGrammarSheet(rows))
-      })
-      .catch(() => { /* keep existing fallback */ })
+    return loadCachedThenFresh(GRAMMAR_SHEET_CSV_URL, text => {
+      const rows = parseCSV(text)
+      if (rows.length > 0) setGrammarSheetData(parseGrammarSheet(rows))
+    }, { accept: looksLikeCsv })
   }, [])
 
   // ── Units Sheet: tüm seviyeler ünite listesi ────────────────────────────────
   const [unitsSheetData, setUnitsSheetData] = useState<UnitsSheetData | null>(null)
+  // Taze kopya denemesi bitti mi? Bitmeden ve kayıtlı kopya da yokken ünite
+  // listesi yerine "yükleniyor" görünür (eskiden bir an sabit liste görünüyordu).
+  const [unitsSettled, setUnitsSettled] = useState(!UNITS_SHEET_CSV_URL)
 
   useEffect(() => {
     if (!UNITS_SHEET_CSV_URL) return
-    const bustedUrl = `${UNITS_SHEET_CSV_URL}${UNITS_SHEET_CSV_URL.includes('?') ? '&' : '?'}t=${Date.now()}`
-    fetch(bustedUrl, { cache: 'no-store' })
-      .then(res => res.text())
-      .then(text => {
-        const rows = parseCSV(text)
-        if (rows.length > 0) setUnitsSheetData(parseUnitsSheet(rows))
-      })
-      .catch(() => { /* fallback: hardcode liste görünür */ })
+    return loadCachedThenFresh(UNITS_SHEET_CSV_URL, text => {
+      const rows = parseCSV(text)
+      if (rows.length > 0) setUnitsSheetData(parseUnitsSheet(rows))
+    }, { accept: looksLikeCsv, onSettled: () => setUnitsSettled(true) })
   }, [])
 
   // ── Units Sheet'teki dictation_srt_url / shadowing_srt_url: her ünitenin altyazısını
@@ -5048,54 +4976,58 @@ export default function App() {
   const [shadowingSrtByUnit, setShadowingSrtByUnit] = useState<Record<string, DictationSegment[]>>({})
   const [mediaSrtByUnit, setMediaSrtByUnit] = useState<Record<string, DictationSegment[]>>({})
 
+  // Altyazılar eskiden tek tek, sırayla iniyordu (biri bitmeden öbürü başlamıyordu).
+  // Artık önce kayıtlı kopyalar hemen kullanılır, taze kopyalar hep birlikte
+  // (paralel) indirilir. Taze kopya inmezse kayıtlı kopya kalır.
+  // Liste yalnızca altyazı adresleri değişince yeniden kurulur.
+  const srtJobsKey = unitsSheetData
+    ? JSON.stringify(Object.values(unitsSheetData.unitsByLevel).flat().map(r => [r.unit_id, r.dictation_srt_url || '', r.shadowing_srt_url || '', r.audio_video_srt_url || '']))
+    : ''
   useEffect(() => {
-    if (!unitsSheetData) return
-    const allRows = Object.values(unitsSheetData.unitsByLevel).flat()
+    if (!srtJobsKey) return
+    const rows = JSON.parse(srtJobsKey) as [string, string, string, string][]
+    type Kind = 0 | 1 | 2   // 0: dikte, 1: shadowing, 2: ses/video
+    const jobs: { unitId: string; kind: Kind; url: string }[] = []
+    for (const [unitId, d, sh, m] of rows) {
+      if (d) jobs.push({ unitId, kind: 0, url: d })
+      if (sh) jobs.push({ unitId, kind: 1, url: sh })
+      if (m) jobs.push({ unitId, kind: 2, url: m })
+    }
+    if (!jobs.length) return
     let cancelled = false
 
-    async function fetchAndParse(url: string): Promise<DictationSegment[]> {
-      try {
-        const bustedUrl = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`
-        const res = await fetch(bustedUrl, { cache: 'no-store' })
-        const text = await res.text()
-        return parseSRT(text)
-      } catch {
-        return []
-      }
+    function apply(texts: (string | null)[]) {
+      const out: Record<string, DictationSegment[]>[] = [{}, {}, {}]
+      jobs.forEach((j, i) => { out[j.kind][j.unitId] = texts[i] != null ? parseSRT(texts[i] as string) : [] })
+      setDictationSrtByUnit(out[0])
+      setShadowingSrtByUnit(out[1])
+      setMediaSrtByUnit(out[2])
     }
 
     ;(async () => {
-      const dictResult: Record<string, DictationSegment[]> = {}
-      const shadowResult: Record<string, DictationSegment[]> = {}
-      const mediaResult: Record<string, DictationSegment[]> = {}
-      for (const row of allRows) {
-        if (row.dictation_srt_url) dictResult[row.unit_id] = await fetchAndParse(row.dictation_srt_url)
-        if (row.shadowing_srt_url) shadowResult[row.unit_id] = await fetchAndParse(row.shadowing_srt_url)
-        if (row.audio_video_srt_url) mediaResult[row.unit_id] = await fetchAndParse(row.audio_video_srt_url)
-      }
-      if (!cancelled) {
-        setDictationSrtByUnit(dictResult)
-        setShadowingSrtByUnit(shadowResult)
-        setMediaSrtByUnit(mediaResult)
-      }
+      const cached = await Promise.all(jobs.map(j => readCachedText(j.url)))
+      if (cancelled) return
+      if (cached.some(t => t != null)) apply(cached)
+      const fresh = await Promise.all(jobs.map(j => fetchFreshText(j.url).catch(() => null)))
+      if (cancelled) return
+      const merged = fresh.map((t, i) => (t != null && !/^\s*</.test(t) ? t : cached[i]))
+      const changed = merged.some((t, i) => t !== cached[i])
+      if (changed || !cached.some(t => t != null)) apply(merged)
+      fresh.forEach((t, i) => { if (t != null && !/^\s*</.test(t) && t !== cached[i]) void writeCachedText(jobs[i].url, t) })
     })()
 
     return () => { cancelled = true }
-  }, [unitsSheetData])
+  }, [srtJobsKey])
 
   // ── Drill Sheet: tüm seviyeler drill konuları ─────────────────────────────
   const [drillSheetData, setDrillSheetData] = useState<DrillSheetData | null>(null)
 
   useEffect(() => {
     if (!DRILL_SHEET_CSV_URL) return
-    const bustedUrl = `${DRILL_SHEET_CSV_URL}${DRILL_SHEET_CSV_URL.includes('?') ? '&' : '?'}t=${Date.now()}`
-    fetch(bustedUrl, { cache: 'no-store' })
-      .then(res => res.text())
-      .then(text => {
-        const rows = parseCSV(text)
-        if (rows.length > 0) setDrillSheetData(parseDrillSheet(rows))
-      })
-      .catch(() => { /* fallback: drill kartları kilitli görünür */ })
+    return loadCachedThenFresh(DRILL_SHEET_CSV_URL, text => {
+      const rows = parseCSV(text)
+      if (rows.length > 0) setDrillSheetData(parseDrillSheet(rows))
+    }, { accept: looksLikeCsv })
   }, [])
 
   // ── My Brain: beyinler veritabanında (brainStore.ts) ──
@@ -5185,26 +5117,18 @@ export default function App() {
 
   useEffect(() => {
     if (!SCENE_SHEET_CSV_URL) return
-    const bustedUrl = `${SCENE_SHEET_CSV_URL}${SCENE_SHEET_CSV_URL.includes('?') ? '&' : '?'}t=${Date.now()}`
-    fetch(bustedUrl, { cache: 'no-store' })
-      .then(res => res.text())
-      .then(text => {
-        const parsed = parseSceneRows(parseCSV(text))
-        if (parsed.length > 0) setSceneRows(parsed)
-      })
-      .catch(() => { /* fallback sahne kullanılır */ })
+    return loadCachedThenFresh(SCENE_SHEET_CSV_URL, text => {
+      const parsed = parseSceneRows(parseCSV(text))
+      if (parsed.length > 0) setSceneRows(parsed)
+    }, { accept: looksLikeCsv })
   }, [])
 
   useEffect(() => {
     if (!SCENE_CHARACTERS_SHEET_CSV_URL) return
-    const bustedUrl = `${SCENE_CHARACTERS_SHEET_CSV_URL}${SCENE_CHARACTERS_SHEET_CSV_URL.includes('?') ? '&' : '?'}t=${Date.now()}`
-    fetch(bustedUrl, { cache: 'no-store' })
-      .then(res => res.text())
-      .then(text => {
-        const parsed = parseCharacterRows(parseCSV(text))
-        if (Object.keys(parsed).length > 0) setCharacterRows(parsed)
-      })
-      .catch(() => { /* fallback karakter kullanılır */ })
+    return loadCachedThenFresh(SCENE_CHARACTERS_SHEET_CSV_URL, text => {
+      const parsed = parseCharacterRows(parseCSV(text))
+      if (Object.keys(parsed).length > 0) setCharacterRows(parsed)
+    }, { accept: looksLikeCsv })
   }, [])
 
   const allScenes: Scene[] = sceneRows ?? FALLBACK_SCENE_DATA.scenes
@@ -5345,11 +5269,6 @@ export default function App() {
   function goMemory() { setSelectedUnit(null); setSelectedQuestionIndex(null); setView('memory') }
   function goUnutmama() { setSelectedUnit(null); setSelectedQuestionIndex(null); setView('unutmama') }
   function goHome() { setView('dashboard'); setSelectedUnit(null); setSelectedQuestionIndex(null) }
-  function goBack() {
-    if (view === 'dashboard') return
-    if (view === 'unit') { setView('dashboard'); setSelectedUnit(null) }
-    else { setView('unit'); setSelectedQuestionIndex(null) }
-  }
 
   // Owner → her tab açık.
   // Diğer profiller → sadece kendi level'ları açık, geri kalanı kilitli görünür.
@@ -5610,6 +5529,7 @@ export default function App() {
           <DashboardView
             level={level}
             units={units}
+            loading={!unitsSheetData && !unitsSettled}
             onSelectUnit={goUnit}
             onMemory={currentMemoryStudent ? goMemory : undefined}
             memoryCounts={memoryCounts}
@@ -5734,6 +5654,7 @@ export default function App() {
         {view === 'drill' && selectedUnitLive && (
           noticeView(selectedUnitLive, 'drill') ?? <DrillView
             unit={selectedUnitLive}
+            drillKey={selectedUnitLive.unitId ?? `${level}-U${String(selectedUnitLive.id).padStart(2, '0')}`}
             onBack={() => setView('unit')}
             entryProfile={entryProfile}
             sheetTopics={

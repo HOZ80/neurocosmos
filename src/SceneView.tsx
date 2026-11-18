@@ -237,7 +237,6 @@ function useSpeech() {
 }
 
 const ACCENT = '#B45309'
-const ACCENT_BG = '#FEF3C7'
 
 // ─── Tam sayfa görsel panel: sabit okunurluk renkleri ──────────────────────
 // Panelin arkası her zaman koyu bir gradyan olduğu için (hangi görsel gelirse

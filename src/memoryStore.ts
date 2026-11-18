@@ -403,6 +403,82 @@ export async function syncDrillUnit(unit: string): Promise<{ progress: DrillProg
   return { progress: merged, topics: localT ? localT.topics : null }
 }
 
+// İki ilerleme haritasını birleştirir: her konuda en son çalışılan geçerli.
+export function mergeNewerDrill(a: DrillProgMap, b: DrillProgMap): DrillProgMap {
+  const out: DrillProgMap = { ...a }
+  for (const [t, p] of Object.entries(b)) {
+    const cur = out[t]
+    if (!cur || drillLastMs(p) >= drillLastMs(cur)) out[t] = p
+  }
+  return out
+}
+
+// ─── Eski Drill kayıtlarının yeni ünite kimliğine taşınması ──────────────────
+// Kasım 2026'ya kadar Drill ilerlemesi ünitenin sıra numarasıyla ("1", "2")
+// saklanıyordu; farklı seviyelerin aynı numaralı üniteleri karışıyordu. Artık
+// ünitenin gerçek kimliği ("A1-U02", "B2-U02") kullanılıyor. Bir ünite
+// açıldığında, o ünitenin konu listesinde bulunan konuların numaralı eski
+// kayıtları yeni kimliğin altına kopyalanır (eskiler silinmez, yedek kalır).
+// Konu eşleşmesi konu listesine göre yapılır; tahmin yoktur.
+interface NumericDrillRow { topic_id: string; p: DrillProg; last: number }
+let numericRowsCache: { uid: string; rows: Promise<NumericDrillRow[]> } | null = null
+
+function loadNumericDrillRows(uid: string): Promise<NumericDrillRow[]> {
+  if (numericRowsCache && numericRowsCache.uid === uid) return numericRowsCache.rows
+  const rows = (async () => {
+    const out: NumericDrillRow[] = []
+    // Bu tarayıcıdaki numaralı kopyalar (henüz gönderilmemiş olabilir)
+    try {
+      const re = new RegExp(`^nc_drill2_progress_${uid.replace(/[^a-zA-Z0-9-]/g, '')}_u(\\d+)$`)
+      const keys: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i) || ''
+        if (re.test(key)) keys.push(key)
+      }
+      for (const key of keys) {
+        const map = lsGet<DrillProgMap>(key, {})
+        for (const [t, p] of Object.entries(map)) {
+          if (!p || typeof p.reviewStage !== 'number') continue
+          out.push({ topic_id: t, p: { reviewStage: p.reviewStage, nextReview: p.nextReview ?? null }, last: drillLastMs(p) })
+        }
+      }
+    } catch { /* sessiz */ }
+    // Veritabanındaki numaralı kayıtlar
+    const sid = encodeURIComponent(uid)
+    const res = await rest(`drill_progress?student_id=eq.${sid}&select=unit_key,topic_id,review_stage,next_review,last_at&limit=5000`)
+    if (!res.ok) throw new Error('drill okunamadı')
+    const srv: { unit_key: string; topic_id: string; review_stage: number; next_review: string | null; last_at: string }[] = await res.json()
+    for (const r of srv) {
+      if (!/^\d+$/.test(r.unit_key)) continue
+      out.push({ topic_id: r.topic_id, p: { reviewStage: r.review_stage, nextReview: toMs(r.next_review) }, last: toMs(r.last_at) ?? 0 })
+    }
+    return out
+  })()
+  numericRowsCache = { uid, rows }
+  rows.catch(() => { if (numericRowsCache && numericRowsCache.rows === rows) numericRowsCache = null })
+  return rows
+}
+
+// Ünitenin konu listesindeki konular için eski numaralı kayıtları yeni kimliğe
+// taşır. Bir şey taşındıysa yalnızca taşınan konuları döndürür, yoksa null.
+export async function adoptNumericDrillProgress(unit: string, topicIds: string[]): Promise<DrillProgMap | null> {
+  const uid = currentAccountId()
+  if (!uid || /^\d+$/.test(unit) || !topicIds.length) return null
+  const wanted = new Set(topicIds)
+  const rows = await loadNumericDrillRows(uid)
+  const k = drillKeys(uid)
+  const current = lsGet<DrillProgMap>(k.progress(unit), {})
+  const adopted: DrillProgMap = {}
+  for (const r of rows) {
+    if (!wanted.has(r.topic_id)) continue
+    const have = adopted[r.topic_id] ?? current[r.topic_id]
+    if (!have || r.last > drillLastMs(have)) adopted[r.topic_id] = r.p
+  }
+  if (!Object.keys(adopted).length) return null
+  saveDrillProgressLocal(unit, { ...current, ...adopted })
+  return adopted
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ÖĞRETMEN: kart bankası ve atamalar (yalnızca öğretmen hesabında çalışır)
 // ══════════════════════════════════════════════════════════════════════════════

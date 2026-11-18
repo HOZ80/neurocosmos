@@ -185,6 +185,13 @@ export async function getAccessToken(): Promise<string | null> {
 
 // Site açılınca çağrılır: kayıtlı oturumu doğrular ve güncel hesap bilgisini
 // getirir. İnternet yoksa telefonda kayıtlı son hesap bilgisiyle devam eder.
+// Öğretmen kendi şifresini değiştirince sunucu bu cihaz için yeni bir oturum
+// verir; hesap bilgisi aynen kalır, yalnızca anahtarlar yenilenir.
+export function adoptSession(t: { access_token: string; refresh_token: string; expires_at?: number; expires_in?: number }) {
+  if (!t || typeof t.access_token !== 'string' || typeof t.refresh_token !== 'string') return
+  writeSession(toSession(t, readSession()?.account ?? null))
+}
+
 export async function restoreSession(): Promise<Account | null> {
   const s = readSession()
   if (!s) return null

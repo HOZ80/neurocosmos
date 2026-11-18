@@ -1,41 +1,38 @@
-# figma-make-app
+# Neurocosmos
 
-React + Vite + Tailwind CSS project running inside Figma Make.
+Neurocosmos (https://neurocosmos.tr) is a live English-teaching site for real students (adults and children). The site is in production: every change reaches students on the next deploy. This repository is public — never write passwords, keys, tokens, student personal data or private notes into any file here.
 
-## Development Server
+## Stack
 
-A Vite development server is **already running** on `$PORT` (default 8443). You don't need to start it manually.
+- React 19 + Vite 8 + TypeScript (strict) + Tailwind CSS v4 (`@tailwindcss/vite`), single-page app, installable as a PWA (`public/manifest.json`, `public/sw.js`, network-first).
+- Hosting: Netlify. Build command `pnpm run build`, publish directory `dist`, functions in `netlify/functions`. The build runs `tsc --noEmit` before `vite build`, so any type error stops the deploy and the live site stays as it was.
+- Data: Supabase (auth + Postgres with row-level security). Teaching content (units, grammar, drill topics, scenes, books, cards) comes from published Google Sheets CSVs.
+- Secrets live only in Netlify environment variables and are read by the functions. The browser uses only the Supabase publishable key (`src/auth.ts`).
 
-- Preview URL: The user can access the running app through the preview panel
-- Hot reload: Changes to source files are reflected immediately
+## Workflow
 
-## Project Structure
+- The owner publishes by uploading files through the GitHub web interface to `main`; each push to `main` is a production deploy. There is no test branch at the moment.
+- Hand over complete, ready-to-upload files with their exact paths and names. Do not ask the owner to edit code by hand.
+- Build every change on a fresh copy of `main`.
+- Database changes (schema, rules, data) are made only with the owner's explicit approval; anything irreversible (deleting rows, files, branches) needs separate explicit approval.
+- Commits that only delete or rename files can carry `[skip netlify]` in the message to avoid an extra deploy; the next normal upload deploys everything together.
 
-This is the canonical project structure. Start with task-relevant files below. Only follow imports or inspect other files when required, when a documented path is missing, or when the repository contradicts this guide.
+## Structure
 
-- `src/main.tsx` - React entrypoint; imports `src/index.css` and mounts `src/App.tsx` into the `#root` element
-- `src/App.tsx` - Primary application component and the usual starting point for UI work
-- `src/index.css` - Global CSS entrypoint and Tailwind CSS v4 import
-- `index.html` - Vite HTML shell containing the `#root` element and loading `src/main.tsx`
-- `package.json` - Project dependencies and the Vite build, development, preview, and formatting scripts
-- `vite.config.ts` - Vite configuration with React, Tailwind CSS v4, and Figma Make plugins plus the `@` alias for `src`
-- `.mise.toml` - Toolchain versions for Node.js and pnpm
+- `index.html` → `src/main.tsx` → `src/App.tsx` (main app: levels, units, Grammar, Drill, Dictation, Shadowing, Scene, navigation). `App.tsx` is very large; splitting it is a planned, separate task.
+- Sign-in: `src/auth.ts`, `src/LoginScreen.tsx` (login name + password; email form `<name>@giris.neurocosmos.tr`). Roles in `profiles.role`: `teacher`, `student`.
+- Teacher tools: `src/StudentAdmin.tsx` (students, passwords, own password), `src/StudentLearning.tsx`, `src/MemoryCardsAdmin.tsx`, `src/KitaplikReport.tsx`.
+- Live lesson: `src/Live*.tsx`, `src/liveShared.ts`, `src/liveReport*.ts`.
+- Reader (Kitaplık): `src/Reader.tsx`, `src/readerData.ts`, `src/readerStore.ts`, `src/readerStyles.ts`.
+- Spaced review (Unutmama) and drill progress: `src/UnutmamaView.tsx`, `src/unutmamaLogic.ts`, `src/memoryStore.ts`.
+- Memory brain (three.js, lazy-loaded): `src/MemoryBrain.tsx`, `src/memoryShared.tsx`, `src/brainData.ts`, `src/brainStore.ts`, `src/ChildBrain.tsx`.
+- Private (P) tab: `src/PrivateDictation.tsx`, `src/PrivateShadowing.tsx`. Scenes: `src/SceneView.tsx`.
+- Netlify functions: `ogrenci-yonetimi.js` (teacher-only account management with the Supabase secret key), `drill-evaluate.js`, `scene-chat.js`, `uyanik-tut.js`.
+- `vite.config.ts` and `.figma/make/site.json` are leftovers from the original Figma Make scaffold; the build still imports them, so keep both.
 
-## Dependencies
+## Code conventions
 
-- Runtime: React 19 and React DOM 19
-- Styling: Tailwind CSS v4 with the `@tailwindcss/vite` plugin
-- Build tooling: Vite 8, TypeScript 5.7, and `@vitejs/plugin-react`
-- Formatting: oxfmt
-
-## Styling
-
-This project uses **Tailwind CSS v4** through the `@tailwindcss/vite` plugin configured in `vite.config.ts`. `src/index.css` imports Tailwind with `@import 'tailwindcss';`. Use Tailwind utility classes directly in JSX and put global CSS or Tailwind v4 theme customization in `src/index.css`. This scaffold does not need a Tailwind config file or PostCSS config.
-
-`src/main.tsx` imports `src/index.css`, so global font wiring belongs in `src/index.css`. Keep CSS `@import` statements first, then add any `@font-face` rules and font-family defaults there.
-
-## Code quality
-
-- Use double quotes for strings containing apostrophes (`"We're here to help"`), or escape them in single-quoted strings. An unescaped apostrophe in a single-quoted string breaks the build.
-- Ensure JSX tags are closed and braces are balanced.
-- Export components as default exports.
+- UI text is Turkish; code comments are Turkish.
+- Keep the existing look unless a change was approved; new screens must work at phone width first.
+- Use double quotes for strings containing apostrophes, or escape them.
+- Run `npx tsc --noEmit` and `pnpm run build` before handing over files.
