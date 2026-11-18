@@ -5,10 +5,12 @@ import { sb, shortName } from './liveShared'
 // Unutmama kart bankası ve öğrencinin Öğrenme sayfası (yalnızca açılınca yüklenir)
 const MemoryCardsAdmin = lazy(() => import('./MemoryCardsAdmin'))
 const StudentLearning = lazy(() => import('./StudentLearning'))
+const StudentActivity = lazy(() => import('./StudentActivity'))
 
 // ─── Öğretmen paneli: Öğrenciler ──────────────────────────────────────────────
 // Öğrenci ekle, alan aç/kapat, şifre değiştir, pasife al / yeniden aç; öğrencinin
-// Öğrenme sayfası (beyin, Unutmama kartları, Drill, Kitaplık) buradan açılır.
+// Öğrenme sayfası (beyin, Unutmama kartları, Drill, Kitaplık, Etkinlik) ve
+// Öğrenci etkinliği ekranı buradan açılır.
 // Bütün işler Netlify'daki "ogrenci-yonetimi" görevinden geçer; o görev
 // çağıranın öğretmen olduğunu her seferinde kendisi doğrular.
 
@@ -202,7 +204,7 @@ function StudentRow({ s, open, onOpen, onChanged, onMessage, onLearning }: {
             }}>🧠</span>
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: 700, color: 'var(--foreground)' }}>Öğrenme sayfası</span>
-              <span style={{ display: 'block', fontSize: '13px', color: 'var(--muted-foreground)', marginTop: '2px' }}>Beyni, Unutmama kartları, Drill ilerlemesi ve Kitaplık kelimeleri</span>
+              <span style={{ display: 'block', fontSize: '13px', color: 'var(--muted-foreground)', marginTop: '2px' }}>Beyni, Unutmama kartları, Drill ilerlemesi, Kitaplık kelimeleri ve etkinliği</span>
             </span>
             <span aria-hidden style={{ color: 'var(--muted-foreground)', fontSize: '18px' }}>›</span>
           </button>
@@ -489,7 +491,11 @@ export default function StudentAdmin({ onClose, unitTitles = {}, drillLabels = {
   const [message, setMessage] = useState<string | null>(null)
   const [showCards, setShowCards] = useState(false)
   const [learningId, setLearningId] = useState<string | null>(null)
+  const [showActivity, setShowActivity] = useState(false)
+  // Öğrenme sayfası nereden açıldı: Öğrenciler listesi (Beyin sekmesi) ya da Öğrenci etkinliği (Etkinlik sekmesi)
+  const [learningFrom, setLearningFrom] = useState<'list' | 'activity'>('list')
   const listScroll = useRef(0)
+  const activityScroll = useRef(0)
 
   function load() {
     setLoadError(null)
@@ -501,10 +507,17 @@ export default function StudentAdmin({ onClose, unitTitles = {}, drillLabels = {
 
   function openCards() { listScroll.current = window.scrollY; setShowCards(true); window.scrollTo(0, 0) }
   function closeCards() { setShowCards(false); requestAnimationFrame(() => window.scrollTo(0, listScroll.current)) }
-  function openLearning(id: string) { listScroll.current = window.scrollY; setLearningId(id); window.scrollTo(0, 0) }
-  function closeLearning() { setLearningId(null); requestAnimationFrame(() => window.scrollTo(0, listScroll.current)) }
+  function openLearning(id: string) { listScroll.current = window.scrollY; setLearningFrom('list'); setLearningId(id); window.scrollTo(0, 0) }
+  function openLearningFromActivity(id: string) { activityScroll.current = window.scrollY; setLearningFrom('activity'); setLearningId(id); window.scrollTo(0, 0) }
+  function closeLearning() {
+    setLearningId(null)
+    const y = learningFrom === 'activity' ? activityScroll.current : listScroll.current
+    requestAnimationFrame(() => window.scrollTo(0, y))
+  }
+  function openActivity() { listScroll.current = window.scrollY; setShowActivity(true); window.scrollTo(0, 0) }
+  function closeActivity() { setShowActivity(false); requestAnimationFrame(() => window.scrollTo(0, listScroll.current)) }
   const learning = learningId ? students?.find(x => x.id === learningId) ?? null : null
-  const hidden = showCards || !!learning
+  const hidden = showCards || !!learning || showActivity
 
   return (
     <>
@@ -520,6 +533,18 @@ export default function StudentAdmin({ onClose, unitTitles = {}, drillLabels = {
           onBack={closeLearning}
           unitTitles={unitTitles}
           drillLabels={drillLabels}
+          initialTab={learningFrom === 'activity' ? 'activity' : 'brain'}
+        />
+      </Suspense>
+    )}
+    {showActivity && (
+      <Suspense fallback={<p style={{ padding: '24px', color: 'var(--muted-foreground)', fontSize: '14px' }}>Yükleniyor…</p>}>
+        <StudentActivity
+          students={(students ?? []).filter(x => x.active).map(x => ({ id: x.id, name: x.displayName, areas: x.areas }))}
+          unitTitles={unitTitles}
+          onBack={closeActivity}
+          onOpenStudent={openLearningFromActivity}
+          hidden={!!learning}
         />
       </Suspense>
     )}
@@ -542,7 +567,7 @@ export default function StudentAdmin({ onClose, unitTitles = {}, drillLabels = {
 
         <button onClick={openCards} style={{
           ...card, width: '100%', display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px',
-          marginBottom: '16px', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+          marginBottom: '12px', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
         }}>
           <span aria-hidden style={{
             width: '40px', height: '40px', borderRadius: '10px', flexShrink: 0, display: 'grid', placeItems: 'center',
@@ -555,6 +580,19 @@ export default function StudentAdmin({ onClose, unitTitles = {}, drillLabels = {
           <span style={{ flex: 1, minWidth: 0 }}>
             <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: 'var(--foreground)' }}>Unutmama kartları</span>
             <span style={{ display: 'block', fontSize: '13px', color: 'var(--muted-foreground)', marginTop: '2px' }}>Kartları düzenle, öğrencilere ata, kim hangi kartta zorlanıyor gör</span>
+          </span>
+          <span aria-hidden style={{ color: 'var(--muted-foreground)', fontSize: '18px' }}>›</span>
+        </button>
+
+        <button onClick={openActivity} disabled={!students} style={{
+          ...card, width: '100%', display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px',
+          marginBottom: '16px', textAlign: 'left', cursor: students ? 'pointer' : 'default', fontFamily: 'inherit',
+          border: '1.5px solid #6366F155', opacity: students ? 1 : 0.6, color: 'inherit',
+        }}>
+          <span aria-hidden style={{ width: '40px', height: '40px', borderRadius: '10px', flexShrink: 0, display: 'grid', placeItems: 'center', background: '#EEF2FF', fontSize: '19px' }}>📈</span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: 'var(--foreground)' }}>Öğrenci etkinliği</span>
+            <span style={{ display: 'block', fontSize: '13px', color: 'var(--muted-foreground)', marginTop: '2px' }}>Kim ne kadar çalıştı, son girişler, kim bir süredir girmedi</span>
           </span>
           <span aria-hidden style={{ color: 'var(--muted-foreground)', fontSize: '18px' }}>›</span>
         </button>

@@ -5,6 +5,7 @@
 //  - Unutmama: kart bankası bu öğrenci seçili olarak (atama, durum, zorlandıkları).
 //  - Drill: konu konu ilerleme (yalnızca okunur; içerik Google tablosunda).
 //  - Kitaplık: işaretlediği kelimeler; "Beyne ekle" bu sayfadaki beyne yazar.
+//  - Etkinlik: sitede geçen süre, kartlar, üniteler, sonuçlar, son oturumlar (StudentActivity.tsx).
 // Bütün yazma işleri öğretmen yetkisiyle; güvenlik kuralları veritabanında.
 
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
@@ -20,10 +21,12 @@ import { rest } from './memoryStore'
 const MemoryCardsAdmin = lazy(() => import('./MemoryCardsAdmin'))
 const KitaplikReport = lazy(() => import('./KitaplikReport'))
 const MemoryBrain = lazy(() => import('./MemoryBrain'))
+const ActivityTab = lazy(() => import('./StudentActivity').then(m => ({ default: m.ActivityTab })))
 
 export interface LearningStudent { id: string; name: string; areas: string[] }
 
-type Tab = 'brain' | 'cards' | 'drill' | 'library'
+export type LearningTab = 'brain' | 'cards' | 'drill' | 'library' | 'activity'
+type Tab = LearningTab
 
 // ── Görünüm ──────────────────────────────────────────────────────────────────
 const card: CSSProperties = {
@@ -480,13 +483,21 @@ function DrillTab({ student, drillLabels, unitTitles }: { student: LearningStude
 }
 
 // ── Sayfa ────────────────────────────────────────────────────────────────────
-export default function StudentLearning({ student, onBack, unitTitles, drillLabels }: {
+export default function StudentLearning({ student, onBack, unitTitles, drillLabels, initialTab = 'brain' }: {
   student: LearningStudent
   onBack: () => void
   unitTitles: Record<string, string>
   drillLabels: Record<string, string>
+  initialTab?: Tab  // Öğrenciler ekranından Beyin, Öğrenci etkinliği ekranından Etkinlik
 }) {
-  const [tab, setTab] = useState<Tab>('brain')
+  const [tab, setTab] = useState<Tab>(initialTab)
+  // Telefonda beş sekme sığsın diye: Beyin'in kayıt sayısı yalnızca geniş ekranda sekmede yazar
+  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && window.innerWidth < 500)
+  useEffect(() => {
+    const fn = () => setNarrow(window.innerWidth < 500)
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [])
   const [rows, setRows] = useState<BrainRow[] | null>(null)
   const [loadError, setLoadError] = useState(false)
   const hasLibrary = student.areas.includes('library')
@@ -504,6 +515,7 @@ export default function StudentLearning({ student, onBack, unitTitles, drillLabe
     { id: 'cards', label: 'Unutmama' },
     { id: 'drill', label: 'Drill' },
     { id: 'library', label: 'Kitaplık' },
+    { id: 'activity', label: 'Etkinlik' },
   ]
 
   return (
@@ -518,7 +530,7 @@ export default function StudentLearning({ student, onBack, unitTitles, drillLabe
         </div>
 
         <div role="tablist" aria-label="Öğrenme sayfası bölümleri" style={{
-          display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', padding: '4px', marginBottom: '16px',
+          display: 'grid', gridTemplateColumns: 'repeat(5, auto)', gap: '3px', padding: '4px', marginBottom: '16px',
           background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '12px',
           position: 'sticky', top: 'env(safe-area-inset-top, 0px)', zIndex: 5,
         }}>
@@ -526,11 +538,11 @@ export default function StudentLearning({ student, onBack, unitTitles, drillLabe
             const on = tab === t.id
             return (
               <button key={t.id} role="tab" aria-selected={on} onClick={() => pickTab(t.id)} style={{
-                font: 'inherit', fontSize: '14px', fontWeight: on ? 700 : 600, padding: '9px 4px', borderRadius: '9px', border: 'none', cursor: 'pointer',
+                font: 'inherit', fontSize: narrow ? '13px' : '13.5px', fontWeight: on ? 700 : 600, padding: '9px 1px', borderRadius: '9px', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                 background: on ? 'var(--card)' : 'transparent', color: on ? 'var(--foreground)' : 'var(--muted-foreground)',
                 boxShadow: on ? '0 1px 3px rgba(15,23,42,0.12)' : 'none',
               }}>
-                {t.label}{t.id === 'brain' && rows ? ` (${rows.length})` : ''}
+                {t.label}{t.id === 'brain' && rows && !narrow ? ` (${rows.length})` : ''}
               </button>
             )
           })}
@@ -541,6 +553,12 @@ export default function StudentLearning({ student, onBack, unitTitles, drillLabe
         {tab === 'cards' && (
           <Suspense fallback={<p style={muted}>Kartlar yükleniyor…</p>}>
             <MemoryCardsAdmin onBack={onBack} initialPersonId={student.id} embedded />
+          </Suspense>
+        )}
+
+        {tab === 'activity' && (
+          <Suspense fallback={<p style={muted}>Etkinlik yükleniyor…</p>}>
+            <ActivityTab student={{ id: student.id, name: student.name, areas: student.areas }} unitTitles={unitTitles} />
           </Suspense>
         )}
 

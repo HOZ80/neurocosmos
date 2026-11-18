@@ -24,6 +24,7 @@ import { loadContent } from './readerData'
 import { loadCachedThenFresh, readCachedText, fetchFreshText, writeCachedText } from './sheetCache'
 import LiveTeacher, { clearLiveTeacherNav } from './LiveTeacher'
 import { useLiveStatus, LiveBanner, LiveOnlyHome, LiveStudentScreen } from './LiveStudent'
+import { useActivityTracker, useActivityPlace, activityStat, activityMiss, bump } from './activityStore'
 
 // Hafıza beyni (three.js içerir) — sadece Memory sayfası açılınca yüklenir.
 const MemoryBrain = lazy(() => import('./MemoryBrain'))
@@ -1897,6 +1898,8 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const [pastListOpen, setPastListOpen] = useState(false)
   const playerRef = useRef<MiniPlayerHandle>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // Öğrenci etkinliği: ilk denemede yanlış yazılan cümleler (sonra doğru tamamlanırsa "ipucuyla")
+  const wrongFirstRef = useRef<Set<number>>(new Set())
 
   const done = curIndex >= segments.length
   const currentSegment = done ? null : segments[curIndex]
@@ -1919,6 +1922,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
     setCurIndex(0)
     setAnswered(new Array(segments.length).fill(false))
     setCorrectCount(0)
+    wrongFirstRef.current = new Set()
   }, [segments])
 
   // Load a fresh segment: reset the answer box, and play the new audio range.
@@ -1945,6 +1949,11 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
     if (!answered[curIndex]) {
       setAnswered(a => { const next = [...a]; next[curIndex] = true; return next })
       if (result.allOk) setCorrectCount(c => c + 1)
+      activityStat('dictation', st => { bump(st, 'written'); if (result.allOk) bump(st, 'first') })
+      if (!result.allOk) { wrongFirstRef.current.add(curIndex); activityMiss('dictation', currentSegment.text, typed) }
+    } else if (result.allOk && wrongFirstRef.current.has(curIndex)) {
+      wrongFirstRef.current.delete(curIndex)
+      activityStat('dictation', st => bump(st, 'hinted'))
     }
   }
 
@@ -1971,6 +1980,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
     setCurIndex(0)
     setAnswered(new Array(segments.length).fill(false))
     setCorrectCount(0)
+    wrongFirstRef.current = new Set()
     setShowTranscript(false)
   }
 
@@ -2821,10 +2831,22 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   useEffect(() => () => { playTokenRef.current++; audioRef.current?.pause() }, [])
 
   // Klip modunda bir cümleyi çalar: o cümlenin kendi dosyası baştan sona.
+  // Öğrenci etkinliği: çalışılan cümle, tekrar dinleme ve kullanılan hız (ses kaydı yok)
+  function trackShadowPlay(index: number) {
+    activityStat('shadowing', st => {
+      const seen: number[] = Array.isArray(st.s) ? st.s : (st.s = [])
+      if (seen.includes(index)) bump(st, 'replays'); else if (seen.length < 500) seen.push(index)
+      const sp = st.speeds && typeof st.speeds === 'object' ? st.speeds : (st.speeds = {})
+      const k = String(speedRef.current)
+      sp[k] = (Number(sp[k]) || 0) + 1
+    })
+  }
+
   function playClip(index: number) {
     const audio = audioRef.current
     const url = clips[index]
     if (!audio || !url) return
+    trackShadowPlay(index)
     playTokenRef.current++
     const token = playTokenRef.current
     audio.pause()
@@ -2851,6 +2873,7 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
     const audio = audioRef.current
     const seg = segments[index]
     if (!audio || !activeAudioUrl || !seg) return
+    trackShadowPlay(index)
     playTokenRef.current++
     const token = playTokenRef.current
     audio.pause()
@@ -4067,6 +4090,17 @@ function DrillView({ unit, drillKey, onBack, sheetTopics, entryProfile }: { unit
   }
 
   function advance(isCorrect: boolean, item: DrillQueueItem) {
+    const actTopic = topics.find(t => t.id === activeTopicId)
+    activityStat('drill', st => {
+      const ids: string[] = Array.isArray(st.topics) ? st.topics : (st.topics = [])
+      if (activeTopicId && !ids.includes(activeTopicId) && ids.length < 200) ids.push(activeTopicId)
+      bump(st, isCorrect ? 'ok' : 'hard')
+      if (!isCorrect && activeTopicId) {
+        const h = st.hard_topics && typeof st.hard_topics === 'object' ? st.hard_topics : (st.hard_topics = {})
+        const e = h[activeTopicId] || (h[activeTopicId] = { label: actTopic?.label || activeTopicId, n: 0 })
+        e.n = (Number(e.n) || 0) + 1
+      }
+    })
     const newCorrect = correct + (isCorrect ? 1 : 0)
     const newWrong = wrong + (isCorrect ? 0 : 1)
     const newRetry = isCorrect || usedRetry ? retryPool : [...retryPool, item]
@@ -4577,6 +4611,7 @@ function ChildDashboard({ childName, childArea, unitTitles, onExit, accountId, m
   const unut = useUnutmama(accountId, memoryEnabled)
   const [showMemory, setShowMemory] = useState(false)
   const panelScroll = useRef(0)
+  useActivityPlace(showBrain ? { card: 'brain', level: 'Çocuk', depth: 2 } : showMemory ? { card: 'memory', level: 'Çocuk', depth: 2 } : null)
   if (showBrain) {
     return <ChildBrainView childName={childName} data={brain.data} unitTitles={unitTitles} onBack={() => { setShowBrain(false); window.scrollTo(0, 0) }} />
   }
@@ -4714,6 +4749,11 @@ function LibraryPanel({ account, onExit }: { account: Account; onExit: () => voi
 // mevcut ekran (seviye, görünüm, ünite, gramer sekmesi, soru) adres satırına
 // yazılır; sayfa yeniden yüklendiğinde ya da geri/ileri tuşuna basıldığında
 // buradan okunup ekran o hale geri getirilir.
+// Öğrenci etkinliğinde ekranların kart adı (StudentActivity.tsx'teki ACTIVITY_CARDS ile aynı adlar)
+const ACTIVITY_CARD: Record<View, string> = {
+  dashboard: 'home', unit: 'unit', grammar: 'grammar', audio: 'audio', dictation: 'dictation', shadowing: 'shadowing',
+  dictationAll: 'dictationAll', shadowingAll: 'shadowingAll', drill: 'drill', scene: 'scene', memory: 'brain', unutmama: 'memory', dialogue: 'dialogue',
+}
 const VALID_VIEWS: View[] = ['dashboard', 'unit', 'grammar', 'audio', 'dictation', 'shadowing', 'dictationAll', 'shadowingAll', 'drill', 'scene', 'memory', 'unutmama', 'dialogue']
 function getUrlParam(name: string): string | null {
   try { return new URLSearchParams(window.location.search).get(name) } catch { return null }
@@ -5307,6 +5347,21 @@ export default function App() {
     ...(selectedUnitLive ? [{ label: selectedUnitLive.unitLabel ?? `Unit ${selectedUnitLive.id}`, onClick: () => { setView('unit'); setSelectedQuestionIndex(null) } }] : []),
     ...(view !== 'dashboard' && view !== 'unit' ? [{ label: view === 'dictationAll' ? 'Dictation All' : view === 'shadowingAll' ? 'Shadowing All' : view === 'drill' ? 'Drill' : view === 'scene' ? 'Scene' : view === 'memory' ? 'My Brain' : view === 'unutmama' ? 'Memory' : view === 'dialogue' ? (selectedUnitLive?.dialogueChain?.[selectedQuestionIndex ?? -1]?.title ?? 'Dialogue') : (selectedQuestion?.label ?? MODULE_META[view as keyof typeof MODULE_META]?.label) }] : []),
   ]
+
+  // ── Öğrenci etkinliği (activityStore.ts) ──
+  // Yalnızca öğrenci hesabında çalışır; öğretmen hesabı ve önizlemeleri kaydedilmez.
+  const activityUnit = selectedUnitLive ? (selectedUnitLive.unitId ?? `${level}-U${String(selectedUnitLive.id).padStart(2, '0')}`) : ''
+  useActivityTracker(account && account.active && account.role === 'student' ? account.id : null)
+  useActivityPlace(!account ? null
+    : liveJoinedSession ? { card: 'live' }
+    : !entryProfile ? { card: 'entry' }
+    : entryProfile === 'child_omur' || entryProfile === 'child_oztug' ? { card: 'kids', level: 'Çocuk' }
+    : entryProfile === 'library' ? { card: 'library', level: 'Kitaplık' }
+    : {
+        card: ACTIVITY_CARD[view] ?? view,
+        level,
+        unit: view === 'dashboard' || view === 'memory' || view === 'unutmama' ? '' : activityUnit,
+      })
 
   // Giriş yapılmamış: telefonda kayıtlı oturum kontrol edilirken kısa bir
   // bekleme ekranı, ardından giriş ekranı.

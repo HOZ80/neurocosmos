@@ -16,6 +16,7 @@ import {
 import {
   type StudentData, loadStudentData, saveBookState, addReading, saveWordMark, deleteWordMark,
 } from './readerStore'
+import { useActivityPlace, activityStat, bump } from './activityStore'
 
 type Mark = 'known' | 'learning'
 const EMPTY_DATA: StudentData = { states: [], readings: [], marks: [] }
@@ -529,6 +530,17 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   const [hl, setHl] = useState<'word' | 'sent'>('word')
   const [shadow, setShadow] = useState(false)
   const [rate, setRate] = useState(1)
+
+  // Öğrenci etkinliği: bu kitapta geçen süre, açılan sayfalar, okuma ve "Dinle" sayısı, gölgeleme
+  useActivityPlace(preview ? null : { card: 'library', level: 'Kitaplık', unit: book.code, depth: 2 })
+  useEffect(() => {
+    if (preview || pos.bitti) return
+    const key = `${pos.section}-${pos.idx}`
+    activityStat('library', st => { const pg: string[] = Array.isArray(st.pages) ? st.pages : (st.pages = []); if (!pg.includes(key) && pg.length < 300) pg.push(key) })
+  }, [preview, pos.section, pos.idx, pos.bitti])
+  useEffect(() => {
+    if (!preview && shadow) activityStat('library', st => { st.shadowing = true })
+  }, [preview, shadow])
   const [showTr, setShowTr] = useState(false)
   const [trPage, setTrPage] = useState(false)
   // Sayfa düzeni artık hatırlanmaz: webde her açılışta çift sayfa başlar.
@@ -629,6 +641,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
       return { ...p, marks: status ? [...rest, { word_key: entry.key, status, first_book_code: old?.first_book_code ?? book.code }] : rest }
     })
     if (preview) return
+    if (status) activityStat('library', st => bump(st, 'marks'))
     const req = status ? saveWordMark(studentId, entry.key, status, book.code) : deleteWordMark(studentId, entry.key)
     req.catch(() => {
       setSd(p => ({ ...p, marks: prev }))
@@ -932,6 +945,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   const sentStart = (i: number) => timing.starts[i] ?? 0
   const listenOne = (i: number) => {
     if (!canPlayNow()) return
+    if (!preview) activityStat('library', st => bump(st, 'listens'))
     seekTo(sentStart(i) + 0.01, true)
     setOnceBoth(i)
   }
@@ -1049,6 +1063,7 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
     if (!preview) {
       try { await addReading(studentId, book.code, pos.section) }
       catch { cancelFlip(); notify('Okuma kaydedilemedi. İnternetini kontrol edip tekrar dene.'); return }
+      activityStat('library', st => bump(st, 'reads'))
     }
     setSd(p => ({ ...p, readings: preview ? p.readings : [...p.readings, { book_code: book.code, section_no: pos.section }] }))
     justDone.current.add(pos.section)
@@ -1062,6 +1077,14 @@ function BookReader({ book, content, account, preview, sd, setSd, onClose, onHom
   }
 
   const stopQSpeak = () => { stopSpeech(); setQSpeak(null) }
+  // Öğrenci etkinliği: bölüm sonu soru sonucu (cevapların kendisi kaydedilmez)
+  const quizLogged = useRef<unknown>(null)
+  useEffect(() => {
+    if (preview || !quiz || !quiz.done || quizLogged.current === quiz) return
+    quizLogged.current = quiz
+    const ok = quiz.res.filter(Boolean).length
+    activityStat('library', st => { bump(st, 'quiz_total', sectionQs.length); bump(st, 'quiz_ok', ok) })
+  }, [preview, quiz, sectionQs.length])
   const pickAnswer = (o: string) => {
     stopQSpeak()
     setQuiz(p => {
