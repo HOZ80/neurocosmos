@@ -2329,6 +2329,40 @@ function writeAllIndexToUrl(index: number) {
   } catch {}
 }
 
+// Soru kartları diktesi (Dictation All) için ipucu: ünite diktesindeki gibi
+// doğru yazılan kısım + bir ipucu kelimesi + kalanı gizli. Karşılaştırma,
+// cevap kontrolüyle aynı kurala göre yapılır (normalizeAnswer: büyük-küçük
+// harf, noktalama ve kısaltmalar – "I'm" = "I am" – fark etmez); ekranda
+// ise cevabın kendi yazımı görünür. Birden çok kabul edilen cevap varsa
+// öğrencinin yazdığına en uzun baştan uyan seçilir.
+function answerHint(expected: string, typedText: string): { allOk: boolean; parts: HintPart[]; extra: boolean; target: string } {
+  const typedTok = normalizeAnswer(typedText).split(' ').filter(Boolean)
+  let best: { allOk: boolean; parts: HintPart[]; extra: boolean; target: string } | null = null
+  let bestK = -1
+  for (const alt of splitAcceptedAnswers(expected)) {
+    const words = alt.trim().split(/\s+/).filter(Boolean)
+    const tok: { t: string; w: number }[] = []
+    words.forEach((w, wi) => { for (const t of normalizeAnswer(w).split(' ').filter(Boolean)) tok.push({ t, w: wi }) })
+    let k = 0
+    while (k < tok.length && k < typedTok.length && tok[k].t === typedTok[k]) k++
+    const allOk = k === tok.length && typedTok.length === tok.length
+    // k simgesinin hepsini kapsayan kelimeler "doğru"
+    let okWords = 0
+    for (let wi = 0; wi < words.length; wi++) {
+      const last = tok.reduce((m, x, i) => (x.w === wi ? i : m), -1)
+      if (last >= 0 && last < k) okWords = wi + 1; else if (last >= 0) break; else okWords = wi + 1
+    }
+    const parts: HintPart[] = []
+    for (let i = 0; i < okWords; i++) parts.push({ word: words[i], kind: 'ok' })
+    if (okWords < words.length) parts.push({ word: words[okWords], kind: 'hint' })
+    for (let i = okWords + 1; i < words.length; i++) parts.push({ word: '*'.repeat(words[i].length), kind: 'mask' })
+    const res = { allOk, parts, extra: !allOk && okWords >= words.length, target: alt }
+    if (allOk) return res
+    if (k > bestK) { bestK = k; best = res }
+  }
+  return best ?? { allOk: false, parts: [], extra: false, target: expected }
+}
+
 function DictationAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const items = useMemo(
     () => (unit.questionChain ?? []).filter(q => q.questionAudioUrl && q.answerEn),
@@ -2336,9 +2370,13 @@ function DictationAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
   )
   const [index, setIndex] = useState<number>(readAllIndexFromUrl)
   const [typed, setTyped] = useState('')
+  // checked: son "Kontrol Et"in sonucu ekranda (öğrenci yazmaya başlayınca kalkar, ünite diktesindeki gibi)
   const [checked, setChecked] = useState(false)
-  const [correct, setCorrect] = useState(false)
-  const [score, setScore] = useState(0)
+  const [solved, setSolved] = useState(false)       // bu soru doğru tamamlandı
+  const [tried, setTried] = useState(false)         // bu soruda ilk deneme yapıldı
+  const [wrongFirst, setWrongFirst] = useState(false) // ilk denemede yanlıştı
+  const [revealed, setRevealed] = useState(false)   // "Cevabı göster"e basıldı
+  const [score, setScore] = useState(0)             // yalnızca ilk denemede doğrular
   const [finished, setFinished] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -2346,15 +2384,22 @@ function DictationAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
   // yerde kalman için.
   useEffect(() => { writeAllIndexToUrl(index) }, [index])
 
+  function resetQuestion() {
+    setTyped('')
+    setChecked(false)
+    setSolved(false)
+    setTried(false)
+    setWrongFirst(false)
+    setRevealed(false)
+  }
+
   // Ünite gerçekten değiştiğinde (aynı ekran açık kalıp arkadan ünite
   // değişse bile) konumu sıfırla — geri/ileri ile başka ünitenin
   // Dictation All'ına geçildiğinde önceki ünitenin konumunda kalmasın.
   const unitKey = unit.unitId ?? `${unit.title}::${unit.id}`
   useEffect(() => {
     setIndex(0)
-    setTyped('')
-    setChecked(false)
-    setCorrect(false)
+    resetQuestion()
     setScore(0)
     setFinished(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2366,14 +2411,24 @@ function DictationAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
   // kayıtlı konum tekrar geçerli olur.
   const safeIndex = items.length > 0 ? Math.min(index, items.length - 1) : 0
   const current = items[safeIndex]
+  const hint = checked && !solved && current ? answerHint(current.answerEn || '', typed) : null
 
   function check() {
-    if (!current || checked || !typed.trim()) return
-    const acceptedAnswers = splitAcceptedAnswers(current.answerEn || '')
-    const ok = acceptedAnswers.some(a => normalizeAnswer(typed) === normalizeAnswer(a))
-    setCorrect(ok)
+    if (!current || solved || !typed.trim()) return
+    const res = answerHint(current.answerEn || '', typed)
+    const ok = res.allOk
     setChecked(true)
-    if (ok) setScore(s => s + 1)
+    if (!tried) {
+      setTried(true)
+      if (ok) setScore(s => s + 1)
+      else setWrongFirst(true)
+      activityStat('dictationAll', st => { bump(st, 'written'); if (ok) bump(st, 'first') })
+      if (!ok) activityMiss('dictationAll', res.target, typed)
+    } else if (ok && wrongFirst) {
+      activityStat('dictationAll', st => bump(st, 'hinted'))
+    }
+    if (ok) setSolved(true)
+    else setTimeout(() => inputRef.current?.focus(), 0)
   }
 
   function next() {
@@ -2382,20 +2437,26 @@ function DictationAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
       return
     }
     setIndex(i => i + 1)
-    setTyped('')
-    setChecked(false)
-    setCorrect(false)
+    resetQuestion()
     setTimeout(() => inputRef.current?.focus(), 0)
   }
 
   function restart() {
     setIndex(0)
-    setTyped('')
-    setChecked(false)
-    setCorrect(false)
+    resetQuestion()
     setScore(0)
     setFinished(false)
     setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
+  const showWrong = checked && !solved
+  const canCheck = !solved && !!typed.trim()
+  const isLast = index + 1 >= items.length
+  const ghostBtn: React.CSSProperties = {
+    flex: 1, padding: '10px', borderRadius: '10px',
+    border: '1px solid var(--border)', background: 'transparent',
+    color: 'var(--muted-foreground)', fontSize: '13px', fontWeight: 500,
+    cursor: 'pointer', transition: 'all 0.15s',
   }
 
   return (
@@ -2420,6 +2481,7 @@ function DictationAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
           <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '40px', fontWeight: 800, color: score === items.length ? 'var(--success)' : 'var(--foreground)' }}>
             {score} / {items.length}
           </p>
+          <p style={{ margin: '-8px 0 0', fontSize: '13px', color: 'var(--muted-foreground)' }}>ilk denemede doğru</p>
           <button onClick={restart} style={{
             padding: '10px 24px', borderRadius: '10px', border: 'none',
             background: MODULE_META.dictation.color, color: '#fff', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
@@ -2441,44 +2503,73 @@ function DictationAllView({ unit, onBack }: { unit: Unit; onBack: () => void }) 
             ref={inputRef}
             type="text"
             value={typed}
-            onChange={e => setTyped(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') { checked ? next() : check() } }}
-            disabled={checked}
+            onChange={e => { setTyped(e.target.value); setChecked(false) }}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); solved ? next() : check() } }}
+            readOnly={solved}
             placeholder="Cevabı buraya yaz…"
             style={{
               width: '100%', boxSizing: 'border-box', padding: '14px 16px', borderRadius: '12px',
-              border: `1.5px solid ${checked ? (correct ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)') : 'var(--border)'}`,
-              background: checked ? (correct ? '#ECFDF5' : '#FEF2F2') : '#fff',
+              border: `1.5px solid ${solved ? 'rgba(16,185,129,0.5)' : showWrong ? 'rgba(239,68,68,0.5)' : 'var(--border)'}`,
+              background: solved ? '#ECFDF5' : showWrong ? '#FEF2F2' : '#fff',
               fontSize: '15px', color: 'var(--foreground)', outline: 'none',
             }}
           />
 
-          {checked && (
-            <div style={{
-              padding: '14px 16px', borderRadius: '12px',
-              background: correct ? '#ECFDF5' : '#FEF2F2',
-              border: `1px solid ${correct ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
-            }}>
-              <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: correct ? '#059669' : '#DC2626' }}>
-                {correct ? 'Doğru! ✓' : 'Doğru cevap:'}
-              </p>
-              {!correct && <p style={{ margin: '4px 0 0', fontSize: '14px', color: '#991B1B' }}>{formatExpectedForDisplay(current.answerEn || '')}</p>}
+          {solved && (
+            <div style={{ padding: '14px 16px', borderRadius: '12px', background: '#ECFDF5', border: '1px solid rgba(16,185,129,0.3)' }}>
+              <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#059669' }}>{wrongFirst ? 'Doğru! ✓ Düzelttin.' : 'Doğru! ✓'}</p>
+            </div>
+          )}
+
+          {showWrong && hint && (
+            <div className="anim-slide-down" style={{ padding: '14px 16px', borderRadius: '12px', background: '#FEF2F2', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#DC2626' }}>Tam değil. Düzelt ve yeniden kontrol et.</p>
+              {hint.parts.length > 0 && (
+                <div style={{ background: '#fff', border: '1px dashed rgba(239,68,68,0.3)', borderRadius: '10px', padding: '12px 16px' }}>
+                  <p style={{ margin: '0 0 4px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#EF4444', textTransform: 'uppercase', letterSpacing: '0.1em' }}>İpucu</p>
+                  <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.6, fontFamily: 'var(--font-mono)', overflowWrap: 'anywhere' }}>
+                    {hint.parts.map((p, i) => {
+                      if (p.kind === 'ok') return <span key={i} style={{ color: '#374151' }}>{p.word} </span>
+                      if (p.kind === 'hint') return <span key={i} style={{ color: '#15803D', fontWeight: 700 }}>{p.word} </span>
+                      return <span key={i} style={{ color: 'var(--muted-foreground)' }}>{p.word} </span>
+                    })}
+                  </p>
+                  {hint.extra && <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#B91C1C' }}>Cümlenin sonunda fazladan kelime var.</p>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {revealed && !solved && (
+            <div style={{ padding: '14px 16px', borderRadius: '12px', background: '#FFFBEB', border: '1px solid rgba(245,158,11,0.3)' }}>
+              <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#B45309' }}>Doğru cevap:</p>
+              <p style={{ margin: '4px 0 0', fontSize: '14px', color: '#78350F' }}>{formatExpectedForDisplay(current.answerEn || '')}</p>
+              <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#92400E' }}>Şimdi kendin yaz ve kontrol et.</p>
             </div>
           )}
 
           <button
-            onClick={checked ? next : check}
-            disabled={!checked && !typed.trim()}
+            onClick={solved ? next : check}
+            disabled={!solved && !canCheck}
             style={{
               padding: '12px', borderRadius: '10px', border: 'none',
-              background: (!checked && !typed.trim()) ? 'var(--muted)' : MODULE_META.dictation.color,
-              color: (!checked && !typed.trim()) ? 'var(--muted-foreground)' : '#fff',
+              background: (!solved && !canCheck) ? 'var(--muted)' : MODULE_META.dictation.color,
+              color: (!solved && !canCheck) ? 'var(--muted-foreground)' : '#fff',
               fontSize: '14px', fontWeight: 600,
-              cursor: (!checked && !typed.trim()) ? 'not-allowed' : 'pointer',
+              cursor: (!solved && !canCheck) ? 'not-allowed' : 'pointer',
             }}
           >
-            {checked ? (index + 1 >= items.length ? 'Bitir' : 'Sonraki') : 'Kontrol Et'}
+            {solved ? (isLast ? 'Bitir' : 'Sonraki') : 'Kontrol Et'}
           </button>
+
+          {!solved && (
+            <div style={{ display: 'flex', gap: '10px' }}>
+              {wrongFirst && !revealed && (
+                <button onClick={() => { setRevealed(true); setTimeout(() => inputRef.current?.focus(), 0) }} style={ghostBtn}>Cevabı göster</button>
+              )}
+              <button onClick={next} style={ghostBtn}>{isLast ? 'Bitir' : 'Sonraki →'}</button>
+            </div>
+          )}
         </div>
       )}
     </div>
