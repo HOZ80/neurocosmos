@@ -442,6 +442,7 @@ const DIALOGUES_UNIT: Unit = {
   hidePracticeSentence: true,
   dialogueChain: [
     { title: 'Lunchroom Talk', description: 'Four short scenes from the school kitchen', url: '/lunchroom-talk.html' },
+    { title: 'Lunchroom Talk 2', description: 'Four more scenes from the school kitchen', url: '/lunchroom-talk-2.html' },
   ],
 }
 function withDialogues(lv: Level, list: Unit[]): Unit[] {
