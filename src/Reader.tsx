@@ -244,11 +244,14 @@ function sortedBookPages(content: Content, code: string): PageRow[] {
 // ═══════════════════════════════════════════════════════════════════════════
 // Ana bileşen: liste / okuma / içerik kontrolü arasında gezinir
 // ═══════════════════════════════════════════════════════════════════════════
-export default function ChildReaderApp({ account, childName, group, onExit }: {
+export default function ChildReaderApp({ account, childName, group, onExit, initialBook }: {
   account: Account
   childName: string
   group: string
   onExit: () => void
+  // Çocuk panelindeki Hikâye kartı: okuyucu doğrudan bu kitapla açılır; kitaptan
+  // çıkınca liste yerine konuya (onExit) dönülür.
+  initialBook?: string
 }) {
   const preview = account.role === 'teacher'
   // Kitap listesi bekletmeden açılır: bu cihazdaki son kopya hemen gösterilir, tablo
@@ -258,7 +261,7 @@ export default function ChildReaderApp({ account, childName, group, onExit }: {
   const [sd, setSd] = useState<StudentData>(EMPTY_DATA)
   const [sdReady, setSdReady] = useState(false)
   const [error, setError] = useState('')
-  const [screen, setScreen] = useState<{ kind: 'list' } | { kind: 'book'; code: string } | { kind: 'check' }>({ kind: 'list' })
+  const [screen, setScreen] = useState<{ kind: 'list' } | { kind: 'book'; code: string } | { kind: 'check' }>(() => (initialBook ? { kind: 'book', code: initialBook.toUpperCase() } : { kind: 'list' }))
   const screenRef = useRef(screen)
   screenRef.current = screen
   // Kitap açıkken gelen yeni içerik bekletilir; okuma sırasında sayfa yerinden oynamaz.
@@ -294,10 +297,11 @@ export default function ChildReaderApp({ account, childName, group, onExit }: {
     setScreen(sc)
   }
   const backToList = () => {
+    if (initialBook) { goHome(); return }
     if (depth.current >= 2) { try { window.history.back(); return } catch {} }
     setScreen({ kind: 'list' })
   }
-  const goHome = () => {
+  function goHome() {
     const n = depth.current
     if (n > 0) {
       leaving.current = true
@@ -336,6 +340,15 @@ export default function ChildReaderApp({ account, childName, group, onExit }: {
       .sort((a, b) => a.order - b.order || a.code.localeCompare(b.code))
   }, [content, group])
 
+  // Hikâye kartından açılan kitap okunabilir mi: listedeki kuralla aynı (öğretmen
+  // önizlemesinde hepsi açık; grubun ilk kitabı açık; diğerleri öğretmen açınca)
+  const storyOpen = (c: Content, code: string) => {
+    const b = c.books.find(x => x.code === code)
+    if (!b || !c.pages.some(p => p.book === code)) return false
+    if (preview) return true
+    if (books[0]?.code === code) return true
+    return !!sd.states.find(x => x.book_code === code)?.unlocked
+  }
   const ready = !!content && sdReady
   let body: React.ReactNode
   if (error && !ready) {
@@ -347,6 +360,19 @@ export default function ChildReaderApp({ account, childName, group, onExit }: {
     )
   } else if (!ready) {
     body = <p className="rd-muted" style={{ padding: 20 }}>Kitaplar yükleniyor…</p>
+  } else if (initialBook && content && screen.kind === 'book' && !storyOpen(content, screen.code)) {
+    // Hikâye kartından gelindi ama kitap yok, sayfası yok ya da henüz açılmadı
+    const exists = content.books.some(b => b.code === screen.code)
+    return (
+      <div className="rd">
+        <style>{READER_CSS}</style>
+        <div style={{ maxWidth: 480, margin: '0 auto', padding: '60px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, textAlign: 'center' }}>
+          <div style={{ fontSize: 64 }} aria-hidden="true">{exists ? '🔒' : '📖'}</div>
+          <h1 style={{ margin: 0, fontFamily: 'var(--head)', fontSize: 28, fontWeight: 800 }}>{exists ? 'Bu hikâye yakında açılacak' : 'Bu hikâye henüz hazır değil'}</h1>
+          <button className="rd-btn pri" onClick={goHome}>Konuya dön</button>
+        </div>
+      </div>
+    )
   } else if (content && screen.kind === 'book' && content.books.some(b => b.code === screen.code)) {
     const book = content.books.find(b => b.code === screen.code) as Book
     return (

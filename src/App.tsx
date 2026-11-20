@@ -7,7 +7,7 @@ import { UnitMemorySection } from './memoryShared'
 import type { MemoryItem } from './memoryShared'
 import { fetchBrain, listBrainPeople, addBrainItems } from './brainStore'
 import type { BrainPerson } from './brainStore'
-import { useUnutmama, UnutmamaView, UnutmamaStrip, UnutmamaChildCard, UNUTMAMA_STUDENT_NAME } from './UnutmamaView'
+import { useUnutmama, UnutmamaView, UnutmamaStrip, UNUTMAMA_STUDENT_NAME } from './UnutmamaView'
 import {
   loadDrillProgressLocal, saveDrillProgressLocal, loadDrillTopicsLocal, saveDrillTopicsLocal,
   migrateLegacyDrill, syncDrillUnit, flushDrillPending, adoptNumericDrillProgress, mergeNewerDrill,
@@ -18,13 +18,15 @@ import LoginScreen from './LoginScreen'
 import InstallButton from './InstallButton'
 import StudentAdmin from './StudentAdmin'
 import ChildReaderApp from './Reader'
-import { useChildBrain, ChildBrainCard, ChildBrainView } from './ChildBrain'
+import { useChildBrain, ChildBrainView } from './ChildBrain'
 import KitaplikReport from './KitaplikReport'
 import { loadContent } from './readerData'
 import { loadCachedThenFresh, readCachedText, fetchFreshText, writeCachedText } from './sheetCache'
 import LiveTeacher, { clearLiveTeacherNav } from './LiveTeacher'
 import { useLiveStatus, LiveBanner, LiveOnlyHome, LiveStudentScreen } from './LiveStudent'
 import { useActivityTracker, useActivityPlace, activityStat, activityMiss, bump } from './activityStore'
+import { KidsArea, normTr, parseKidsDate, kidsColor } from './KidsTopics'
+import type { KidsTopic, KidsDeps, KDrillItem, KState } from './KidsTopics'
 
 // Hafıza beyni (three.js içerir) — sadece Memory sayfası açılınca yüklenir.
 const MemoryBrain = lazy(() => import('./MemoryBrain'))
@@ -3409,6 +3411,12 @@ interface UnitRow {
   shadowing_locked: boolean
   drill_locked: boolean
   scene_locked: boolean
+  // Çocuk paneli konuları (seviye "Çocuk"; bkz. KidsTopics.tsx). Diğer seviyelerde boş.
+  cocuk: string
+  tarih: string
+  kitap_kodu: string
+  simge: string
+  renk: string
 }
 
 interface UnitsSheetData {
@@ -3480,6 +3488,11 @@ function parseUnitsSheet(rows: Record<string, string>[]): UnitsSheetData {
         shadowing_locked: isLockedCell(r.shadowing_locked),
         drill_locked: isLockedCell(r.drill_locked),
         scene_locked: isLockedCell(r.scene_locked),
+        cocuk: r.cocuk?.trim() || '',
+        tarih: r.tarih?.trim() || '',
+        kitap_kodu: r.kitap_kodu?.trim() || '',
+        simge: r.simge?.trim() || '',
+        renk: r.renk?.trim() || '',
       })
     }
   })
@@ -4680,12 +4693,10 @@ function DrillView({ unit, drillKey, onBack, sheetTopics, entryProfile }: { unit
 }
 
 // ─── Çocuk Paneli (ChildDashboard) ─────────────────────────────────────────────
-// Ömür ve Öztuğ için ayrı, sade panel. Level/dashboard/modül makinesinden
-// tamamen bağımsız — kendi kartları, kendi (light) teması var.
-// ŞİMDİLİK İSKELET: kartlar sabit/örnek içerik. Bir sonraki turda "Yeni" ve
-// "Konular" bölümleri Sheets'ten beslenecek, dinleme kartları gerçek <audio>
-// ile arka planda çalabilecek şekilde bağlanacak. Şu an hiçbir kart tıklanınca
-// bir şey açmıyor — bilerek böyle, içerik gelene kadar.
+// Ömür ve Öztuğ için ayrı panel, kendi çocuk temasıyla. Level/dashboard/modül
+// makinesinden bağımsız. Ana ekran, konular (Units'te seviyesi "Çocuk" olan
+// satırlar), konunun içindeki kartlar ve Hikâye KidsTopics.tsx'te; burada
+// yalnızca My Brain ve Memory tam sayfaları var.
 // Çocuk panelinin My Brain'i: veritabanındaki beyin. Çocuk kendi beynini okur; öğretmen
 // paneli önizlerken bu paneli kullanan öğrencinin (alanı açık olan hesap) beyni gösterilir.
 async function loadChildBrain(accountId: string, childArea: AreaId, asTeacher: boolean): Promise<MemoryItem[]> {
@@ -4694,7 +4705,11 @@ async function loadChildBrain(accountId: string, childArea: AreaId, asTeacher: b
   return owner ? fetchBrain(owner.id) : []
 }
 
-function ChildDashboard({ childName, childArea, unitTitles, onExit, accountId, memoryEnabled }: { childName: string; childArea: AreaId; unitTitles: Record<string, string>; onExit: () => void; accountId: string; memoryEnabled: boolean }) {
+// Çocuk ekranlarının sitedeki ortak parçaları kullanması için (ipucu, cevap kontrolü, yazı biçimi)
+const KIDS_DEPS: KidsDeps = { renderInline: renderInlineMarkup, answerHint, showExpected: formatExpectedForDisplay }
+
+function ChildDashboard({ childName, childArea, unitTitles, onExit, account, memoryEnabled, topics }: { childName: string; childArea: 'child_omur' | 'child_oztug'; unitTitles: Record<string, string>; onExit: () => void; account: Account; memoryEnabled: boolean; topics: KidsTopic[] }) {
+  const accountId = account.id
   // My Brain: veritabanından (ChildBrain.tsx). memoryEnabled kapalıysa öğretmen önizliyor.
   const brain = useChildBrain(() => loadChildBrain(accountId, childArea, !memoryEnabled))
   const [showBrain, setShowBrain] = useState(false)
@@ -4704,14 +4719,15 @@ function ChildDashboard({ childName, childArea, unitTitles, onExit, accountId, m
   const [showMemory, setShowMemory] = useState(false)
   const panelScroll = useRef(0)
   useActivityPlace(showBrain ? { card: 'brain', level: 'Çocuk', depth: 2 } : showMemory ? { card: 'memory', level: 'Çocuk', depth: 2 } : null)
+  const backToPanel = () => requestAnimationFrame(() => { window.scrollTo(0, panelScroll.current); requestAnimationFrame(() => window.scrollTo(0, panelScroll.current)) })
   if (showBrain) {
-    return <ChildBrainView childName={childName} data={brain.data} unitTitles={unitTitles} onBack={() => { setShowBrain(false); window.scrollTo(0, 0) }} />
+    return <ChildBrainView childName={childName} data={brain.data} unitTitles={unitTitles} onBack={() => { setShowBrain(false); backToPanel() }} />
   }
   if (showMemory) {
     return (
       <div style={{ minHeight: '100vh', background: '#F8FAFC', padding: '18px 12px 40px', fontFamily: "'Inter', system-ui, sans-serif" }}>
         <div style={{ maxWidth: '620px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <button onClick={() => { setShowMemory(false); requestAnimationFrame(() => window.scrollTo(0, panelScroll.current)) }} style={{
+          <button onClick={() => { setShowMemory(false); backToPanel() }} style={{
             alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px',
             background: '#FFFFFF', border: '1px solid rgba(15,23,42,0.12)', borderRadius: '10px',
             padding: '8px 14px', fontSize: '14px', fontWeight: 600, color: '#0F172A', cursor: 'pointer',
@@ -4725,105 +4741,21 @@ function ChildDashboard({ childName, childArea, unitTitles, onExit, accountId, m
     )
   }
   return (
-    <div style={{
-      minHeight: '100vh', background: '#F8FAFC', padding: '24px 18px 40px',
-      fontFamily: "'Inter', system-ui, sans-serif",
-    }}>
-      <div style={{ maxWidth: '480px', margin: '0 auto' }}>
-
-        {/* Üst şerit: isimle karşılama + çıkış */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '22px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-              width: '38px', height: '38px', borderRadius: '50%', background: '#4F46E5',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#fff', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '15px',
-            }}>{childName[0]}</div>
-            <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '21px', fontWeight: 700, color: '#0F172A' }}>
-              Merhaba {childName}
-            </p>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <InstallButton variant="round" bg="#EEF2FF" fg="#4F46E5" style={{ width: '34px', height: '34px' }} />
-            <button onClick={onExit} style={{
-              background: 'var(--secondary)', border: '1px solid var(--border)', borderRadius: '7px',
-              padding: '6px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--foreground)', cursor: 'pointer',
-            }}>Çıkış</button>
-          </div>
-        </div>
-
-        {/* My Brain */}
-        <ChildBrainCard data={brain.data} onOpen={() => { brain.reload(); setShowBrain(true); window.scrollTo(0, 0) }} />
-
-        {/* Memory (Unutmama) — yalnızca atanmış kart varsa */}
-        {memoryEnabled && unut.status === 'ok' && unut.cards.length > 0 && (
-          <UnutmamaChildCard unut={unut} onOpen={() => { panelScroll.current = window.scrollY; setShowMemory(true); window.scrollTo(0, 0) }} />
-        )}
-
-        {/* Yeni */}
-        <p style={{
-          margin: '0 0 10px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#64748B',
-          letterSpacing: '0.08em', textTransform: 'uppercase',
-        }}>Yeni</p>
-
-        <button style={{
-          width: '100%', textAlign: 'left', background: '#FFFFFF', border: '1.5px solid #B4530933',
-          borderRadius: '16px', padding: '16px', marginBottom: '10px',
-          boxShadow: '0 1px 5px rgba(15,23,42,0.06)', cursor: 'pointer',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '52px', height: '52px', borderRadius: '12px', background: '#FEF3C7',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '24px',
-            }}>🎬</div>
-            <div>
-              <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: '#0F172A' }}>
-                Bugünün mesajı
-              </p>
-              <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748B' }}>İzle · içerik yakında eklenecek</p>
-            </div>
-          </div>
-        </button>
-
-        <button style={{
-          width: '100%', textAlign: 'left', background: '#FFFFFF', border: '1.5px solid #0EA5E933',
-          borderRadius: '16px', padding: '16px', marginBottom: '22px',
-          boxShadow: '0 1px 5px rgba(15,23,42,0.06)', cursor: 'pointer',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '52px', height: '52px', borderRadius: '12px', background: '#E0F2FE',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '24px',
-            }}>🎧</div>
-            <div>
-              <p style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: '#0F172A' }}>
-                Dinleme parçası
-              </p>
-              <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748B' }}>Dinle · içerik yakında eklenecek</p>
-            </div>
-          </div>
-        </button>
-
-        {/* Konular */}
-        <p style={{
-          margin: '0 0 10px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#64748B',
-          letterSpacing: '0.08em', textTransform: 'uppercase',
-        }}>Konular</p>
-
-        <button style={{
-          width: '100%', textAlign: 'left', background: '#FFFFFF', border: '1px solid rgba(15,23,42,0.09)',
-          borderRadius: '16px', padding: '18px 16px', marginBottom: '10px',
-          boxShadow: '0 1px 5px rgba(15,23,42,0.06)', display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', cursor: 'pointer',
-        }}>
-          <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: '#0F172A' }}>
-            (ilk konu buraya gelecek)
-          </span>
-          <span style={{ color: '#64748B', fontSize: '18px' }}>→</span>
-        </button>
-
-      </div>
-    </div>
+    <KidsArea
+      childName={childName}
+      childArea={childArea}
+      account={account}
+      topics={topics}
+      deps={KIDS_DEPS}
+      brainItems={brain.data.items}
+      brainStatus={brain.data.status}
+      unut={unut}
+      showMemory={memoryEnabled && unut.status === 'ok' && unut.cards.length > 0}
+      onBrain={() => { panelScroll.current = window.scrollY; brain.reload(); setShowBrain(true); window.scrollTo(0, 0) }}
+      onMemory={() => { panelScroll.current = window.scrollY; setShowMemory(true); window.scrollTo(0, 0) }}
+      onExit={onExit}
+      homeScroll={panelScroll}
+    />
   )
 }
 
@@ -5371,6 +5303,69 @@ export default function App() {
     return sheetUnits
   }
 
+  // ── Çocuk paneli konuları (bkz. KidsTopics.tsx) ──
+  // Units tablosunda seviyesi "Çocuk" olan satırlar, "cocuk" sütununa göre o çocuğa
+  // görünenler, tablodaki sırayla. İçerik A1/A2 ile aynı tablolardan: Grammar
+  // tablosu (seviye Çocuk + ünite kimliği), Drill tablosu (ünite kimliği), Units'teki
+  // ses/altyazı/video sütunları ve *_locked kart kilitleri.
+  function buildKidsTopics(area: 'child_omur' | 'child_oztug'): KidsTopic[] {
+    if (!unitsSheetData) return []
+    const who = area === 'child_omur' ? 'omur' : 'oztug'
+    const rows = Object.entries(unitsSheetData.unitsByLevel)
+      .filter(([lv]) => normTr(lv) === 'cocuk')
+      .flatMap(([, r]) => r)
+      .filter(r => { const c = normTr(r.cocuk); return !c || c.includes('ikisi') || c.includes('hepsi') || c.includes(who) })
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+    const DAY = 86400000
+    const STAGE_TEXT: Record<'substitution' | 'transformation' | 'expansion' | 'cue_response', string> = {
+      substitution: 'Örnekteki gibi yaz', transformation: 'Cümleyi değiştirerek yaz', expansion: 'Cümleyi büyüterek yaz', cue_response: 'Cevabını yaz',
+    }
+    const state = (locked: boolean, has: boolean, loading = false): KState => (locked ? 'locked' : loading ? 'loading' : has ? 'ok' : 'empty')
+    return rows.map((r, i) => {
+      const id = r.unit_id
+      const gKey = grammarSheetData ? Object.keys(grammarSheetData).find(k => k.endsWith('-' + id) && normTr(k.slice(0, -(id.length + 1))) === 'cocuk') : undefined
+      const slots = (gKey && grammarSheetData ? grammarSheetData[gKey] : []).filter(sl => sl.blocks.length > 0).map(sl => ({ slot: sl.slot, label: sl.label, blocks: sl.blocks }))
+      const dSegs = dictationSrtByUnit[id]
+      const shSegs = shadowingSrtByUnit[id]
+      const clips = splitClipList(r.shadowing_clips)
+      const clipTexts = splitClipTexts(r.shadowing_texts)
+      const clean = (a: DictationSegment[] | undefined) => (a ?? []).filter(x => x.text.trim() && x.end > x.start)
+      const drillItems: KDrillItem[] = []
+      for (const t of drillSheetData?.[id] ?? []) {
+        for (const stage of ['substitution', 'transformation', 'expansion', 'cue_response'] as const) {
+          let model: string | undefined
+          for (const it of t.stages[stage]) {
+            if (it.isMarker) { model = it.modelOverride; continue }
+            if (!it.expected) continue
+            drillItems.push({ topicId: t.id, topicLabel: t.label, instruction: t.hints?.[stage] || STAGE_TEXT[stage], model, cue: it.cue, expected: it.expected })
+          }
+        }
+      }
+      const date = parseKidsDate(r.tarih)
+      const dictWanted = !!r.dictation_audio_url && !!r.dictation_srt_url
+      const shWanted = clips.length === 0 && !!r.shadowing_audio_url && !!r.shadowing_srt_url
+      return {
+        id,
+        index: i,
+        title: r.unit_title || id,
+        subtitle: r.unit_topic,
+        icon: r.simge || '⭐',
+        color: kidsColor(r.renk, i),
+        isNew: date !== null && date <= today.getTime() && today.getTime() - date < 14 * DAY,
+        date,
+        locked: r.unit_locked === 'true',
+        bookCode: r.kitap_kodu.toUpperCase(),
+        grammar: { state: state(r.grammar_locked, slots.length > 0), slots },
+        listen: { state: state(r.audio_locked, !!r.audio_video_url), url: r.audio_video_url, segments: clean(mediaSrtByUnit[id]) },
+        dictation: { state: state(r.dictation_locked, clean(dSegs).length > 0, dictWanted && dSegs === undefined), url: r.dictation_audio_url, segments: clean(dSegs) },
+        shadowing: clips.length > 0
+          ? { state: state(r.shadowing_locked, true), url: '', segments: clips.map((_, k) => ({ start: 0, end: 0, text: clipTexts[k] ?? '' })), clips }
+          : { state: state(r.shadowing_locked, clean(shSegs).length > 0, shWanted && shSegs === undefined), url: r.shadowing_audio_url, segments: clean(shSegs), clips: [] },
+        drill: { state: state(r.drill_locked, drillItems.length > 0), items: drillItems },
+      }
+    })
+  }
+
   const units = (() => {
     const sheetLevelUnits = unitsSheetData?.unitsByLevel[level]
     if (unitsSheetData && sheetLevelUnits && sheetLevelUnits.length > 0) {
@@ -5521,8 +5516,9 @@ export default function App() {
           childArea={entryProfile}
           unitTitles={memoryUnitTitles}
           onExit={handleExitToEntry}
-          accountId={account.id}
+          account={account}
           memoryEnabled={!isTeacher}
+          topics={buildKidsTopics(entryProfile)}
         />
         {liveBanner}
       </>
