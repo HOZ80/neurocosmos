@@ -323,6 +323,7 @@ function toPayload(s: Sess) {
 }
 
 export async function flushActivity(keepalive = false) {
+  if (uid) void flushSpeech(keepalive)
   if (!uid || sending) return
   const who = uid
   const pend = readPending()
@@ -375,3 +376,72 @@ export function activityMiss(kind: string, expected: string, typed: string) {
 }
 
 export function bump(s: Record<string, any>, k: string, n = 1) { s[k] = (Number(s[k]) || 0) + n }
+
+// ── Konuşma cevapları ────────────────────────────────────────────────────────
+// Konuşması açık bir alıştırma yerinde verilen her cevap (sesle ya da yazıyla)
+// tek satır olarak speech_answer_save işleviyle kaydedilir. Ses saklanmaz;
+// yalnızca tanıyıcının duyduğu yazı (raw_text) ve öğrencinin onayladığı ya da
+// düzelttiği yazı (confirmed_text). İnternet yoksa cihazda bekler.
+// Yalnızca öğrenci hesabında çalışır (öğretmen ve önizlemeler kaydedilmez).
+export interface SpeechAnswer {
+  question_id: string
+  question_text: string
+  question_type: 'free' | 'fixed' | 'critical'
+  raw_text: string
+  confirmed_text: string
+  input_mode: 'voice' | 'text'
+  result: 'correct' | 'wrong' | ''
+  unit?: string
+}
+interface SpeechPending extends SpeechAnswer { id: string; unit: string }
+
+const speechKey = (u: string) => `nc_speech_pending_${u}`
+let speechSending = false
+
+export function activitySpeech(a: SpeechAnswer) {
+  if (!uid) return
+  onInteract()
+  const p = lsGet<SpeechPending[]>(speechKey(uid), [])
+  const list = Array.isArray(p) ? p : []
+  list.push({
+    ...a,
+    id: uuid(),
+    unit: (a.unit ?? currentPlace().unit ?? '').slice(0, 40),
+    question_id: a.question_id.slice(0, 80),
+    question_text: a.question_text.slice(0, 500),
+    raw_text: a.raw_text.slice(0, 1000),
+    confirmed_text: a.confirmed_text.slice(0, 1000),
+  })
+  lsSet(speechKey(uid), list.slice(-200))
+  void flushSpeech()
+}
+
+async function flushSpeech(keepalive = false) {
+  if (!uid || speechSending) return
+  const who = uid
+  const list = lsGet<SpeechPending[]>(speechKey(who), [])
+  if (!Array.isArray(list) || !list.length) return
+  speechSending = true
+  const sent: string[] = []
+  try {
+    for (const it of list.slice(0, 30)) {
+      try {
+        await rest('rpc/speech_answer_save', { method: 'POST', body: JSON.stringify({ p: it }), keepalive })
+        sent.push(it.id)
+      } catch (e) {
+        // Veritabanının kesin reddettiği satır (bozuk veri) kuyruğu tıkamasın;
+        // bağlantı, oturum ve yoğunluk hatalarında sonra yeniden denenir.
+        const m = /kayıt hatası (\d{3})/.exec(String((e as Error)?.message || ''))
+        const code = m ? Number(m[1]) : 0
+        if (code >= 400 && code < 500 && code !== 401 && code !== 403 && code !== 408 && code !== 429) { sent.push(it.id); continue }
+        break
+      }
+    }
+  } finally {
+    speechSending = false
+    if (sent.length && uid === who) {
+      const now = lsGet<SpeechPending[]>(speechKey(who), [])
+      lsSet(speechKey(who), (Array.isArray(now) ? now : []).filter(x => !sent.includes(x.id)))
+    }
+  }
+}

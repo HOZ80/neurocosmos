@@ -6,6 +6,7 @@ import { sb, shortName } from './liveShared'
 const MemoryCardsAdmin = lazy(() => import('./MemoryCardsAdmin'))
 const StudentLearning = lazy(() => import('./StudentLearning'))
 const StudentActivity = lazy(() => import('./StudentActivity'))
+const SpeechTestPage = lazy(() => import('./speechInput').then(m => ({ default: m.SpeechTestPage })))
 
 // ─── Öğretmen paneli: Öğrenciler ──────────────────────────────────────────────
 // Öğrenci ekle, alan aç/kapat, şifre değiştir, pasife al / yeniden aç; öğrencinin
@@ -492,6 +493,7 @@ export default function StudentAdmin({ onClose, unitTitles = {}, drillLabels = {
   const [showCards, setShowCards] = useState(false)
   const [learningId, setLearningId] = useState<string | null>(null)
   const [showActivity, setShowActivity] = useState(false)
+  const [showSpeechTest, setShowSpeechTest] = useState(false)
   // Öğrenme sayfası nereden açıldı: Öğrenciler listesi (Beyin sekmesi) ya da Öğrenci etkinliği (Etkinlik sekmesi)
   const [learningFrom, setLearningFrom] = useState<'list' | 'activity'>('list')
   const listScroll = useRef(0)
@@ -516,8 +518,10 @@ export default function StudentAdmin({ onClose, unitTitles = {}, drillLabels = {
   }
   function openActivity() { listScroll.current = window.scrollY; setShowActivity(true); window.scrollTo(0, 0) }
   function closeActivity() { setShowActivity(false); requestAnimationFrame(() => window.scrollTo(0, listScroll.current)) }
+  function openSpeechTest() { listScroll.current = window.scrollY; setShowSpeechTest(true); window.scrollTo(0, 0) }
+  function closeSpeechTest() { setShowSpeechTest(false); requestAnimationFrame(() => window.scrollTo(0, listScroll.current)) }
   const learning = learningId ? students?.find(x => x.id === learningId) ?? null : null
-  const hidden = showCards || !!learning || showActivity
+  const hidden = showCards || !!learning || showActivity || showSpeechTest
 
   return (
     <>
@@ -535,6 +539,11 @@ export default function StudentAdmin({ onClose, unitTitles = {}, drillLabels = {
           drillLabels={drillLabels}
           initialTab={learningFrom === 'activity' ? 'activity' : 'brain'}
         />
+      </Suspense>
+    )}
+    {showSpeechTest && (
+      <Suspense fallback={<p style={{ padding: '24px', color: 'var(--muted-foreground)', fontSize: '14px' }}>Yükleniyor…</p>}>
+        <SpeechTestPage onBack={closeSpeechTest} />
       </Suspense>
     )}
     {showActivity && (
@@ -586,13 +595,25 @@ export default function StudentAdmin({ onClose, unitTitles = {}, drillLabels = {
 
         <button onClick={openActivity} disabled={!students} style={{
           ...card, width: '100%', display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px',
-          marginBottom: '16px', textAlign: 'left', cursor: students ? 'pointer' : 'default', fontFamily: 'inherit',
+          marginBottom: '12px', textAlign: 'left', cursor: students ? 'pointer' : 'default', fontFamily: 'inherit',
           border: '1.5px solid #6366F155', opacity: students ? 1 : 0.6, color: 'inherit',
         }}>
           <span aria-hidden style={{ width: '40px', height: '40px', borderRadius: '10px', flexShrink: 0, display: 'grid', placeItems: 'center', background: '#EEF2FF', fontSize: '19px' }}>📈</span>
           <span style={{ flex: 1, minWidth: 0 }}>
             <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: 'var(--foreground)' }}>Öğrenci etkinliği</span>
             <span style={{ display: 'block', fontSize: '13px', color: 'var(--muted-foreground)', marginTop: '2px' }}>Kim ne kadar çalıştı, son girişler, kim bir süredir girmedi</span>
+          </span>
+          <span aria-hidden style={{ color: 'var(--muted-foreground)', fontSize: '18px' }}>›</span>
+        </button>
+
+        <button onClick={openSpeechTest} style={{
+          ...card, width: '100%', display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px',
+          marginBottom: '16px', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', color: 'inherit',
+        }}>
+          <span aria-hidden style={{ width: '40px', height: '40px', borderRadius: '10px', flexShrink: 0, display: 'grid', placeItems: 'center', background: '#F5F3FF', fontSize: '19px' }}>🎤</span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: 'var(--foreground)' }}>Konuşma tanıma denemesi</span>
+            <span style={{ display: 'block', fontSize: '13px', color: 'var(--muted-foreground)', marginTop: '2px' }}>Bir cümle söyle, tanıyıcının ne yazdığını gör. Hiçbir şey kaydedilmez.</span>
           </span>
           <span aria-hidden style={{ color: 'var(--muted-foreground)', fontSize: '18px' }}>›</span>
         </button>

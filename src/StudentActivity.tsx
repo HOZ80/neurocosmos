@@ -287,8 +287,12 @@ function topUnit(sessions: ActSession[], unitTitles: Record<string, string>) {
   return `En çok: ${best}${t && t !== best ? ' · ' + t : ''}`
 }
 
+const speechTypeLabel = (t: Speech['question_type']) => t === 'fixed' ? 'Cevabı belli' : t === 'critical' ? 'Kritik' : 'Serbest'
+// Noktalama ve büyük-küçük harf farkı "düzeltti" sayılmaz
+const speechNorm = (x: string) => x.toLowerCase().replace(/[.,!?;:"]/g, '').replace(/\s+/g, ' ').trim()
+
 // ── Excel ────────────────────────────────────────────────────────────────────
-async function downloadExcel(fileBase: string, students: ActStudent[], sessions: ActSession[], unitTitles: Record<string, string>, misses?: Miss[]) {
+async function downloadExcel(fileBase: string, students: ActStudent[], sessions: ActSession[], unitTitles: Record<string, string>, misses?: Miss[], speech?: Speech[]) {
   const { default: writeExcelFile } = await import('write-excel-file/universal')
   const head = (cols: string[]) => cols.map(v => ({ value: v, fontWeight: 'bold' as const }))
   const nameOf = (id: string) => students.find(s => s.id === id)?.name || '?'
@@ -329,6 +333,16 @@ async function downloadExcel(fileBase: string, students: ActStudent[], sessions:
     const s4: any[][] = [head(['Tarih', 'Ünite', 'Kaynak', 'Doğrusu', 'İlk yazdığı'])]
     for (const m of misses) { const d = new Date(m.created_at); s4.push([`${d.toLocaleDateString('tr-TR')} ${hhmm(d)}`, m.unit_key || null, missSource(m), m.expected, m.typed]) }
     sheets.push({ data: s4, sheet: 'Dikte', stickyRowsCount: 1, columns: [w(18), w(10), w(14), w(50), w(50)] })
+  }
+  if (speech && speech.length) {
+    const s5: any[][] = [head(['Tarih', 'Ünite', 'Soru', 'Tür', 'Giriş', 'Sonuç', 'Duyulan', 'Onayladığı / yazdığı'])]
+    for (const it of speech.slice().sort((a, b) => a.created_at.localeCompare(b.created_at))) {
+      const d = new Date(it.created_at)
+      s5.push([`${d.toLocaleDateString('tr-TR')} ${hhmm(d)}`, it.unit_key || null, it.question_text || null, speechTypeLabel(it.question_type),
+        it.input_mode === 'voice' ? 'sesle' : 'yazıyla', it.result === 'correct' ? 'Doğru' : it.result === 'wrong' ? 'Yanlış' : null,
+        it.input_mode === 'voice' ? it.raw_text || null : null, it.confirmed_text || null])
+    }
+    sheets.push({ data: s5, sheet: 'Konuşma', stickyRowsCount: 1, columns: [w(18), w(10), w(44), w(12), w(9), w(9), w(44), w(44)] })
   }
   const blob: Blob = await (writeExcelFile as any)(sheets).toBlob()
   const url = URL.createObjectURL(blob)
@@ -513,7 +527,7 @@ export function ActivityTab({ student, unitTitles }: { student: ActStudent; unit
       moreSess={moreSess} setMoreSess={setMoreSess} moreMiss={moreMiss} setMoreMiss={setMoreMiss} child={child}
       onExcel={async () => {
         setBusy(true)
-        try { await downloadExcel(`Etkinlik_${name}_${periodLabel(per, off)}`, [student], ps, unitTitles, d.misses) } catch { /* sessiz */ }
+        try { await downloadExcel(`Etkinlik_${name}_${periodLabel(per, off)}`, [student], ps, unitTitles, d.misses, d.speech) } catch { /* sessiz */ }
         setBusy(false)
       }} busy={busy} />
   }
@@ -554,6 +568,8 @@ function ActivityBody({ student, unitTitles, days, per, all, ps, misses, speech,
   child: boolean; onExcel: () => void; busy: boolean
 }) {
   const month = per === 'month'
+  const [moreSpeech, setMoreSpeech] = useState(false)
+  const shownSpeech = moreSpeech ? speech : speech.slice(0, 8)
   const tot = ps.reduce((a, s) => a + s.active_seconds, 0)
   const ser = series(ps, days)
   const daysIn = ser.filter(x => (x.sec || 0) > 0).length
@@ -769,13 +785,16 @@ function ActivityBody({ student, unitTitles, days, per, all, ps, misses, speech,
 
       {speech.length > 0 && (
         <div className="card sec"><h2 className="h2">🗣️ Konuşma cevapları</h2>
-          {speech.map(it => {
+          {shownSpeech.map(it => {
             const type = it.question_type === 'fixed' ? ['Cevabı belli', '#DCFCE7', '#166534'] : it.question_type === 'critical' ? ['Kritik', '#FEF3C7', '#92400E'] : ['Serbest', '#EEF2FF', '#3730A3']
             const heard = it.input_mode === 'voice' && it.raw_text
             const df = heard ? wordDiff(it.raw_text, it.confirmed_text) : null
-            const changed = !!heard && it.raw_text.toLowerCase().replace(/[.]/g, '').trim() !== it.confirmed_text.toLowerCase().replace(/[.]/g, '').trim()
+            const changed = !!heard && speechNorm(it.raw_text) !== speechNorm(it.confirmed_text)
+            const at = new Date(it.created_at)
+            const ut = it.unit_key ? unitTitles[it.unit_key] : ''
             return (
               <div key={it.id} className="ans">
+                <div style={{ fontSize: '12px', color: 'var(--muted-foreground)', marginBottom: '2px' }}>{dayName(at)} {hhmm(at)}{it.unit_key ? ` · ${it.unit_key}${ut && ut !== it.unit_key ? ' · ' + ut : ''}` : ''}</div>
                 <div className="q">{it.question_text}</div>
                 <div className="meta">
                   <span className="chip" style={{ background: type[1], color: type[2] }}>{type[0]}</span>
@@ -788,6 +807,7 @@ function ActivityBody({ student, unitTitles, days, per, all, ps, misses, speech,
               </div>
             )
           })}
+          {speech.length > 8 && !moreSpeech && <button className="quiet" style={{ width: '100%', marginTop: '8px', fontSize: '14px' }} onClick={() => setMoreSpeech(true)}>Hepsini göster ({speech.length})</button>}
           <p className="note"><span className="bad">üstü çizili</span>: tanıyıcının duyduğu, öğrencinin değiştirdiği kelime. <span className="chg">mavi</span>: yazıda düzelttiği hali. Konuşurken yanlış söyleyip yazıda düzeltiyorsa kuralı biliyor ama henüz otomatikleşmemiş demektir.</p>
         </div>
       )}

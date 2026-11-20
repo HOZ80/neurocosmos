@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, forwardRef, useImperativeHandle, lazy, Suspense } from 'react'
+import type { ReactNode } from 'react'
 import PrivateShadowing from './PrivateShadowing'
 import PrivateDictation from './PrivateDictation'
 import SceneView, { parseSceneRows, parseCharacterRows, FALLBACK_SCENE_DATA } from './SceneView'
@@ -24,7 +25,9 @@ import { loadContent } from './readerData'
 import { loadCachedThenFresh, readCachedText, fetchFreshText, writeCachedText } from './sheetCache'
 import LiveTeacher, { clearLiveTeacherNav } from './LiveTeacher'
 import { useLiveStatus, LiveBanner, LiveOnlyHome, LiveStudentScreen } from './LiveStudent'
-import { useActivityTracker, useActivityPlace, activityStat, activityMiss, bump } from './activityStore'
+import { useActivityTracker, useActivityPlace, activityStat, activityMiss, activitySpeech, bump } from './activityStore'
+import { readSpeechColumn, speechSupported, useDrillSpeech, DrillSpeechNotice, MicButton } from './speechInput'
+import type { SpeechStageKey } from './speechInput'
 import { KidsArea, normTr, parseKidsDate, kidsColor } from './KidsTopics'
 import type { KidsTopic, KidsDeps, KDrillItem, KState } from './KidsTopics'
 
@@ -142,6 +145,8 @@ interface DrillTopic {
   modelMismatchWarning?: string // model sayısı ile grup sayısı tutmuyorsa, hangi aşama(lar)da olduğu
   missingModelWarning?: string  // Substitution/Transformation/Expansion'da ipucu var ama model yoksa, hangi aşama(lar)da olduğu
   hints?: Partial<Record<keyof DrillTopic['stages'], string>> // konuya özel yönlendirme — boşsa sabit genel açıklama kullanılır
+  speech?: SpeechStageKey[]    // Drill tablosundaki "konusma" sütunu: konuşmayla cevabın açık olduğu aşamalar (boş = yalnız yazı)
+  speechWarning?: string       // "konusma" sütununda tanınmayan değerler
 }
 
 interface DrillProgress {
@@ -3659,6 +3664,7 @@ function rowsToDrillTopics(rows: Record<string, string>[]): DrillTopic[] {
       hasCues(trans.items) && parseModelList(r.transformation_model).length === 0 && 'Transformation',
       hasCues(exp.items) && parseModelList(r.expansion_model).length === 0 && 'Expansion',
     ].filter(Boolean).join(', ')
+    const speechCol = readSpeechColumn(r)
     return {
       id: r.topic_id || `t_${Math.random().toString(36).slice(2, 8)}`,
       label: r.topic_label || r.target_structure || 'Adsız konu',
@@ -3683,6 +3689,8 @@ function rowsToDrillTopics(rows: Record<string, string>[]): DrillTopic[] {
         cue_response: r.cue_response_hint?.trim() || undefined,
         question: r.question_hint?.trim() || undefined,
       },
+      speech: speechCol.stages.length ? speechCol.stages : undefined,
+      speechWarning: speechCol.unknown.length ? speechCol.unknown.join(', ') : undefined,
     }
   })
 }
@@ -3715,12 +3723,13 @@ function rowsToQuestionChain(rows: Record<string, string>[]): QuestionItem[] {
 // ─── Drill yardımcı bileşenleri ──────────────────────────────────────────────
 
 // Yazma modu: giriş alanı + Kontrol et + Cevabı gör
-function DrillInputArea({ answer, onAnswerChange, onCheck, onSkip, expected }: {
+function DrillInputArea({ answer, onAnswerChange, onCheck, onSkip, expected, micSlot }: {
   answer: string
   onAnswerChange: (v: string) => void
   onCheck: () => void | Promise<void>
   onSkip: () => void
   expected: string | null
+  micSlot?: ReactNode // konuşması açık aşamada kutunun yanındaki mikrofon düğmesi
 }) {
   const [revealed, setRevealed] = useState(false)
 
@@ -3729,13 +3738,16 @@ function DrillInputArea({ answer, onAnswerChange, onCheck, onSkip, expected }: {
 
   return (
     <div>
-      <input
-        type="text" value={answer} autoFocus
-        onChange={e => { onAnswerChange(e.target.value); setRevealed(false) }}
-        onKeyDown={e => { if (e.key === 'Enter') onCheck() }}
-        placeholder="Cümleni yaz..."
-        style={{ width: '100%', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', marginBottom: '10px', background: 'var(--background)', color: 'var(--foreground)' }}
-      />
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px' }}>
+        <input
+          type="text" value={answer} autoFocus
+          onChange={e => { onAnswerChange(e.target.value); setRevealed(false) }}
+          onKeyDown={e => { if (e.key === 'Enter') onCheck() }}
+          placeholder={micSlot ? 'Cümleni söyle ya da yaz...' : 'Cümleni yaz...'}
+          style={{ flex: 1, minWidth: 0, width: '100%', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', background: 'var(--background)', color: 'var(--foreground)' }}
+        />
+        {micSlot}
+      </div>
       <div style={{ display: 'flex', gap: '10px', marginBottom: expected ? '10px' : '0' }}>
         <button onClick={onCheck} style={{ background: '#8B5CF6', color: '#fff', border: 'none', borderRadius: '9px', padding: '10px 16px', fontSize: '13px', cursor: 'pointer' }}>Kontrol et</button>
         <button onClick={onSkip} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--muted-foreground)', borderRadius: '9px', padding: '10px 16px', fontSize: '13px', cursor: 'pointer' }}>Geç</button>
@@ -3907,7 +3919,7 @@ function pickClosestAccepted(accepted: string[], given: string): string {
   return best
 }
 
-type DrillQueueItem = { stageKey: keyof DrillTopic['stages']; stageName: string; cue: string; expected: string | null; resolvedModel?: string }
+type DrillQueueItem = { stageKey: keyof DrillTopic['stages']; stageName: string; cue: string; expected: string | null; resolvedModel?: string; no?: number }
 
 // İlerleme veritabanında (memoryStore.ts); burada tarayıcıdaki hesap kopyası okunur/yazılır,
 // değişenler veritabanına gönderilir. Eski (cihaz başına) kayıt bir kereye mahsus
@@ -3999,6 +4011,16 @@ function DrillView({ unit, drillKey, onBack, sheetTopics, entryProfile }: { unit
   const [aiAvailableThisSession, setAiAvailableThisSession] = useState(true)
   const [quickMode, setQuickMode] = useState<boolean>(() => { try { return localStorage.getItem('nc_drill_quick_mode') === '1' } catch { return false } })
   const [summary, setSummary] = useState<null | { correct: number; wrong: number; stageLabel: string; nextReview: number }>(null)
+
+  // Konuşmayla cevap: Drill tablosundaki "konusma" sütunu bu aşamayı açtıysa
+  // kutunun yanında mikrofon çıkar. Tarayıcı desteklemiyorsa hiç çıkmaz.
+  const [canSpeak] = useState(() => speechSupported())
+  const drillSpeech = useDrillSpeech(t => setAnswer(t))
+  // Soru değişince eski tanıma kapanır, "Bunu mu demek istedin?" kutusu temizlenir.
+  useEffect(() => {
+    drillSpeech.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idx, queue])
 
   // Ünite gerçekten değiştiğinde (aynı Drill ekranı açık kalıp arkadan başka
   // seviye/üniteye geçilse bile — örn. geri/ileri ile) tüm kart içeriğini ve
@@ -4145,12 +4167,14 @@ function DrillView({ unit, drillKey, onBack, sheetTopics, entryProfile }: { unit
       // Her aşama kendi modeliyle başlar — bir önceki aşamanın modeli taşınmaz.
       // Aşamanın model hücresi boşsa bu aşamada model kutusu hiç görünmez.
       let runningModel: string | undefined = undefined
+      let no = 0
       ;(topic.stages[s.key] || []).forEach(item => {
         if (item.isMarker) {
           if (item.modelOverride) runningModel = item.modelOverride
           return
         }
-        q.push({ stageKey: s.key, stageName: s.name, cue: item.cue, expected: item.expected, resolvedModel: runningModel })
+        no++
+        q.push({ stageKey: s.key, stageName: s.name, cue: item.cue, expected: item.expected, resolvedModel: runningModel, no })
       })
     })
     if (q.length === 0) return
@@ -4224,7 +4248,25 @@ function DrillView({ unit, drillKey, onBack, sheetTopics, entryProfile }: { unit
   async function checkAnswer() {
     if (!queue) return
     const item = queue[idx]
+    if (drillSpeech.rec.listening) drillSpeech.rec.abort()
     const given = answer.trim()
+
+    // Konuşması açık aşamada her cevap (sesle ya da yazıyla) kaydedilir.
+    const speechTopic = topics.find(t => t.id === activeTopicId)
+    const speechOn = !!speechTopic?.speech?.includes(item.stageKey)
+    const logSpeech = (result: 'correct' | 'wrong' | '') => {
+      if (!speechOn || !given) return
+      const heard = drillSpeech.heard
+      activitySpeech({
+        question_id: `${activeTopicId ?? ''}|${item.stageKey}|${item.no ?? ''}`,
+        question_text: `${item.stageName}: ${item.cue.replace(/~~|\*\*|\[\[|\]\]/g, '').replace(/\(\([^)]*\)\)/g, '').replace(/\s+/g, ' ').trim()}`,
+        question_type: item.expected === null ? 'free' : 'fixed',
+        raw_text: heard || '',
+        confirmed_text: given,
+        input_mode: heard ? 'voice' : 'text',
+        result,
+      })
+    }
 
     if (item.expected === null) {
       // Faz 1 pilot: bu konuda Serbest Üretim, kendi kendini değerlendirme
@@ -4234,6 +4276,7 @@ function DrillView({ unit, drillKey, onBack, sheetTopics, entryProfile }: { unit
       const topicInfo = { label: activeTopic?.label || '', target: activeTopic?.target || '', notes: activeTopic?.notes || '' }
       if (aiEnabled) {
         if (!given) return
+        logSpeech('')
         setAiChecking(true)
         setAiResult(null)
         try {
@@ -4281,12 +4324,14 @@ function DrillView({ unit, drillKey, onBack, sheetTopics, entryProfile }: { unit
         }
         return
       }
+      logSpeech('')
       setFeedback({ kind: 'free' })
       return
     }
 
     const acceptedAnswers = splitAcceptedAnswers(item.expected)
     const isCorrect = acceptedAnswers.some(a => drillNormalize(given) === drillNormalize(a))
+    logSpeech(isCorrect ? 'correct' : 'wrong')
     if (isCorrect) {
       setFeedback({ kind: 'good' })
       setTimeout(() => advance(true, item), 450)
@@ -4359,6 +4404,12 @@ function DrillView({ unit, drillKey, onBack, sheetTopics, entryProfile }: { unit
             </div>
           )}
 
+          {activeTopic?.speechWarning && (
+            <div style={{ fontSize: '11px', color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '7px', padding: '7px 10px', marginBottom: '12px' }}>
+              ⚠ "konusma" sütununda tanınmayan değer: {activeTopic.speechWarning} — yok sayıldı, sheet'i kontrol et.
+            </div>
+          )}
+
           {activeTopic?.missingModelWarning && (
             <div style={{ fontSize: '11px', color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '7px', padding: '7px 10px', marginBottom: '12px' }}>
               ⚠ {activeTopic.missingModelWarning}: ipucu var ama model hücresi boş — bu aşamada model görünmeyecek, sheet'i kontrol et.
@@ -4390,12 +4441,18 @@ function DrillView({ unit, drillKey, onBack, sheetTopics, entryProfile }: { unit
           {/* ── Yazma modu: giriş alanı + Kontrol et + Cevabı gör ── */}
           {!quickMode && !feedback && !aiResult && (
             <div>
+              {canSpeak && activeTopic?.speech?.includes(item.stageKey) && (
+                <DrillSpeechNotice heard={drillSpeech.heard} listening={drillSpeech.rec.listening} interim={drillSpeech.rec.interim} errorText={drillSpeech.rec.errorText} />
+              )}
               <DrillInputArea
                 answer={answer}
                 onAnswerChange={setAnswer}
                 onCheck={checkAnswer}
                 onSkip={() => advance(false, item)}
                 expected={item.expected}
+                micSlot={canSpeak && activeTopic?.speech?.includes(item.stageKey)
+                  ? <MicButton listening={drillSpeech.rec.listening} onClick={() => { drillSpeech.rec.clearError(); drillSpeech.rec.toggle() }} />
+                  : undefined}
               />
               {aiChecking && (
                 <div style={{ marginTop: '10px', fontSize: '12px', color: 'var(--muted-foreground)' }}>
