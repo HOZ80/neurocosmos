@@ -19,7 +19,8 @@ import type { MemoryItem } from './memoryShared'
 import ChildReaderApp from './Reader'
 import { loadCachedContent } from './readerData'
 import InstallButton from './InstallButton'
-import { useActivityPlace, activityStat, activityMiss, bump } from './activityStore'
+import { useActivityPlace, activityStat, activityMiss, activitySpeech, bump } from './activityStore'
+import { speechSupported, useShadowSpeech, ShadowWords, shadowCountText } from './speechInput'
 
 // ── Veri biçimleri ───────────────────────────────────────────────────────────
 export type KState = 'ok' | 'locked' | 'empty' | 'loading'
@@ -42,7 +43,7 @@ export interface KidsTopic {
   grammar: { state: KState; slots: KGrammarSlot[] }
   listen: { state: KState; url: string; segments: KSeg[] }
   dictation: { state: KState; url: string; segments: KSeg[] }
-  shadowing: { state: KState; url: string; segments: KSeg[]; clips: string[] }
+  shadowing: { state: KState; url: string; segments: KSeg[]; clips: string[]; speech?: boolean }   // speech: Units'teki shadowing_konusma (boş = açık)
   drill: { state: KState; items: KDrillItem[] }
 }
 
@@ -799,7 +800,11 @@ function KidsDrill({ topic, deps, onBack }: { topic: KidsTopic; deps: KidsDeps; 
   )
 }
 
-// ── Shadowing: büyük cümle kartı, dinle ve tekrar et (ses kaydı yok) ────────
+// ── Shadowing: büyük cümle kartı, dinle ve tekrar et ────────────────────────
+// Konuşma açıksa (Units'te shadowing_konusma boş) büyük mikrofon: çocuk cümleyi
+// söyler, söylediği kelimeler yeşil olur; hepsini söyleyince konfeti. Ses
+// saklanmaz; tanıyıcının yazdığı cümle çocuğun Konuşma cevaplarına yazılır
+// (öğretmen önizlemesi kaydedilmez).
 function KidsShadowing({ topic, onBack }: { topic: KidsTopic; onBack: () => void }) {
   const { url, segments, clips } = topic.shadowing
   const audio = useKidsAudio()
@@ -807,7 +812,23 @@ function KidsShadowing({ topic, onBack }: { topic: KidsTopic; onBack: () => void
   const sentences = clips.length > 0 ? segments.map((s, i) => ({ text: s.text, clip: clips[i] ?? '' })) : segments.map(s => ({ text: s.text, clip: '' }))
   const [i, setI] = useState(0)
   const [slow, setSlow] = useState(false)
+  const [burst, setBurst] = useState(0)
+  const [canSpeak] = useState(() => speechSupported())
+  const speechOn = canSpeak && topic.shadowing.speech !== false
   const rate = slow ? 0.75 : 1
+  const cur = sentences[i]
+  const sp = useShadowSpeech(cur?.text ?? '', (heard, r) => {
+    activitySpeech({
+      question_id: `${topic.id}|shadowing|${i + 1}`,
+      question_text: `Shadowing: ${(cur?.text ?? '').trim()}`,
+      question_type: 'fixed',
+      raw_text: heard,
+      confirmed_text: heard,
+      input_mode: 'voice',
+      result: r.complete ? 'correct' : 'wrong',
+    })
+    if (r.complete) setBurst(Date.now())
+  })
   function track(idx: number) {
     activityStat('shadowing', s => {
       const seen: number[] = Array.isArray(s.s) ? s.s : (s.s = [])
@@ -820,6 +841,7 @@ function KidsShadowing({ topic, onBack }: { topic: KidsTopic; onBack: () => void
   function playAt(idx: number) {
     const sen = sentences[idx]
     if (!sen) return
+    if (sp.rec.listening) sp.rec.abort()
     track(idx)
     if (sen.clip) void audio.play(sen.clip, 0, undefined, rate)
     else { const s = segments[idx]; void audio.play(url, s.start, s.end, rate) }
@@ -830,9 +852,15 @@ function KidsShadowing({ topic, onBack }: { topic: KidsTopic; onBack: () => void
     setI(ni)
     playAt(ni)
   }
-  const cur = sentences[i]
+  function listen() {
+    if (sp.rec.listening) { sp.rec.stop(); return }
+    audio.stop()
+    sp.start()
+  }
+  const listening = sp.rec.listening
+  const result = !listening ? sp.result : null
   return (
-    <Frame topic={topic} card="shadowing" onBack={() => { audio.stop(); onBack() }} sub={<Dots total={sentences.length} current={i} done={false} color={color} />}>
+    <Frame topic={topic} card="shadowing" onBack={() => { audio.stop(); sp.rec.abort(); onBack() }} sub={<Dots total={sentences.length} current={i} done={false} color={color} />}>
       <div key={i} className="kd-pop" style={{ minHeight: 150, padding: '24px 20px', borderRadius: 28, background: '#FFFFFF', border: `4px solid ${audio.playing ? color : `${color}33`}`, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', transition: 'border-color .2s' }}>
         <span className="kd-h" style={{ fontSize: 30, lineHeight: 1.25 }}>{cur?.text}</span>
       </div>
@@ -843,6 +871,29 @@ function KidsShadowing({ topic, onBack }: { topic: KidsTopic; onBack: () => void
         <button className="kd-soft kd-tap" disabled={i >= sentences.length - 1} onClick={() => go(1)} aria-label="Sonraki cümle" style={{ border: `2px solid ${color}44`, color: '#3B3650', opacity: i >= sentences.length - 1 ? .45 : 1, width: 64, padding: 0, fontSize: 24 }}>⏭</button>
       </div>
       <button className="kd-tap" onClick={() => setSlow(s => !s)} aria-pressed={slow} style={{ alignSelf: 'center', minHeight: 44, padding: '0 18px', borderRadius: 999, background: slow ? color : '#FFFFFF', color: slow ? '#FFFFFF' : '#3B3650', border: `2px solid ${color}55`, fontWeight: 800, fontSize: 16 }}>🐢 Yavaş</button>
+      {speechOn && cur && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '18px 16px', borderRadius: 26, background: '#FFFFFF', border: `3px solid ${color}33`, textAlign: 'center' }}>
+          <button className={'kd-tap' + (listening ? ' kd-pulse' : '')} onClick={listen} aria-label={listening ? 'Dinlemeyi durdur' : 'Cümleyi söyle'}
+            style={{ width: 84, height: 84, borderRadius: '50%', background: listening ? color : '#FFFFFF', border: `4px solid ${color}`, color: listening ? '#FFFFFF' : color, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 8px 20px ${color}40`, flexShrink: 0 }}>
+            {listening
+              ? <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="3" /></svg>
+              : <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0" /><path d="M12 18v3" /></svg>}
+          </button>
+          <div className="kd-h" style={{ fontSize: 22, color: result?.complete ? '#15803D' : '#3B3650' }}>
+            {listening ? 'Dinliyorum… Şimdi söyle!' : result ? (result.complete ? 'Harika! Hepsini söyledin!' : 'Bir daha dene!') : 'Şimdi sen söyle!'}
+          </div>
+          {listening && sp.rec.interim && <div style={{ fontSize: 18, fontWeight: 700, color: '#5B5670' }}>{sp.rec.interim}</div>}
+          {sp.rec.errorText && !listening && <div style={{ background: '#FEF3C7', color: '#92400E', borderRadius: 16, padding: '10px 14px', fontSize: 15, fontWeight: 700, lineHeight: 1.45 }}>{sp.rec.errorText}</div>}
+          {result && (
+            <>
+              <div><ShadowWords words={result.words} size={26} /></div>
+              {!result.complete && <div style={{ fontSize: 15, fontWeight: 800, color: '#5B5670' }}>{shadowCountText(result)}</div>}
+              <button className="kd-soft kd-tap" onClick={() => { audio.stop(); sp.start() }} style={{ border: `2px solid ${color}55`, color: '#3B3650' }}>🔁 Tekrar dene</button>
+            </>
+          )}
+        </div>
+      )}
+      <Confetti burst={burst} />
     </Frame>
   )
 }

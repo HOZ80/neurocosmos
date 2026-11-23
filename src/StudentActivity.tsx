@@ -9,6 +9,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { rest } from './memoryStore'
+import { useConfusables, wordKey, HL_CONF, ConfusionNote } from './speechInput'
 
 // ── Veri ─────────────────────────────────────────────────────────────────────
 export interface ActItem { unit_key: string; card: string; level: string; seconds: number; stats: Record<string, any> }
@@ -20,7 +21,7 @@ interface Miss { id: string; kind?: string; unit_key: string; expected: string; 
 // Zorlandığı cümlenin kaynağı: ünite diktesi ya da soru kartları diktesi (Dictation All)
 const missSource = (m: Miss) => m.kind === 'dictationAll' ? 'Soru kartları' : 'Ünite diktesi'
 interface Speech {
-  id: string; unit_key: string; question_text: string; question_type: 'free' | 'fixed' | 'critical'
+  id: string; unit_key: string; question_id: string; question_text: string; question_type: 'free' | 'fixed' | 'critical'
   raw_text: string; confirmed_text: string; input_mode: 'voice' | 'text'; result: 'correct' | 'wrong' | null; created_at: string
 }
 interface Monthly { month: string; active_seconds: number; sessions: number; days: number; by_card: Record<string, number>; by_unit: Record<string, number> }
@@ -288,6 +289,22 @@ function topUnit(sessions: ActSession[], unitTitles: Record<string, string>) {
 }
 
 const speechTypeLabel = (t: Speech['question_type']) => t === 'fixed' ? 'Cevabı belli' : t === 'critical' ? 'Kritik' : 'Serbest'
+// Shadowing denemeleri (soru kimliği "<ünite>|shadowing|<cümle>")
+const isShadowSpeech = (it: Speech) => (it.question_id || '').includes('|shadowing|')
+const speechResultLabel = (it: Speech) => isShadowSpeech(it)
+  ? (it.result === 'correct' ? 'Eksiksiz' : it.result === 'wrong' ? 'Eksik' : '')
+  : (it.result === 'correct' ? 'Doğru' : it.result === 'wrong' ? 'Yanlış' : '')
+
+// "Duyulan" satırı: öğrencinin değiştirdiği kelime üstü çizili, karışabilen
+// kelime (Drill tablosundaki "Karışan kelimeler" listesi) turuncu zeminli.
+function HeardWords({ words, ok }: { words: string[]; ok?: boolean[] }) {
+  const conf = useConfusables()
+  return <>{words.map((w, i) => {
+    const isConf = !!conf && conf.has(wordKey(w))
+    const inner = isConf ? <span style={{ ...HL_CONF, borderRadius: '4px', padding: '0 3px', fontWeight: 600 }}>{w}</span> : w
+    return <span key={i}>{i ? ' ' : ''}{ok && !ok[i] ? <span className="bad">{inner}</span> : inner}</span>
+  })}</>
+}
 // Noktalama ve büyük-küçük harf farkı "düzeltti" sayılmaz
 const speechNorm = (x: string) => x.toLowerCase().replace(/[.,!?;:"]/g, '').replace(/\s+/g, ' ').trim()
 
@@ -338,9 +355,10 @@ async function downloadExcel(fileBase: string, students: ActStudent[], sessions:
     const s5: any[][] = [head(['Tarih', 'Ünite', 'Soru', 'Tür', 'Giriş', 'Sonuç', 'Duyulan', 'Onayladığı / yazdığı'])]
     for (const it of speech.slice().sort((a, b) => a.created_at.localeCompare(b.created_at))) {
       const d = new Date(it.created_at)
-      s5.push([`${d.toLocaleDateString('tr-TR')} ${hhmm(d)}`, it.unit_key || null, it.question_text || null, speechTypeLabel(it.question_type),
-        it.input_mode === 'voice' ? 'sesle' : 'yazıyla', it.result === 'correct' ? 'Doğru' : it.result === 'wrong' ? 'Yanlış' : null,
-        it.input_mode === 'voice' ? it.raw_text || null : null, it.confirmed_text || null])
+      const sh = isShadowSpeech(it)
+      s5.push([`${d.toLocaleDateString('tr-TR')} ${hhmm(d)}`, it.unit_key || null, it.question_text || null, sh ? 'Shadowing' : speechTypeLabel(it.question_type),
+        it.input_mode === 'voice' ? 'sesle' : 'yazıyla', speechResultLabel(it) || null,
+        it.input_mode === 'voice' ? it.raw_text || null : null, sh ? null : it.confirmed_text || null])
     }
     sheets.push({ data: s5, sheet: 'Konuşma', stickyRowsCount: 1, columns: [w(18), w(10), w(44), w(12), w(9), w(9), w(44), w(44)] })
   }
@@ -495,7 +513,7 @@ export function ActivityTab({ student, unitTitles }: { student: ActStudent; unit
     Promise.all([
       fetchSessions(from, pEnd, sid),
       getAll<Miss>(`activity_misses?select=id,kind,unit_key,expected,typed,created_at&student_id=eq.${sid}&created_at=gte.${enc(pStart)}&created_at=lt.${enc(pEnd)}&order=created_at.desc`),
-      getAll<Speech>(`speech_answers?select=id,unit_key,question_text,question_type,raw_text,confirmed_text,input_mode,result,created_at&student_id=eq.${sid}&created_at=gte.${enc(pStart)}&created_at=lt.${enc(pEnd)}&order=created_at.desc`),
+      getAll<Speech>(`speech_answers?select=id,unit_key,question_id,question_text,question_type,raw_text,confirmed_text,input_mode,result,created_at&student_id=eq.${sid}&created_at=gte.${enc(pStart)}&created_at=lt.${enc(pEnd)}&order=created_at.desc`),
       getAll<Monthly>(`activity_monthly?select=month,active_seconds,sessions,days,by_card,by_unit&student_id=eq.${sid}&order=month.asc`),
       fetchOverview(),
     ]).then(([sessions, misses, speech, monthly, ov]) => {
@@ -786,10 +804,11 @@ function ActivityBody({ student, unitTitles, days, per, all, ps, misses, speech,
       {speech.length > 0 && (
         <div className="card sec"><h2 className="h2">🗣️ Konuşma cevapları</h2>
           {shownSpeech.map(it => {
-            const type = it.question_type === 'fixed' ? ['Cevabı belli', '#DCFCE7', '#166534'] : it.question_type === 'critical' ? ['Kritik', '#FEF3C7', '#92400E'] : ['Serbest', '#EEF2FF', '#3730A3']
+            const shadow = isShadowSpeech(it)
+            const type = shadow ? ['Shadowing', '#CCFBF1', '#115E59'] : it.question_type === 'fixed' ? ['Cevabı belli', '#DCFCE7', '#166534'] : it.question_type === 'critical' ? ['Kritik', '#FEF3C7', '#92400E'] : ['Serbest', '#EEF2FF', '#3730A3']
             const heard = it.input_mode === 'voice' && it.raw_text
-            const df = heard ? wordDiff(it.raw_text, it.confirmed_text) : null
-            const changed = !!heard && speechNorm(it.raw_text) !== speechNorm(it.confirmed_text)
+            const df = heard && !shadow ? wordDiff(it.raw_text, it.confirmed_text) : null
+            const changed = !!heard && !shadow && speechNorm(it.raw_text) !== speechNorm(it.confirmed_text)
             const at = new Date(it.created_at)
             const ut = it.unit_key ? unitTitles[it.unit_key] : ''
             return (
@@ -799,16 +818,17 @@ function ActivityBody({ student, unitTitles, days, per, all, ps, misses, speech,
                 <div className="meta">
                   <span className="chip" style={{ background: type[1], color: type[2] }}>{type[0]}</span>
                   <span className="chip" style={{ background: 'var(--secondary)', color: '#334155' }}>{it.input_mode === 'voice' ? '🎤 sesle' : '⌨️ yazıyla'}</span>
-                  {it.result && <span className="chip" style={it.result === 'correct' ? { background: '#DCFCE7', color: '#166534' } : { background: '#FEE2E2', color: '#B91C1C' }}>{it.result === 'correct' ? 'Doğru' : 'Yanlış'}</span>}
+                  {it.result && <span className="chip" style={it.result === 'correct' ? { background: '#DCFCE7', color: '#166534' } : { background: '#FEE2E2', color: '#B91C1C' }}>{speechResultLabel(it)}</span>}
                   {changed && <span className="chip" style={{ background: '#E0E7FF', color: '#3730A3' }}>yazıda düzeltti</span>}
                 </div>
-                {df && <div className="row2" style={{ fontSize: '14.5px' }}><span className="k">Duyulan</span><span>{df.A.map((w, i) => <span key={i}>{i ? ' ' : ''}{df.okA[i] ? w : <span className="bad">{w}</span>}</span>)}</span></div>}
-                <div className="row2" style={{ fontSize: '14.5px', marginTop: '3px' }}><span className="k">{df ? 'Onayladığı' : 'Yazdığı'}</span><span>{df ? df.B.map((w, i) => <span key={i}>{i ? ' ' : ''}{df.okB[i] ? w : <span className="chg">{w}</span>}</span>) : it.confirmed_text}</span></div>
+                {df && <div className="row2" style={{ fontSize: '14.5px' }}><span className="k">Duyulan</span><span><HeardWords words={df.A} ok={df.okA} /><ConfusionNote text={it.raw_text} size={12} /></span></div>}
+                {shadow && heard && <div className="row2" style={{ fontSize: '14.5px' }}><span className="k">Duyulan</span><span><HeardWords words={it.raw_text.split(/\s+/).filter(Boolean)} /><ConfusionNote text={it.raw_text} size={12} /></span></div>}
+                {!shadow && <div className="row2" style={{ fontSize: '14.5px', marginTop: '3px' }}><span className="k">{df ? 'Onayladığı' : 'Yazdığı'}</span><span>{df ? df.B.map((w, i) => <span key={i}>{i ? ' ' : ''}{df.okB[i] ? w : <span className="chg">{w}</span>}</span>) : it.confirmed_text}</span></div>}
               </div>
             )
           })}
           {speech.length > 8 && !moreSpeech && <button className="quiet" style={{ width: '100%', marginTop: '8px', fontSize: '14px' }} onClick={() => setMoreSpeech(true)}>Hepsini göster ({speech.length})</button>}
-          <p className="note"><span className="bad">üstü çizili</span>: tanıyıcının duyduğu, öğrencinin değiştirdiği kelime. <span className="chg">mavi</span>: yazıda düzelttiği hali. Konuşurken yanlış söyleyip yazıda düzeltiyorsa kuralı biliyor ama henüz otomatikleşmemiş demektir.</p>
+          <p className="note"><span className="bad">üstü çizili</span>: tanıyıcının duyduğu, öğrencinin değiştirdiği kelime. <span className="chg">mavi</span>: yazıda düzelttiği hali. <span style={{ ...HL_CONF, borderRadius: '4px', padding: '0 4px', fontWeight: 600 }}>turuncu</span>: tanıyıcının karıştırabildiği kelime (want / won't gibi). Shadowing kayıtlarında "Eksiksiz": cümlenin bütün kelimeleri duyuldu. Konuşurken yanlış söyleyip yazıda düzeltiyorsa kuralı biliyor ama henüz otomatikleşmemiş demektir.</p>
         </div>
       )}
 

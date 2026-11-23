@@ -26,7 +26,7 @@ import { loadCachedThenFresh, readCachedText, fetchFreshText, writeCachedText } 
 import LiveTeacher, { clearLiveTeacherNav } from './LiveTeacher'
 import { useLiveStatus, LiveBanner, LiveOnlyHome, LiveStudentScreen } from './LiveStudent'
 import { useActivityTracker, useActivityPlace, activityStat, activityMiss, activitySpeech, bump } from './activityStore'
-import { readSpeechColumn, speechSupported, useDrillSpeech, DrillSpeechNotice, MicButton } from './speechInput'
+import { readSpeechColumn, readSpeechSwitch, speechSupported, useDrillSpeech, DrillSpeechNotice, MicButton, useShadowSpeech, ShadowSpeechBox } from './speechInput'
 import type { SpeechStageKey } from './speechInput'
 import { KidsArea, normTr, parseKidsDate, kidsColor } from './KidsTopics'
 import type { KidsTopic, KidsDeps, KDrillItem, KState } from './KidsTopics'
@@ -100,6 +100,7 @@ interface Unit {
   hasShadowingSrt?: boolean      // Sheet'te shadowing_srt_url dolu mu
   shadowingClips?: string[]      // Sheet: shadowing_clips — tek cümlelik ayrı ses dosyaları (| ile). Doluysa SRT yerine bu kullanılır
   shadowingClipTexts?: string[]  // Sheet: shadowing_texts — aynı sırayla cümleler (| ile)
+  shadowingSpeech?: boolean      // Sheet: shadowing_konusma — boş = açık, "kapalı" = Shadowing'de mikrofon yok
   mediaSegments?: DictationSegment[]  // Sheet: audio_video_srt_url — Audio/Video kartının altyazısı (zamanlı .srt)
   mediaUrl?: string  // Audio/Video kartının kendi bağımsız dosyası — dictation/shadowing'den ayrı. Uzantısına göre (.mp4/.mov → video, .mp3 → ses) otomatik gösterilir.
   readingTitle?: string
@@ -2929,6 +2930,33 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   // Stop everything cleanly on unmount.
   useEffect(() => () => { playTokenRef.current++; audioRef.current?.pause() }, [])
 
+  // Konuşma: öğrenci cümleyi mikrofona söyler, söylediği kelimeler yeşil olur.
+  // Units tablosundaki "shadowing_konusma" sütunu boşsa açık, "kapalı"ysa kapalı.
+  // Tarayıcı desteklemiyorsa mikrofon hiç görünmez. Her deneme Konuşma
+  // cevaplarına yazılır (bütün kelimeler söylendiyse doğru, değilse yanlış).
+  const [canSpeak] = useState(() => speechSupported())
+  const speechOn = canSpeak && unit.shadowingSpeech !== false
+  const shadowUnitKey = unit.unitId ?? unit.unitLabel ?? unit.title
+  const shadowSpeech = useShadowSpeech(segments[current]?.text ?? '', (heard, r) => {
+    const sentence = (segments[current]?.text ?? '').trim()
+    activitySpeech({
+      question_id: `${shadowUnitKey}|shadowing|${current + 1}`,
+      question_text: `Shadowing: ${sentence}`,
+      question_type: 'fixed',
+      raw_text: heard,
+      confirmed_text: heard,
+      input_mode: 'voice',
+      result: r.complete ? 'correct' : 'wrong',
+    })
+  })
+  // Mikrofona basınca ses ve döngü durur (öğrenci kendi sesini kaydettirirken çalmasın)
+  function stopForMic() {
+    playTokenRef.current++
+    audioRef.current?.pause()
+    setIsPlaying(false)
+    setLoop(false)
+  }
+
   // Klip modunda bir cümleyi çalar: o cümlenin kendi dosyası baştan sona.
   // Öğrenci etkinliği: çalışılan cümle, tekrar dinleme ve kullanılan hız (ses kaydı yok)
   function trackShadowPlay(index: number) {
@@ -2968,6 +2996,8 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   }
 
   function playSegment(index: number) {
+    // Ses çalmaya başlarken açık dinleme kapanır (tanıyıcı kaydı duymasın)
+    if (shadowSpeech.rec.listening) shadowSpeech.rec.abort()
     if (clipMode) { playClip(index); return }
     const audio = audioRef.current
     const seg = segments[index]
@@ -3102,6 +3132,8 @@ function ShadowingView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
               <button className="ncsu-btn" onClick={() => goTo(current - 1)} disabled={current === 0}>⏮ Previous</button>
               <button className="ncsu-btn" onClick={() => goTo(current + 1)} disabled={current === sentences.length - 1}>Next ⏭</button>
             </div>
+
+            {speechOn && sentences.length > 0 && <ShadowSpeechBox sp={shadowSpeech} onBeforeListen={stopForMic} />}
 
             {/* Cümle listesi — varsayılan kapalı; düğmeyle açılır. Açıkken sabit yükseklikte, kendi içinde kayar */}
             <div className="ncsu-listcard">
@@ -3409,6 +3441,7 @@ interface UnitRow {
   audio_video_srt_url: string
   shadowing_clips: string
   shadowing_texts: string
+  shadowing_speech: boolean    // shadowing_konusma sütunu: boş = açık, "kapalı" = kapalı
   // Kart kilitleri — true = kilitli (kart öğrenciye hiç gösterilmez)
   grammar_locked: boolean
   audio_locked: boolean
@@ -3487,6 +3520,7 @@ function parseUnitsSheet(rows: Record<string, string>[]): UnitsSheetData {
         audio_video_srt_url: normalizeFileUrl(r.audio_video_srt_url),
         shadowing_clips: r.shadowing_clips?.trim() || '',
         shadowing_texts: r.shadowing_texts?.trim() || '',
+        shadowing_speech: readSpeechSwitch(r, 'shadowing_konusma'),
         grammar_locked: isLockedCell(r.grammar_locked),
         audio_locked: isLockedCell(r.audio_locked),
         dictation_locked: isLockedCell(r.dictation_locked),
@@ -4084,11 +4118,20 @@ function DrillView({ unit, drillKey, onBack, sheetTopics, entryProfile }: { unit
   // senkronizasyon bir daha tetiklenmediği için ekran hep örnekte takılı
   // kalıyordu. Bu effect, aynı ünitede kalırken gerçek liste geldiği anı
   // (boştan doluya geçişi) yakalayıp konu listesini onunla değiştiriyor.
+  // Ekran açıkken tablo tazelenirse (ör. sayfa uzun süre arka planda kalıp öne
+  // gelince; sheetCache.ts) yeni hal de alınır: konu listesindeyken liste
+  // tamamen yenilenir; bir tur sürerken tur bozulmasın diye yalnızca aynı
+  // kimlikli konuların bilgileri (ör. "konusma" sütunu) güncellenir.
+  const queueOpenRef = useRef(false)
+  queueOpenRef.current = !!queue
   useEffect(() => {
-    if (sheetTopicsAppliedRef.current) return
     if (!sheetTopics || sheetTopics.length === 0) return
-    sheetTopicsAppliedRef.current = true
-    setTopics(sheetTopics)
+    if (!sheetTopicsAppliedRef.current || !queueOpenRef.current) {
+      sheetTopicsAppliedRef.current = true
+      setTopics(sheetTopics)
+      return
+    }
+    setTopics(prev => prev.map(t => sheetTopics.find(n => n.id === t.id) ?? t))
   }, [sheetTopics])
 
   // Eski numaralı Drill kayıtları: bu ünitenin konu listesindeki konuların
@@ -4251,19 +4294,22 @@ function DrillView({ unit, drillKey, onBack, sheetTopics, entryProfile }: { unit
     if (drillSpeech.rec.listening) drillSpeech.rec.abort()
     const given = answer.trim()
 
-    // Konuşması açık aşamada her cevap (sesle ya da yazıyla) kaydedilir.
+    // Konuşması açık aşamada YALNIZCA mikrofonla verilen cevaplar kaydedilir
+    // (tanınıp sonra kutuda düzeltilen de sesli sayılır). Mikrofonsuz yazılan
+    // cevaplar Konuşma cevaplarına yazılmaz; Drill'in kendi doğru/zorlandı
+    // sayıları ayrıca tutuluyor.
     const speechTopic = topics.find(t => t.id === activeTopicId)
     const speechOn = !!speechTopic?.speech?.includes(item.stageKey)
     const logSpeech = (result: 'correct' | 'wrong' | '') => {
-      if (!speechOn || !given) return
       const heard = drillSpeech.heard
+      if (!speechOn || !given || !heard) return
       activitySpeech({
         question_id: `${activeTopicId ?? ''}|${item.stageKey}|${item.no ?? ''}`,
         question_text: `${item.stageName}: ${item.cue.replace(/~~|\*\*|\[\[|\]\]/g, '').replace(/\(\([^)]*\)\)/g, '').replace(/\s+/g, ' ').trim()}`,
         question_type: item.expected === null ? 'free' : 'fixed',
-        raw_text: heard || '',
+        raw_text: heard,
         confirmed_text: given,
-        input_mode: heard ? 'voice' : 'text',
+        input_mode: 'voice',
         result,
       })
     }
@@ -5335,6 +5381,7 @@ export default function App() {
         mediaUrl: u.audio_video_url || undefined,
         shadowingClips: splitClipList(u.shadowing_clips),
         shadowingClipTexts: splitClipTexts(u.shadowing_texts),
+        shadowingSpeech: u.shadowing_speech,
         mediaSegments: mediaSrtByUnit[unitId] ?? undefined,
         unitLabel: `Unit ${i + 1}`,
         unitId,  // sheet'ten gelen gerçek unit_id — drillTopicsByUnit lookup için
@@ -5416,8 +5463,8 @@ export default function App() {
         listen: { state: state(r.audio_locked, !!r.audio_video_url), url: r.audio_video_url, segments: clean(mediaSrtByUnit[id]) },
         dictation: { state: state(r.dictation_locked, clean(dSegs).length > 0, dictWanted && dSegs === undefined), url: r.dictation_audio_url, segments: clean(dSegs) },
         shadowing: clips.length > 0
-          ? { state: state(r.shadowing_locked, true), url: '', segments: clips.map((_, k) => ({ start: 0, end: 0, text: clipTexts[k] ?? '' })), clips }
-          : { state: state(r.shadowing_locked, clean(shSegs).length > 0, shWanted && shSegs === undefined), url: r.shadowing_audio_url, segments: clean(shSegs), clips: [] },
+          ? { state: state(r.shadowing_locked, true), url: '', segments: clips.map((_, k) => ({ start: 0, end: 0, text: clipTexts[k] ?? '' })), clips, speech: r.shadowing_speech }
+          : { state: state(r.shadowing_locked, clean(shSegs).length > 0, shWanted && shSegs === undefined), url: r.shadowing_audio_url, segments: clean(shSegs), clips: [], speech: r.shadowing_speech },
         drill: { state: state(r.drill_locked, drillItems.length > 0), items: drillItems },
       }
     })
