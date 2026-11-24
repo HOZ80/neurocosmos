@@ -110,6 +110,7 @@ interface Unit {
   moduleLocks?: Partial<Record<'grammar' | 'audio' | 'dictation' | 'shadowing' | 'drill' | 'scene', boolean>>
   hiddenModules?: Array<'grammar' | 'audio' | 'dictation' | 'shadowing' | 'drill' | 'scene'>
   freeSourceSelect?: boolean
+  freeModule?: boolean           // P'nin başındaki sabit "Free Module" kartı: numara almaz, ilerleme sayısına girmez
   hidePracticeSentence?: boolean
   videoUrl?: string
   passiveVideo?: boolean
@@ -320,37 +321,11 @@ function buildUnits(level: Level): Unit[] {
       { title: 'Aynı Şeyi Başka Türlü',   topic: 'Dönüşüm',       grammar: 'Anahtar kelime dönüşümü (key word transformation)', dictationSentence: '', translation: '', transcript: '' },
       { title: 'Tez ve Karşı Tez',        topic: 'Konsolidasyon', grammar: 'Konsolidasyon + B2 First deneme yapısı',            dictationSentence: '', translation: '', transcript: '' },
     ],
-    // 'P' (Kişisel) sekmesi — A1/A2 ile birebir aynı ünite yapısını kullanır
-    // (Grammar / Audio / Dictation / Shadowing modülleri dahil). Tek fark:
-    // bu sekme başkalarına hiç görünmüyor, sadece şifreyle senin açabilmen.
-    // Yeni bir ünite eklemek istediğinde, A1/A2'deki gibi bu diziye yeni bir
-    // { title:..., topic:..., grammar:..., dictationSentence:..., ... } objesi
-    // eklemen yeterli.
-    P: [
-      {
-        title: 'Çalışma Notu 1',
-        topic: 'Kişisel',
-        grammar: 'Serbest',
-        hiddenModules: ['audio'],
-        dictationSentence: 'Example sentence.',
-        translation: 'Örnek cümle.',
-        transcript: 'Bu ünitenin dictation/shadowing içeriğini gerçek ses+altyazı geldiğinde dolduracağız.',
-        customGrammarBlocks: [
-          {
-            kind: 'box',
-            label: 'Bilinmeyen Kelime ve Yapılar',
-            en: 'Buraya öğrenmek istediğin/bilmediğin kelime, deyim veya yapıları yazacaksın.',
-            tr: 'Örnek: "nevertheless" — bununla birlikte',
-          },
-          {
-            kind: 'sentence',
-            label: 'Açıklama',
-            en: 'Buraya o kelime/yapının açıklamasını, kullanım örneklerini yazacaksın.',
-            tr: 'Bu blok beyaz zeminli, senin not defterindeki "açıklama" kısmı gibi düşün.',
-          },
-        ],
-      },
-    ],
+    // 'P' (Kişisel) sekmesi — üniteleri yalnızca Units tablosundan gelir
+    // (diğer seviyeler gibi: dosya adları tablodan, dosyalar GitHub'dan).
+    // Tablo yüklenemezse burada ünite yok; en baştaki "Free Module" kartı
+    // (withFreeModule) her zaman görünür.
+    P: [],
   }
 
   return sets[level].map((u, i) => ({
@@ -365,7 +340,6 @@ function buildUnits(level: Level): Unit[] {
           : level === 'B2' ? true
           : true,
     progress: 0,
-    freeSourceSelect: level === 'P',
   }))
 }
 
@@ -452,6 +426,31 @@ const DIALOGUES_UNIT: Unit = {
     { title: 'Lunchroom Talk', description: 'Four short scenes from the school kitchen', url: '/lunchroom-talk.html' },
     { title: 'Lunchroom Talk 2', description: 'Four more scenes from the school kitchen', url: '/lunchroom-talk-2.html' },
   ],
+}
+// P (Kişisel) sekmesinin en başındaki sabit kart: Dictation ve Shadowing,
+// bugünkü "cihazdan dosya seç" ekranlarıyla (PrivateDictation / PrivateShadowing).
+// Tabloya bağlı değil; tablodaki P üniteleri ondan sonra Unit 1, Unit 2… diye gelir.
+const FREE_MODULE_UNIT: Unit = {
+  id: 901,
+  title: 'My Dictation & Shadowing',
+  topic: 'Kendi dosyaların',
+  grammar: 'Cihazından ses ve altyazı seçerek serbest çalış',
+  completed: false,
+  locked: false,
+  progress: 0,
+  dictationSentence: '',
+  translation: '',
+  transcript: '',
+  unitLabel: 'Free Module',
+  unitId: 'P-FREE',
+  hidePracticeSentence: true,
+  hiddenModules: ['grammar', 'audio', 'drill', 'scene'],
+  freeSourceSelect: true,
+  freeModule: true,
+}
+function withFreeModule(lv: Level, list: Unit[]): Unit[] {
+  if (lv !== 'P') return list
+  return [FREE_MODULE_UNIT, ...list.filter(u => !u.freeModule)]
 }
 function withDialogues(lv: Level, list: Unit[]): Unit[] {
   if (lv !== 'A2' || list.some(u => u.id === DIALOGUES_UNIT.id)) return list
@@ -1023,6 +1022,7 @@ function DashboardView({ level, units, loading, onSelectUnit, onMemory, memoryCo
   memoryCounts?: Record<string, number>
   unutmama?: { status: 'loading' | 'ok' | 'error'; due: number; onClick: () => void }
 }) {
+  const countedUnits = units.filter(u => !u.freeModule)   // Free Module kartı ilerleme sayısına girmez
   return (
     <div className="anim-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
@@ -1033,7 +1033,7 @@ function DashboardView({ level, units, loading, onSelectUnit, onMemory, memoryCo
           <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>
             {loading
               ? 'Üniteler yükleniyor…'
-              : <>{units.filter(u => u.completed).length} of {units.length} units completed · {Math.round(units.filter(u => u.completed).length / units.length * 100)}% progress</>}
+              : <>{countedUnits.filter(u => u.completed).length} of {countedUnits.length} units completed · {countedUnits.length ? Math.round(countedUnits.filter(u => u.completed).length / countedUnits.length * 100) : 0}% progress</>}
           </p>
         </div>
         {onMemory && (
@@ -1058,7 +1058,7 @@ function DashboardView({ level, units, loading, onSelectUnit, onMemory, memoryCo
       {/* Overall progress bar */}
       <div style={{ height: '6px', background: 'var(--muted)', borderRadius: '6px', overflow: 'hidden' }}>
         <div style={{
-          width: `${(units.filter(u => u.completed).length / units.length) * 100}%`,
+          width: `${countedUnits.length ? (countedUnits.filter(u => u.completed).length / countedUnits.length) * 100 : 0}%`,
           height: '100%', background: 'linear-gradient(90deg, var(--primary), #818CF8)',
           borderRadius: '6px', transition: 'width 0.6s ease',
         }} />
@@ -1131,7 +1131,7 @@ function DashboardView({ level, units, loading, onSelectUnit, onMemory, memoryCo
 
               {/* Module chips */}
               <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                {(Object.keys(MODULE_META) as (keyof typeof MODULE_META)[]).map(k => (
+                {(Object.keys(MODULE_META) as (keyof typeof MODULE_META)[]).filter(k => !unit.freeModule || !unit.hiddenModules?.includes(k)).map(k => (
                   <Chip key={k} label={MODULE_META[k].label} color={MODULE_META[k].color} bg={MODULE_META[k].bg} />
                 ))}
               </div>
@@ -1191,7 +1191,7 @@ function UnitDetailView({ unit, level, onBack, onModule, onGrammar, onQuestion, 
           <span style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>{unit.topic}</span>
         </div>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '32px', fontWeight: 700, margin: '0 0 6px' }}>{unit.title}</h2>
-        <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>Grammar focus: {unit.grammar}</p>
+        <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted-foreground)' }}>{unit.freeModule ? unit.grammar : <>Grammar focus: {unit.grammar}</>}</p>
       </div>
 
       {unit.dialogueChain ? (
@@ -5386,7 +5386,6 @@ export default function App() {
         unitLabel: `Unit ${i + 1}`,
         unitId,  // sheet'ten gelen gerçek unit_id — drillTopicsByUnit lookup için
         hiddenModules,
-        freeSourceSelect: lv === 'P',
       }
     })
 
@@ -5473,14 +5472,14 @@ export default function App() {
   const units = (() => {
     const sheetLevelUnits = unitsSheetData?.unitsByLevel[level]
     if (unitsSheetData && sheetLevelUnits && sheetLevelUnits.length > 0) {
-      return withDialogues(level, buildUnitsFromSheet(level, unitsSheetData).map(u =>
+      return withFreeModule(level, withDialogues(level, buildUnitsFromSheet(level, unitsSheetData).map(u =>
         (u.unitLabel === '100Q' && sheetQuestions) ? { ...u, questionChain: sheetQuestions } : u
-      ))
+      )))
     }
     const base = buildUnits(level)
-    return withDialogues(level, base.map(u =>
+    return withFreeModule(level, withDialogues(level, base.map(u =>
       (u.unitLabel === '100Q' && sheetQuestions) ? { ...u, questionChain: sheetQuestions } : u
-    ))
+    )))
   })()
 
   const selectedUnitLive = selectedUnit ? units.find(u => u.id === selectedUnit.id) ?? selectedUnit : null
