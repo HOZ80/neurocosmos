@@ -26,6 +26,8 @@ import { loadCachedThenFresh, readCachedText, fetchFreshText, writeCachedText } 
 import LiveTeacher, { clearLiveTeacherNav } from './LiveTeacher'
 import { useLiveStatus, LiveBanner, LiveOnlyHome, LiveStudentScreen } from './LiveStudent'
 import { useActivityTracker, useActivityPlace, activityStat, activityMiss, activitySpeech, bump } from './activityStore'
+import { checkDictation, buildNameSet, namesInSentence, parseNameCell } from './dictationCheck'
+import { DictNamesBar, DictChips, DictNotes, DictHintLine } from './DictationReview'
 import { readSpeechColumn, readSpeechSwitch, speechSupported, useDrillSpeech, DrillSpeechNotice, MicButton, useShadowSpeech, ShadowSpeechBox } from './speechInput'
 import type { SpeechStageKey } from './speechInput'
 import { KidsArea, normTr, parseKidsDate, kidsColor } from './KidsTopics'
@@ -101,6 +103,8 @@ interface Unit {
   shadowingClips?: string[]      // Sheet: shadowing_clips — tek cümlelik ayrı ses dosyaları (| ile). Doluysa SRT yerine bu kullanılır
   shadowingClipTexts?: string[]  // Sheet: shadowing_texts — aynı sırayla cümleler (| ile)
   shadowingSpeech?: boolean      // Sheet: shadowing_konusma — boş = açık, "kapalı" = Shadowing'de mikrofon yok
+  dictationNamesShow?: string[]  // Sheet: dictation_goster — Dictation'da her zaman isim olarak gösterilen kelimeler (isteğe bağlı)
+  dictationNamesAsk?: string[]   // Sheet: dictation_sor — Dictation'da her zaman öğrenciden beklenen kelimeler (isteğe bağlı)
   mediaSegments?: DictationSegment[]  // Sheet: audio_video_srt_url — Audio/Video kartının altyazısı (zamanlı .srt)
   mediaUrl?: string  // Audio/Video kartının kendi bağımsız dosyası — dictation/shadowing'den ayrı. Uzantısına göre (.mp4/.mov → video, .mp3 → ses) otomatik gösterilir.
   readingTitle?: string
@@ -349,39 +353,7 @@ function fmt(s: number) {
   return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 }
 
-function normalizeWord(s: string) {
-  return s.toLowerCase().replace(/[.,!?;:"']/g, '').trim()
-}
-
 type HintPart = { word: string; kind: 'ok' | 'hint' | 'mask' }
-
-function maskedHint(correctText: string, typedText: string): { allOk: boolean; parts: HintPart[] } {
-  const correct = correctText.trim().split(/\s+/).filter(Boolean)
-  const typed = typedText.trim().split(/\s+/).filter(Boolean)
-  let k = 0
-  while (k < correct.length && k < typed.length && normalizeWord(correct[k]) === normalizeWord(typed[k])) k++
-  const allOk = k === correct.length && typed.length === correct.length
-  if (allOk) return { allOk: true, parts: [] }
-  const parts: HintPart[] = []
-  for (let i = 0; i < k; i++) parts.push({ word: correct[i], kind: 'ok' })
-  if (k < correct.length) parts.push({ word: correct[k], kind: 'hint' })
-  for (let i = k + 1; i < correct.length; i++) parts.push({ word: '*'.repeat(correct[i].length), kind: 'mask' })
-  return { allOk: false, parts }
-}
-
-function compareWords(typed: string, target: string) {
-  const tWords = typed.trim().split(/\s+/)
-  const rWords = target.trim().split(/\s+/)
-  return rWords.map((ref, i) => {
-    const t = (tWords[i] ?? '').replace(/[^a-zA-Z']/g, '')
-    const r = ref.replace(/[^a-zA-Z']/g, '')
-    return {
-      word: ref,
-      typed: tWords[i] ?? '',
-      correct: t.toLowerCase() === r.toLowerCase(),
-    }
-  })
-}
 
 // ─── Shared small components ──────────────────────────────────────────────────
 
@@ -1905,6 +1877,8 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
   const [fullOnWrong, setFullOnWrong] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [pastListOpen, setPastListOpen] = useState(false)
+  // Reset 1. cümledeyken de kutuyu açıp cümleyi baştan çalsın diye (cümle numarası değişmese de)
+  const [resetTick, setResetTick] = useState(0)
   const playerRef = useRef<MiniPlayerHandle>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   // Öğrenci etkinliği: ilk denemede yanlış yazılan cümleler (sonra doğru tamamlanırsa "ipucuyla")
@@ -1944,15 +1918,20 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
       textareaRef.current?.focus()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [curIndex, segments])
+  }, [curIndex, segments, resetTick])
 
-  const hint = checked && currentSegment ? maskedHint(currentSegment.text, typed) : null
-  const results = checked && currentSegment ? compareWords(typed, currentSegment.text) : []
-  const allCorrect = hint?.allOk ?? false
+  // Ünitedeki özel isimler (bütün cümlelerden; Units'teki dictation_goster / dictation_sor istisnaları)
+  const nameSet = useMemo(
+    () => buildNameSet(segments.map(sg => sg.text), { show: unit.dictationNamesShow, ask: unit.dictationNamesAsk }),
+    [segments, unit.dictationNamesShow, unit.dictationNamesAsk]
+  )
+  const sentenceNames = currentSegment ? namesInSentence(currentSegment.text, nameSet) : []
+  const check = useMemo(() => (checked && currentSegment ? checkDictation(currentSegment.text, typed, nameSet) : null), [checked, currentSegment, typed, nameSet])
+  const allCorrect = check?.allOk ?? false
 
   function checkAnswer() {
     if (!currentSegment || !typed.trim()) return
-    const result = maskedHint(currentSegment.text, typed)
+    const result = checkDictation(currentSegment.text, typed, nameSet)
     setChecked(true)
     setReadyForNext(result.allOk)
     if (!answered[curIndex]) {
@@ -1991,6 +1970,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
     setCorrectCount(0)
     wrongFirstRef.current = new Set()
     setShowTranscript(false)
+    setResetTick(t => t + 1)
   }
 
   // Keyboard shortcuts: Enter checks/advances, Ctrl+R replays, ←/→ navigate segments.
@@ -2097,6 +2077,8 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
         </div>
       ) : (
         <>
+          <DictNamesBar names={sentenceNames} />
+
           {/* Input area */}
           <div style={{ position: 'relative' }}>
             <textarea
@@ -2215,17 +2197,10 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
                   <span style={{ fontSize: '18px' }}>⚠️</span>
                   <p style={{ margin: 0, fontWeight: 600, fontSize: '14px', color: '#B91C1C' }}>Some words need correction</p>
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: hint && (hintOnWrong || fullOnWrong) ? '14px' : 0 }}>
-                  {results.map((r, i) => (
-                    <span key={i} style={{
-                      padding: '3px 9px', borderRadius: '6px', fontSize: '15px', fontWeight: 500,
-                      background: r.correct ? '#DCFCE7' : '#FEE2E2',
-                      color: r.correct ? '#15803D' : '#B91C1C',
-                      border: `1px solid ${r.correct ? 'rgba(21,128,61,0.2)' : 'rgba(185,28,28,0.25)'}`,
-                      textDecoration: r.correct ? 'none' : 'underline wavy rgba(185,28,28,0.5)',
-                    }}>{r.typed || '—'}</span>
-                  ))}
+                <div style={{ marginBottom: check && (hintOnWrong || fullOnWrong || check.notes.length > 0) ? '14px' : 0 }}>
+                  {check && <DictChips ops={check.ops} />}
                 </div>
+                {check && check.notes.length > 0 && <div style={{ marginBottom: hintOnWrong || fullOnWrong ? '14px' : 0 }}><DictNotes notes={check.notes} /></div>}
                 {/* Masked/full hint */}
                 {fullOnWrong && currentSegment && (
                   <div style={{ background: '#fff', border: '1px dashed rgba(239,68,68,0.3)', borderRadius: '10px', padding: '12px 16px' }}>
@@ -2233,16 +2208,10 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
                     <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.6, color: '#374151' }}>{currentSegment.text}</p>
                   </div>
                 )}
-                {!fullOnWrong && hintOnWrong && hint && hint.parts.length > 0 && (
+                {!fullOnWrong && hintOnWrong && check && (check.hintParts.length > 0 || check.extras.length > 0) && (
                   <div style={{ background: '#fff', border: '1px dashed rgba(239,68,68,0.3)', borderRadius: '10px', padding: '12px 16px' }}>
                     <p style={{ margin: '0 0 4px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#EF4444', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Hint</p>
-                    <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.6, fontFamily: 'var(--font-mono)' }}>
-                      {hint.parts.map((p, i) => {
-                        if (p.kind === 'ok') return <span key={i} style={{ color: '#374151' }}>{p.word} </span>
-                        if (p.kind === 'hint') return <span key={i} style={{ color: '#15803D', fontWeight: 700 }}>{p.word} </span>
-                        return <span key={i} style={{ color: 'var(--muted-foreground)' }}>{p.word} </span>
-                      })}
-                    </p>
+                    <DictHintLine parts={check.hintParts} extras={check.extras} />
                   </div>
                 )}
               </div>
@@ -2268,6 +2237,7 @@ function DictationView({ unit, onBack }: { unit: Unit; onBack: () => void }) {
               </div>
             </div>
           )}
+          {checked && allCorrect && check && check.notes.length > 0 && <DictNotes notes={check.notes} />}
 
         </>
       )}
@@ -3442,6 +3412,8 @@ interface UnitRow {
   shadowing_clips: string
   shadowing_texts: string
   shadowing_speech: boolean    // shadowing_konusma sütunu: boş = açık, "kapalı" = kapalı
+  dictation_goster: string     // isteğe bağlı: Dictation'da isim olarak gösterilecek kelimeler (virgülle)
+  dictation_sor: string        // isteğe bağlı: Dictation'da öğrenciden beklenecek kelimeler (virgülle)
   // Kart kilitleri — true = kilitli (kart öğrenciye hiç gösterilmez)
   grammar_locked: boolean
   audio_locked: boolean
@@ -3521,6 +3493,8 @@ function parseUnitsSheet(rows: Record<string, string>[]): UnitsSheetData {
         shadowing_clips: r.shadowing_clips?.trim() || '',
         shadowing_texts: r.shadowing_texts?.trim() || '',
         shadowing_speech: readSpeechSwitch(r, 'shadowing_konusma'),
+        dictation_goster: r.dictation_goster?.trim() || '',
+        dictation_sor: r.dictation_sor?.trim() || '',
         grammar_locked: isLockedCell(r.grammar_locked),
         audio_locked: isLockedCell(r.audio_locked),
         dictation_locked: isLockedCell(r.dictation_locked),
@@ -5382,6 +5356,8 @@ export default function App() {
         shadowingClips: splitClipList(u.shadowing_clips),
         shadowingClipTexts: splitClipTexts(u.shadowing_texts),
         shadowingSpeech: u.shadowing_speech,
+        dictationNamesShow: parseNameCell(u.dictation_goster),
+        dictationNamesAsk: parseNameCell(u.dictation_sor),
         mediaSegments: mediaSrtByUnit[unitId] ?? undefined,
         unitLabel: `Unit ${i + 1}`,
         unitId,  // sheet'ten gelen gerçek unit_id — drillTopicsByUnit lookup için
@@ -5460,7 +5436,7 @@ export default function App() {
         bookCode: r.kitap_kodu.toUpperCase(),
         grammar: { state: state(r.grammar_locked, slots.length > 0), slots },
         listen: { state: state(r.audio_locked, !!r.audio_video_url), url: r.audio_video_url, segments: clean(mediaSrtByUnit[id]) },
-        dictation: { state: state(r.dictation_locked, clean(dSegs).length > 0, dictWanted && dSegs === undefined), url: r.dictation_audio_url, segments: clean(dSegs) },
+        dictation: { state: state(r.dictation_locked, clean(dSegs).length > 0, dictWanted && dSegs === undefined), url: r.dictation_audio_url, segments: clean(dSegs), namesShow: parseNameCell(r.dictation_goster), namesAsk: parseNameCell(r.dictation_sor) },
         shadowing: clips.length > 0
           ? { state: state(r.shadowing_locked, true), url: '', segments: clips.map((_, k) => ({ start: 0, end: 0, text: clipTexts[k] ?? '' })), clips, speech: r.shadowing_speech }
           : { state: state(r.shadowing_locked, clean(shSegs).length > 0, shWanted && shSegs === undefined), url: r.shadowing_audio_url, segments: clean(shSegs), clips: [], speech: r.shadowing_speech },

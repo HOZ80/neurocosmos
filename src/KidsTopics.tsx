@@ -21,6 +21,7 @@ import { loadCachedContent } from './readerData'
 import InstallButton from './InstallButton'
 import { useActivityPlace, activityStat, activityMiss, activitySpeech, bump } from './activityStore'
 import { speechSupported, useShadowSpeech, ShadowWords, shadowCountText } from './speechInput'
+import { checkDictation, buildNameSet, namesInSentence, dictNoteText } from './dictationCheck'
 
 // ── Veri biçimleri ───────────────────────────────────────────────────────────
 export type KState = 'ok' | 'locked' | 'empty' | 'loading'
@@ -42,7 +43,7 @@ export interface KidsTopic {
   bookCode: string
   grammar: { state: KState; slots: KGrammarSlot[] }
   listen: { state: KState; url: string; segments: KSeg[] }
-  dictation: { state: KState; url: string; segments: KSeg[] }
+  dictation: { state: KState; url: string; segments: KSeg[]; namesShow?: string[]; namesAsk?: string[] }   // names*: Units'teki dictation_goster / dictation_sor
   shadowing: { state: KState; url: string; segments: KSeg[]; clips: string[]; speech?: boolean }   // speech: Units'teki shadowing_konusma (boş = açık)
   drill: { state: KState; items: KDrillItem[] }
 }
@@ -650,11 +651,15 @@ function KidsDictation({ topic, deps, onBack }: { topic: KidsTopic; deps: KidsDe
   const seg = segs[Math.min(st.i, segs.length - 1)]
   const playCur = (idx = st.i) => { const s = segs[idx]; if (s) void audio.play(url, s.start, s.end, slow ? 0.75 : 1) }
   const ok = st.status === 'ok'
-  const hint = st.status === 'wrong' && seg ? deps.answerHint(seg.text, st.typed) : null
+  // Dictation kontrolü (dictationCheck): hizalama, kısaltma notu, sayılar, isimler beklenmez
+  const nameSet = useMemo(() => buildNameSet(segs.map(s => s.text), { show: topic.dictation.namesShow, ask: topic.dictation.namesAsk }), [segs, topic.dictation.namesShow, topic.dictation.namesAsk])
+  const names = seg ? namesInSentence(seg.text, nameSet) : []
+  const res = useMemo(() => (st.status !== 'idle' && seg ? checkDictation(seg.text, st.typed, nameSet) : null), [st.status, seg, st.typed, nameSet])
+  const hint = st.status === 'wrong' && res ? res : null
 
   function check() {
     if (!seg || ok || !st.typed.trim()) return
-    const r = deps.answerHint(seg.text, st.typed)
+    const r = checkDictation(seg.text, st.typed, nameSet)
     if (!st.tried) {
       activityStat('dictation', s => { bump(s, 'written'); if (r.allOk) bump(s, 'first') })
       if (!r.allOk) activityMiss('dictation', seg.text, st.typed)
@@ -687,16 +692,27 @@ function KidsDictation({ topic, deps, onBack }: { topic: KidsTopic; deps: KidsDe
               <button className="kd-tap" onClick={() => setSlow(s => !s)} aria-pressed={slow} style={{ marginTop: 6, minHeight: 40, padding: '0 14px', borderRadius: 999, background: slow ? color : '#FFFFFF', color: slow ? '#FFFFFF' : '#3B3650', border: `2px solid ${color}55`, fontWeight: 800, fontSize: 15 }}>🐢 Yavaş</button>
             </div>
           </div>
+          {names.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, fontSize: 16, fontWeight: 800, color: '#3B3650' }}>
+              İsimler:
+              {names.map(n => <span key={n} className="kd-chip" style={{ background: '#FFFFFF', color: '#3B3650', border: `2px dashed ${color}55` }}>{n}</span>)}
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#6B6680' }}>(bunları yazmasan da olur)</span>
+            </div>
+          )}
           <label htmlFor="kd-dict" style={{ fontSize: 16, fontWeight: 800, color: '#3B3650', marginBottom: -8 }}>Cevabın</label>
           <input id="kd-dict" ref={inputRef} key={`${st.i}-${st.shake}`} className={'kd-input' + (st.status === 'wrong' ? ' kd-shake' : '')} value={st.typed} readOnly={ok} autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} placeholder="Buraya yaz…"
             onChange={e => { const v = e.target.value; setSt(p => ({ ...p, typed: v, status: p.status === 'ok' ? 'ok' : 'idle' })) }}
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (ok) next(); else check() } }}
             style={{ border: ok ? '3px solid #22C55E' : st.status === 'wrong' ? '3px solid #FB923C' : `3px solid ${color}44`, background: ok ? '#F0FDF4' : '#FFFFFF' }} />
           {ok && <OkBox wrongFirst={st.wrongFirst} />}
+          {ok && res && res.notes.map((nt, k) => (
+            <div key={k} style={{ padding: '10px 14px', borderRadius: 16, background: '#F5F3FF', border: '2px solid #DDD6FE', fontSize: 16, fontWeight: 800, color: '#5B21B6' }}>💡 {dictNoteText(nt)}</div>
+          ))}
           {hint && (
             <div style={{ padding: '14px 16px', borderRadius: 20, background: '#FFF7ED', border: '2px solid #FDBA74' }}>
               <div className="kd-h" style={{ fontSize: 22, color: '#9A3412' }}>Neredeyse! Bir daha dene</div>
-              {hint.extra ? <div style={{ marginTop: 6, fontSize: 17, fontWeight: 800, color: '#9A3412' }}>Cümlenin sonunda fazladan kelime var.</div> : <HintRow parts={hint.parts} />}
+              {hint.hintParts.some(p => p.kind === 'hint') && <HintRow parts={hint.hintParts} />}
+              {hint.extras.length > 0 && <div style={{ marginTop: 6, fontSize: 17, fontWeight: 800, color: '#9A3412' }}>Fazladan kelime var: {hint.extras.join(', ')}</div>}
             </div>
           )}
           {st.revealed && !ok && seg && (

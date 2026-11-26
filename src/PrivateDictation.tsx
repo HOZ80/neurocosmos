@@ -1,4 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { checkDictation, buildNameSet, namesInSentence } from './dictationCheck'
+import { DictNamesBar, DictChips, DictNotes, DictHintLine } from './DictationReview'
 
 /* ─────────────────────────────────────────────────────────────────────────────
    PrivateDictation — Kişisel alan (freeSourceSelect) için dictation modülü.
@@ -19,7 +21,6 @@ const ACCENT = '#F59E0B'
 const ACCENT_BG = '#FEF3C7'
 
 type Segment = { start: number; end: number; text: string }
-type HintPart = { word: string; kind: 'ok' | 'hint' | 'mask' }
 type Step = 'setup' | 'mark' | 'practice'
 
 /* ─── Yardımcılar ─────────────────────────────────────────────────────────── */
@@ -29,33 +30,7 @@ function fmt(s: number) {
   return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 }
 
-function normalizeWord(s: string) {
-  return s.toLowerCase().replace(/[.,!?;:"']/g, '').trim()
-}
-
-function maskedHint(correctText: string, typedText: string): { allOk: boolean; parts: HintPart[] } {
-  const correct = correctText.trim().split(/\s+/).filter(Boolean)
-  const typed = typedText.trim().split(/\s+/).filter(Boolean)
-  let k = 0
-  while (k < correct.length && k < typed.length && normalizeWord(correct[k]) === normalizeWord(typed[k])) k++
-  const allOk = k === correct.length && typed.length === correct.length
-  if (allOk) return { allOk: true, parts: [] }
-  const parts: HintPart[] = []
-  for (let i = 0; i < k; i++) parts.push({ word: correct[i], kind: 'ok' })
-  if (k < correct.length) parts.push({ word: correct[k], kind: 'hint' })
-  for (let i = k + 1; i < correct.length; i++) parts.push({ word: '*'.repeat(correct[i].length), kind: 'mask' })
-  return { allOk: false, parts }
-}
-
-function compareWords(typed: string, target: string) {
-  const tWords = typed.trim().split(/\s+/)
-  const rWords = target.trim().split(/\s+/)
-  return rWords.map((ref, i) => {
-    const t = (tWords[i] ?? '').replace(/[^a-zA-Z']/g, '')
-    const r = ref.replace(/[^a-zA-Z']/g, '')
-    return { word: ref, typed: tWords[i] ?? '', correct: t.toLowerCase() === r.toLowerCase() }
-  })
-}
+// Cevap kontrolü ortak dosyada: dictationCheck.ts (ünite ve çocuk Dictation'ı ile aynı kurallar)
 
 // Hem .srt hem .vtt okur. Satır satır zaman kodu arar; böylece bloklar
 // arasında boş satır olmasa da, dosya başında BOM olsa da, satır sonları
@@ -148,6 +123,8 @@ export default function PrivateDictation({ unitTitle, onBack }: {
   const [checked, setChecked] = useState(false)
   const [readyForNext, setReadyForNext] = useState(false)
   const [revealed, setRevealed] = useState(false)
+  // Baştan Başla 1. cümledeyken de kutuyu açıp cümleyi baştan çalsın diye
+  const [resetTick, setResetTick] = useState(0)
   const [answered, setAnswered] = useState<boolean[]>([])
   const [correctCount, setCorrectCount] = useState(0)
   const [showSettings, setShowSettings] = useState(false)
@@ -396,15 +373,17 @@ export default function PrivateDictation({ unitTitle, onBack }: {
       textareaRef.current?.focus()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [curIndex, segments, step])
+  }, [curIndex, segments, step, resetTick])
 
-  const hint = checked && currentSegment ? maskedHint(currentSegment.text, typed) : null
-  const results = checked && currentSegment ? compareWords(typed, currentSegment.text) : []
-  const allCorrect = hint?.allOk ?? false
+  // Dosyadaki özel isimler (bütün cümlelerden)
+  const nameSet = useMemo(() => buildNameSet(segments.map(sg => sg.text)), [segments])
+  const sentenceNames = currentSegment ? namesInSentence(currentSegment.text, nameSet) : []
+  const check = useMemo(() => (checked && currentSegment ? checkDictation(currentSegment.text, typed, nameSet) : null), [checked, currentSegment, typed, nameSet])
+  const allCorrect = check?.allOk ?? false
 
   function checkAnswer() {
     if (!currentSegment || !typed.trim()) return
-    const result = maskedHint(currentSegment.text, typed)
+    const result = checkDictation(currentSegment.text, typed, nameSet)
     setChecked(true)
     setReadyForNext(result.allOk)
     if (!answered[curIndex]) {
@@ -440,6 +419,7 @@ export default function PrivateDictation({ unitTitle, onBack }: {
     setAnswered(new Array(segments.length).fill(false))
     setCorrectCount(0)
     setShowTranscript(false)
+    setResetTick(t => t + 1)
   }
 
   function backToSetup() {
@@ -782,6 +762,8 @@ export default function PrivateDictation({ unitTitle, onBack }: {
             </div>
           ) : (
             <>
+              <DictNamesBar names={sentenceNames} />
+
               {/* Yazma alanı */}
               <textarea
                 ref={textareaRef}
@@ -891,33 +873,20 @@ export default function PrivateDictation({ unitTitle, onBack }: {
                     <span style={{ fontSize: '18px' }}>⚠️</span>
                     <p style={{ margin: 0, fontWeight: 600, fontSize: '14px', color: '#B91C1C' }}>Bazı kelimeler düzeltilmeli</p>
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: (hintOnWrong || fullOnWrong) ? '14px' : 0 }}>
-                    {results.map((r, i) => (
-                      <span key={i} style={{
-                        padding: '3px 9px', borderRadius: '6px', fontSize: '15px', fontWeight: 500,
-                        background: r.correct ? '#DCFCE7' : '#FEE2E2',
-                        color: r.correct ? '#15803D' : '#B91C1C',
-                        border: `1px solid ${r.correct ? 'rgba(21,128,61,0.2)' : 'rgba(185,28,28,0.25)'}`,
-                        textDecoration: r.correct ? 'none' : 'underline wavy rgba(185,28,28,0.5)',
-                      }}>{r.typed || '—'}</span>
-                    ))}
+                  <div style={{ marginBottom: check && (hintOnWrong || fullOnWrong || check.notes.length > 0) ? '14px' : 0 }}>
+                    {check && <DictChips ops={check.ops} />}
                   </div>
+                  {check && check.notes.length > 0 && <div style={{ marginBottom: hintOnWrong || fullOnWrong ? '14px' : 0 }}><DictNotes notes={check.notes} /></div>}
                   {fullOnWrong && currentSegment && (
                     <div style={{ background: '#fff', border: '1px dashed rgba(239,68,68,0.3)', borderRadius: '10px', padding: '12px 16px' }}>
                       <p style={{ margin: '0 0 4px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#EF4444', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Doğru cümle</p>
                       <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.6, color: '#374151' }}>{currentSegment.text}</p>
                     </div>
                   )}
-                  {!fullOnWrong && hintOnWrong && hint && hint.parts.length > 0 && (
+                  {!fullOnWrong && hintOnWrong && check && (check.hintParts.length > 0 || check.extras.length > 0) && (
                     <div style={{ background: '#fff', border: '1px dashed rgba(239,68,68,0.3)', borderRadius: '10px', padding: '12px 16px' }}>
                       <p style={{ margin: '0 0 4px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: '#EF4444', textTransform: 'uppercase', letterSpacing: '0.1em' }}>İpucu</p>
-                      <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.6, fontFamily: 'var(--font-mono)' }}>
-                        {hint.parts.map((p, i) => {
-                          if (p.kind === 'ok') return <span key={i} style={{ color: '#374151' }}>{p.word} </span>
-                          if (p.kind === 'hint') return <span key={i} style={{ color: '#15803D', fontWeight: 700 }}>{p.word} </span>
-                          return <span key={i} style={{ color: 'var(--muted-foreground)' }}>{p.word} </span>
-                        })}
-                      </p>
+                      <DictHintLine parts={check.hintParts} extras={check.extras} />
                     </div>
                   )}
                 </div>
@@ -939,6 +908,7 @@ export default function PrivateDictation({ unitTitle, onBack }: {
                   </div>
                 </div>
               )}
+              {checked && allCorrect && check && check.notes.length > 0 && <DictNotes notes={check.notes} />}
 
               <button onClick={backToSetup} style={{ alignSelf: 'center', background: 'none', border: 'none', color: 'var(--muted-foreground)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}>
                 Farklı ses/altyazı seç
