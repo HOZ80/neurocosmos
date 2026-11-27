@@ -3427,6 +3427,7 @@ interface UnitRow {
   kitap_kodu: string
   simge: string
   renk: string
+  onay: string                 // çocuk konusu: öğretmen onayı – "tamam" ya da "devam" (boş = henüz bakılmadı)
 }
 
 interface UnitsSheetData {
@@ -3461,8 +3462,17 @@ function splitClipList(str: string): string[] {
 // shadowing_locked, drill_locked, scene_locked) için ortak kural — ünite
 // kartlarındaki "locked" sütunuyla aynı: yalnızca FALSE / 0 / hayır / yanlış
 // "açık" demektir. TRUE ya da boş hücre kilitli sayılır.
+// Hücredeki yazı hem Türkçe hem İngilizce kurala göre küçültülür: "YANLIŞ",
+// "HAYIR", "Yanlış", "yanlis" hepsi tanınır (eskiden "YANLIŞ" tanınmıyordu).
+function cellWordIs(v: string | undefined, words: string[]): boolean {
+  const a = (v ?? '').trim()
+  if (!a) return false
+  return [a.toLocaleLowerCase('tr'), a.toLowerCase()].some(f => words.includes(f))
+}
+const OPEN_WORDS = ['false', '0', 'hayır', 'hayir', 'yanlış', 'yanlis']
+const YES_WORDS = ['true', '1', 'evet', 'doğru', 'dogru']
 function isLockedCell(v: string | undefined): boolean {
-  return !['false', '0', 'hayır', 'yanlış'].includes((v ?? '').trim().toLowerCase())
+  return !cellWordIs(v, OPEN_WORDS)
 }
 
 function splitClipTexts(str: string): string[] {
@@ -3483,7 +3493,7 @@ function parseUnitsSheet(rows: Record<string, string>[]): UnitsSheetData {
         unit_title: r.title?.trim() || '',
         unit_topic: r.topic?.trim() || '',
         unit_grammar: r.grammar?.trim() || '',
-        unit_locked: ['false','0','hayır','yanlış'].includes(r.locked?.trim().toLowerCase() ?? '') ? 'false' : 'true',
+        unit_locked: cellWordIs(r.locked, OPEN_WORDS) ? 'false' : 'true',
         dictation_audio_url: normalizeFileUrl(r.dictation_audio_url),
         dictation_srt_url: normalizeFileUrl(r.dictation_srt_url),
         shadowing_audio_url: normalizeFileUrl(r.shadowing_audio_url),
@@ -3506,6 +3516,7 @@ function parseUnitsSheet(rows: Record<string, string>[]): UnitsSheetData {
         kitap_kodu: r.kitap_kodu?.trim() || '',
         simge: r.simge?.trim() || '',
         renk: r.renk?.trim() || '',
+        onay: r.onay?.trim() || '',
       })
     }
   })
@@ -3687,7 +3698,7 @@ function rowsToDrillTopics(rows: Record<string, string>[]): DrillTopic[] {
         question: question.items,
       },
       notes: r.notes || '',
-      aiEval: ['true', '1', 'evet'].includes((r.ai_eval || '').trim().toLowerCase()),
+      aiEval: cellWordIs(r.ai_eval, YES_WORDS),
       modelMismatchWarning: mismatchWarning || undefined,
       missingModelWarning: missingModelWarning || undefined,
       hints: {
@@ -4828,6 +4839,7 @@ function ChildDashboard({ childName, childArea, unitTitles, onExit, account, mem
       brainStatus={brain.data.status}
       unut={unut}
       showMemory={memoryEnabled && unut.status === 'ok' && unut.cards.length > 0}
+      persist={memoryEnabled}
       onBrain={() => { panelScroll.current = window.scrollY; brain.reload(); setShowBrain(true); window.scrollTo(0, 0) }}
       onMemory={() => { panelScroll.current = window.scrollY; setShowMemory(true); window.scrollTo(0, 0) }}
       onExit={onExit}
@@ -5434,6 +5446,7 @@ export default function App() {
         date,
         locked: r.unit_locked === 'true',
         bookCode: r.kitap_kodu.toUpperCase(),
+        approval: normTr(r.onay) === 'tamam' ? 'tamam' : normTr(r.onay) === 'devam' ? 'devam' : '',
         grammar: { state: state(r.grammar_locked, slots.length > 0), slots },
         listen: { state: state(r.audio_locked, !!r.audio_video_url), url: r.audio_video_url, segments: clean(mediaSrtByUnit[id]) },
         dictation: { state: state(r.dictation_locked, clean(dSegs).length > 0, dictWanted && dSegs === undefined), url: r.dictation_audio_url, segments: clean(dSegs), namesShow: parseNameCell(r.dictation_goster), namesAsk: parseNameCell(r.dictation_sor) },
